@@ -32,6 +32,7 @@ import qualified Data.Foldable as F
 import Data.Monoid
 
 import Data.Char
+import Data.List
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -57,6 +58,7 @@ type GenericStatement = Statement () ()
 data Lhs lhs
     = CustomLhs lhs
     | GenericLhs Text
+    | IntLhs Int -- used frequently in EU4
     deriving (Eq, Ord, Show, Read)
 type GenericLhs = Lhs ()
 
@@ -70,6 +72,7 @@ data Rhs lhs rhs
     | GenericRhs Text
     | StringRhs Text
     | IntRhs Int
+    | FloatRhs Double
     | CompoundRhs [Statement lhs rhs]
     deriving (Eq, Ord, Show, Read)
 type GenericRhs = Rhs () ()
@@ -85,9 +88,21 @@ s_yes tok = Statement (GenericLhs tok) (GenericRhs "yes")
 -- Parser --
 ------------
 
+skipSpace :: Parser ()
+skipSpace = Ap.skipMany
+            (   (Ap.space >> return ())
+            <|> comment)
+
+comment :: Parser ()
+comment = Ap.char '#' >> restOfLine >> return ()
+
+restOfLine :: Parser Text
+restOfLine = (Ap.many1' Ap.endOfLine >> return T.empty)
+         <|> (T.cons <$> Ap.anyChar <*> restOfLine)
+
 ident :: Parser Text
-ident = (<>) <$> (T.singleton <$> (Ap.satisfy (\c -> c == '_' || isAlpha c)))
-             <*> Ap.takeWhile (\c -> c == '_' || isAlphaNum c)
+ident = (<>) <$> (T.singleton <$> (Ap.satisfy (\c -> c `elem` "_" || isAlpha c)))
+             <*> Ap.takeWhile (\c -> c `elem` "_." || isAlphaNum c)
     <?> "identifier"
 
 -- A string literal.
@@ -99,7 +114,11 @@ stringLit = "\""
 
 -- An integer literal.
 intLit :: Parser Int
-intLit = Ap.decimal
+intLit = Ap.signed Ap.decimal
+
+-- A floating-point literal.
+floatLit :: Parser Double
+floatLit = Ap.signed Ap.double
 
 -- A character within a string, possibly escaped.
 stringChar :: Parser Char
@@ -122,12 +141,12 @@ escapedChar = ("0" *> return '\0')
 statement :: Parser lhs -> Parser rhs -> Parser (Statement lhs rhs)
 statement customLhs customRhs
     = Statement <$> lhs customLhs
-                <*  (Ap.skipSpace >> Ap.char '=' >> Ap.skipSpace)
+                <*  (skipSpace >> Ap.char '=' >> skipSpace)
                 <*> rhs customLhs customRhs
     <?> "statement"
 
 script :: Parser lhs -> Parser rhs -> Parser (Script lhs rhs)
-script customLhs customRhs = Ap.sepBy (statement customLhs customRhs) Ap.skipSpace
+script customLhs customRhs = statement customLhs customRhs `Ap.sepBy` skipSpace
 
 -- | Statement with no custom elements.
 -- Use this as a starting point for scripts that use standard syntax.
@@ -142,6 +161,7 @@ genericScript = script parse_generic parse_generic
 lhs :: Parser lhs -> Parser (Lhs lhs)
 lhs custom = CustomLhs <$> custom
          <|> GenericLhs <$> ident
+         <|> IntLhs <$> Ap.decimal
     <?> "statement LHS"
 
 rhs :: Parser lhs -> Parser rhs -> Parser (Rhs lhs rhs)
@@ -149,9 +169,10 @@ rhs customLhs customRhs
           = CustomRhs   <$> customRhs
         <|> GenericRhs  <$> ident
         <|> StringRhs   <$> stringLit
+        <|> FloatRhs    <$> floatLit
         <|> IntRhs      <$> intLit
         <|> CompoundRhs <$> ("{"
-                         *> Ap.many1 (Ap.skipSpace *> statement customLhs customRhs) <* Ap.skipSpace
+                         *> Ap.many1 (skipSpace *> statement customLhs customRhs) <* skipSpace
                          <* "}")
     <?> "statement RHS"
 
@@ -161,13 +182,13 @@ rhs customLhs customRhs
 
 -- Pretty-printer for a script with no custom elements.
 genericScript2doc :: GenericScript -> Doc
-genericScript2doc = F.foldMap genericStatement2doc
+genericScript2doc = F.fold . intersperse line . map genericStatement2doc
 
 genericStatement2doc :: GenericStatement -> Doc
 genericStatement2doc = statement2doc (const "") (const "")
 
 script2doc :: (lhs -> Doc) -> (rhs -> Doc) -> [Statement lhs rhs] -> Doc
-script2doc customLhs customRhs = foldr (PP.<$>) PP.empty . map (statement2doc customLhs customRhs)
+script2doc customLhs customRhs = foldr (PP.<$>) PP.empty . intersperse line . map (statement2doc customLhs customRhs)
 
 statement2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Statement lhs rhs -> Doc
 statement2doc customLhs customRhs (StatementBare lhs)
@@ -178,11 +199,16 @@ statement2doc customLhs customRhs (Statement lhs rhs)
 lhs2doc :: (lhs -> Doc) -> Lhs lhs -> Doc
 lhs2doc customLhs (CustomLhs lhs) = customLhs lhs
 lhs2doc _         (GenericLhs lhs) = text (LT.fromStrict lhs)
+lhs2doc _         (IntLhs lhs) = text (LT.pack (show lhs))
 
 rhs2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Rhs lhs rhs -> Doc
 rhs2doc _ customRhs (CustomRhs rhs) = customRhs rhs
 rhs2doc _ _ (GenericRhs rhs) = text (LT.fromStrict rhs)
 rhs2doc _ _ (StringRhs rhs) = text (LT.pack (show rhs)) -- lazy rendering...
 rhs2doc _ _ (IntRhs rhs) = text (LT.pack (show rhs)) -- lazy rendering...
+rhs2doc _ _ (FloatRhs rhs) = text (LT.pack (show rhs)) -- lazy rendering...
 rhs2doc customLhs customRhs (CompoundRhs rhs)
     = text "{" PP.<$$> indent 4 (script2doc customLhs customRhs rhs) PP.<$$> text "}"
+
+displayGenericScript :: GenericScript -> Text
+displayGenericScript script = LT.toStrict . displayT . renderPretty 0.8 80 $ genericScript2doc script
