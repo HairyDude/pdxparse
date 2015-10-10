@@ -1,0 +1,24 @@
+settings:
+
+    # Windows: the drive where Steam keeps the game. If it's not C, uncomment this and change it
+    #steam_drive: "C"
+
+    # All platforms: the directory where Steam keeps the game. The default depends on your platform:
+    #   Linux: $HOME/.local/share
+    #   Mac OS: $HOME/Library/Application Support
+    #   Windows XP: C:\Program Files
+    #   Windows 7+: C:\Program Files (x86)
+    # For other platforms, or if it's non-standard, you'll need to specify it
+    # here. If you're on Windows, leave out the drive letter.
+    #steam_dir: "/home/pwb/.local/share" # absolute
+
+    # The subdirectory of steam_dir where Steam keeps its apps. You shouldn't need to change this.
+    # (For Windows, slashes are automatically changed to backslashes, so this default works.)
+    #steam_apps: "Steam/steamapps/common"
+
+    # Which game we're looking at. This is the name of the directory under
+    # steam_dir where the game is kept.
+    game: "Europa Universalis IV"
+
+    # Language to extract in.
+    language: "english"
