@@ -141,6 +141,7 @@ escapedChar = ("0" *> return '\0')
 statement :: Parser lhs -> Parser rhs -> Parser (Statement lhs rhs)
 statement customLhs customRhs
     = Statement <$> lhs customLhs
+                -- TODO: permit bare statements (no = and RHS)
                 <*  (skipSpace >> Ap.char '=' >> skipSpace)
                 <*> rhs customLhs customRhs
     <?> "statement"
@@ -172,7 +173,7 @@ rhs customLhs customRhs
         <|> FloatRhs    <$> floatLit
         <|> IntRhs      <$> intLit
         <|> CompoundRhs <$> ("{"
-                         *> Ap.many1 (skipSpace *> statement customLhs customRhs) <* skipSpace
+                         *> Ap.many' (skipSpace *> statement customLhs customRhs) <* skipSpace
                          <* "}")
     <?> "statement RHS"
 
