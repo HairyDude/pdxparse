@@ -20,7 +20,9 @@ import System.IO (hPutStrLn, stderr)
 
 import Settings
 
-readL10n :: Settings -> IO (HashMap Text Text)
+type L10n = HashMap Text Text
+
+readL10n :: Settings -> IO L10n
 readL10n settings = do
     let dir = steamDir settings
               </> steamApps settings

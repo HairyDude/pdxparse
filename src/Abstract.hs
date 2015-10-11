@@ -74,11 +74,15 @@ data Rhs lhs rhs
     | IntRhs Int
     | FloatRhs Double
     | CompoundRhs [Statement lhs rhs]
+    | DateRhs Date
     deriving (Eq, Ord, Show, Read)
 type GenericRhs = Rhs () ()
 
 type Script lhs rhs = [Statement lhs rhs]
 type GenericScript = [GenericStatement]
+
+data Date = Date { year :: Int, month :: Int, day :: Int }
+    deriving (Show, Eq, Ord, Read) -- Ord works with fields in this order only
 
 -- A very common type of statement
 s_yes :: Text -> Statement lhs rhs
@@ -120,6 +124,12 @@ intLit = Ap.signed Ap.decimal
 floatLit :: Parser Double
 floatLit = Ap.signed Ap.double
 
+-- A date literal.
+dateLit :: Parser Date
+dateLit = Date <$> Ap.decimal
+               <*> (Ap.char '.' *> Ap.decimal)
+               <*> (Ap.char '.' *> Ap.decimal)
+
 -- A character within a string, possibly escaped.
 stringChar :: Parser Char
 stringChar = ("\\" *> escapedChar)
@@ -148,6 +158,31 @@ statement customLhs customRhs
 
 script :: Parser lhs -> Parser rhs -> Parser (Script lhs rhs)
 script customLhs customRhs = statement customLhs customRhs `Ap.sepBy` skipSpace
+    <?> "script"
+
+lhs :: Parser lhs -> Parser (Lhs lhs)
+lhs custom = CustomLhs <$> custom
+         <|> GenericLhs <$> ident
+         <|> IntLhs <$> Ap.decimal
+    <?> "statement LHS"
+
+rhs :: Parser lhs -> Parser rhs -> Parser (Rhs lhs rhs)
+rhs customLhs customRhs
+          = (CustomRhs  <$> customRhs
+        <|> GenericRhs  <$> ident
+        <|> StringRhs   <$> stringLit
+        <|> DateRhs     <$> dateLit
+        <|> FloatRhs    <$> floatLit
+        <|> IntRhs      <$> intLit
+        <|> CompoundRhs <$> compoundRhs customLhs customRhs)
+    <?> "statement RHS"
+
+compoundRhs :: Parser lhs -> Parser rhs -> Parser (Script lhs rhs)
+compoundRhs customLhs customRhs
+    = ("{" >> skipSpace)
+      *> script customLhs customRhs
+      <* (skipSpace >> "}")
+    <?> "compound RHS"
 
 -- | Statement with no custom elements.
 -- Use this as a starting point for scripts that use standard syntax.
@@ -158,24 +193,6 @@ genericStatement = statement parse_generic parse_generic
 genericScript :: Parser GenericScript
 genericScript = script parse_generic parse_generic
     where parse_generic = fail "generic"
-
-lhs :: Parser lhs -> Parser (Lhs lhs)
-lhs custom = CustomLhs <$> custom
-         <|> GenericLhs <$> ident
-         <|> IntLhs <$> Ap.decimal
-    <?> "statement LHS"
-
-rhs :: Parser lhs -> Parser rhs -> Parser (Rhs lhs rhs)
-rhs customLhs customRhs
-          = CustomRhs   <$> customRhs
-        <|> GenericRhs  <$> ident
-        <|> StringRhs   <$> stringLit
-        <|> FloatRhs    <$> floatLit
-        <|> IntRhs      <$> intLit
-        <|> CompoundRhs <$> ("{"
-                         *> Ap.many' (skipSpace *> statement customLhs customRhs) <* skipSpace
-                         <* "}")
-    <?> "statement RHS"
 
 --------------------
 -- Pretty-printer --

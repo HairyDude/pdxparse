@@ -90,20 +90,27 @@ main = do
     createDirectoryIfMissing False "output"
 
     forM_ ["decisions","missions","events","policies"] $ \category -> do
-        let handler :: GenericStatement -> Either Text Text
+        scripts <- readScripts settings category -- :: [(FilePath, GenericScript)]
+
+        let handler :: FilePath -> L10n -> GenericStatement -> Either Text Text
             handler = case category of
                 "decisions" -> processDecisionGroup
                 "missions" -> processMission
                 "events" -> processEvent
                 "policies" -> processPolicy
 
-        scripts <- readScripts settings category -- :: [(FilePath, GenericScript)]
         let results :: [(FilePath, [Either Text Text])]
-            results = map (second (map handler)) scripts
+            results = map (\(file, script) -> (file, map (handler file l10n) script)) scripts
+
         forM_ results $ \(path, mesgs) -> do
             forM_ mesgs $ \mesg -> do
                 case mesg of
                     Left err -> do
                         putStrLn $ "Processing " ++ path ++ " failed: " ++ T.unpack err
                         return ()
-                    Right output -> TIO.writeFile ("output" </> path) output
+                    Right output -> do
+                        let destinationFile = "output" </> path
+                            destinationDir  = takeDirectory destinationFile
+                        createDirectoryIfMissing True destinationDir
+                        TIO.writeFile destinationFile output
+
