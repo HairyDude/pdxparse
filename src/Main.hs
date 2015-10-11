@@ -112,5 +112,7 @@ main = do
                         let destinationFile = "output" </> path
                             destinationDir  = takeDirectory destinationFile
                         createDirectoryIfMissing True destinationDir
-                        TIO.writeFile destinationFile output
+                        h <- openFile destinationFile AppendMode
+                        TIO.hPutStr h output
+                        hClose h
 
