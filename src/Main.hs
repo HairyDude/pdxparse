@@ -19,6 +19,9 @@ import qualified Data.Text.Encoding as TE
 import Data.Text.Encoding.Error (UnicodeException)
 import qualified Data.Text.IO as TIO
 
+import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>), (</>))
+import qualified Text.PrettyPrint.Leijen.Text as PP
+
 import System.Directory
 import System.FilePath
 import System.IO
@@ -92,14 +95,14 @@ main = do
     forM_ ["decisions","missions","events","policies"] $ \category -> do
         scripts <- readScripts settings category -- :: [(FilePath, GenericScript)]
 
-        let handler :: FilePath -> L10n -> GenericStatement -> Either Text Text
+        let handler :: FilePath -> L10n -> GenericStatement -> Either Text Doc
             handler = case category of
                 "decisions" -> processDecisionGroup
                 "missions" -> processMission
                 "events" -> processEvent
                 "policies" -> processPolicy
 
-        let results :: [(FilePath, [Either Text Text])]
+        let results :: [(FilePath, [Either Text Doc])]
             results = map (\(file, script) -> (file, map (handler file l10n) script)) scripts
 
         forM_ results $ \(path, mesgs) -> do
@@ -113,6 +116,6 @@ main = do
                             destinationDir  = takeDirectory destinationFile
                         createDirectoryIfMissing True destinationDir
                         h <- openFile destinationFile AppendMode
-                        TIO.hPutStr h output
+                        displayIO h (renderPretty 0.9 80 output)
                         hClose h
 

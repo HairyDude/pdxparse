@@ -12,7 +12,9 @@ import qualified Data.HashMap.Strict as HM
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
-import qualified Data.Text.Lazy.Builder as TB
+
+import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>))
+import qualified Text.PrettyPrint.Leijen.Text as PP
 
 import Abstract
 import Common
@@ -42,7 +44,7 @@ data Option = Option
 newEvent = Event Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 newOption = Option Nothing Nothing Nothing Nothing
 
-processEvent :: FilePath -> L10n -> GenericStatement -> Either Text Text
+processEvent :: FilePath -> L10n -> GenericStatement -> Either Text Doc
 processEvent _ l10n (StatementBare _) = Left "bare statement at top level"
 processEvent file l10n (Statement left right) = case right of
     CompoundRhs parts -> case left of
@@ -50,7 +52,7 @@ processEvent file l10n (Statement left right) = case right of
         IntLhs _ -> Left "int lhs at top level"
         GenericLhs _ -> pp_event l10n $ foldl' (eventAddSection file l10n) newEvent parts
 
-    _ -> Right T.empty -- assume this is one of the administrivia statements at the top
+    _ -> Right PP.empty -- assume this is one of the administrivia statements at the top
 
 eventAddSection :: FilePath -> L10n -> Event -> GenericStatement -> Event
 eventAddSection file l10n evt (Statement (GenericLhs label) rhs) = case label of
@@ -124,7 +126,7 @@ optionAddEffect l10n Nothing stmt = optionAddEffect l10n (Just []) stmt
 optionAddEffect l10n (Just effs) stmt = Just (effs ++ [stmt])
 
 -- Pretty-print an event, or fail.
-pp_event :: L10n -> Event -> Either Text Text
+pp_event :: L10n -> Event -> Either Text Doc
 pp_event l10n evt =
     if isJust (evt_title_loc evt) && isJust (evt_options evt)
         && (isJust (evt_is_triggered_only evt) ||
@@ -132,38 +134,48 @@ pp_event l10n evt =
     then -- Valid event, carry on
         case pp_options l10n (fromJust (evt_options evt)) of
             Left err -> Left $ "failed to pprint event options: " <> err
-            Right options_pp'd ->
-                Right . TL.toStrict . TB.toLazyText $ mconcat
-                    ["{{Event\n"
-                    ,"| event_name = ", TB.fromText (fromJust (evt_title_loc evt)), "\n"
-                    ,maybe "" (\desc -> "| event_text = " <> TB.fromText desc <> "\n") (evt_desc_loc evt)
-                    ,maybe "" (\i_t_o -> "| triggered_only = "
-                                            <> if not i_t_o then "No" else "Triggered only (please describe trigger here)"
-                                            <> "\n") (evt_is_triggered_only evt)
-                    ,maybe "" (\mtth -> "| mtth = " <> TB.fromText (pp_script l10n mtth) <> "\n") (evt_mean_time_to_happen evt)
-                    ,maybe "" (\immediate -> "| immediate = " <> TB.fromText (pp_script l10n immediate) <> "\n") (evt_immediate evt)
-                    -- option_conditions = no (not implemented yet)
-                    ,"| options = ", options_pp'd, "\n"
-                    -- collapse = no
-                    ,"}}"
-                    ]
+            Right options_pp'd -> Right . mconcat $
+                ["{{Event", line
+                ,"| event_name = ", text (TL.fromStrict . fromJust $ evt_title_loc evt), line
+                ,maybe "" (\desc -> "| event_text = "
+                                        <> text (TL.fromStrict desc) <> line)
+                          (evt_desc_loc evt)
+                ,maybe "" (\i_t_o -> "| triggered_only = "
+                                        <> if i_t_o then "Triggered only (please describe trigger here)"
+                                           else "No"
+                                        <> line)
+                          (evt_is_triggered_only evt)
+                ,maybe "" (\mtth -> "| mtth = "
+                                        <> pp_mtth l10n mtth
+                                        <> line)
+                          (evt_mean_time_to_happen evt)
+                ,maybe "" (\immediate -> "| immediate = "
+                                        <> line
+                                        <> pp_script 1 l10n immediate
+                                        <> line)
+                          (evt_immediate evt)
+                -- option_conditions = no (not implemented yet)
+                ,"| options = ", options_pp'd, line
+                -- collapse = no
+                ,"}}"
+                ]
 
     else Left "some required event sections missing"
 
-pp_options :: L10n -> [Option] -> Either Text TB.Builder
+pp_options :: L10n -> [Option] -> Either Text Doc
 pp_options l10n opts = case partitionEithers $ map (pp_option l10n) opts of
-    ([], opts_pp'd) -> Right . mconcat . ("\n":) . intersperse "\n" $ opts_pp'd
+    ([], opts_pp'd) -> Right . mconcat . (line:) . intersperse line $ opts_pp'd
     (err:_, _) -> Left err
 
-pp_option :: L10n -> Option -> Either Text TB.Builder
+pp_option :: L10n -> Option -> Either Text Doc
 pp_option l10n opt =
     if isJust (opt_name_loc opt)
         -- NB: some options have no effect, e.g. start of Peasants' War.
     then -- Valid option, carry on
         Right $ mconcat
             ["{{Option\n"
-            ,"| option_text = ", TB.fromText (fromJust (opt_name_loc opt)), "\n"
-            ,"| effect = ", TB.fromText (pp_script l10n (maybe [] id (opt_effects opt))), "\n"
+            ,"| option_text = ", text (TL.fromStrict . fromJust $ opt_name_loc opt), line
+            ,"| effect =", line, pp_script 1 l10n (maybe [] id (opt_effects opt)), line
             -- trigger not implemented yet
             -- 1 = no
             ,"}}"

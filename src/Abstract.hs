@@ -227,6 +227,8 @@ rhs2doc _ _ (IntRhs rhs) = text (LT.pack (show rhs)) -- lazy rendering...
 rhs2doc _ _ (FloatRhs rhs) = text (LT.pack (show rhs)) -- lazy rendering...
 rhs2doc customLhs customRhs (CompoundRhs rhs)
     = text "{" PP.<$$> indent 4 (script2doc customLhs customRhs rhs) PP.<$$> text "}"
+rhs2doc _ _ (DateRhs (Date year month day)) =
+    mconcat . map (text . LT.pack) $ [show year, ".", show month, ".", show day]
 
 displayGenericScript :: GenericScript -> Text
 displayGenericScript script = LT.toStrict . displayT . renderPretty 0.8 80 $ genericScript2doc script
