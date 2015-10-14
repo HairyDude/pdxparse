@@ -27,7 +27,7 @@ module Abstract where
         PREVPREV = PREV of the next scope up, etc.
 -}
 
-import Control.Applicative
+import Control.Applicative hiding ((<$$>))
 import qualified Data.Foldable as F
 import Data.Monoid
 
@@ -219,14 +219,20 @@ lhs2doc customLhs (CustomLhs lhs) = customLhs lhs
 lhs2doc _         (GenericLhs lhs) = text (LT.fromStrict lhs)
 lhs2doc _         (IntLhs lhs) = text (LT.pack (show lhs))
 
+-- Display a Double as integer if possible.
+showFloat :: (Show a, RealFrac a) => a -> String
+showFloat x =
+    let floorx = floor x
+    in if fromIntegral (floor x) == x then show floorx else show x
+
 rhs2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Rhs lhs rhs -> Doc
 rhs2doc _ customRhs (CustomRhs rhs) = customRhs rhs
 rhs2doc _ _ (GenericRhs rhs) = text (LT.fromStrict rhs)
-rhs2doc _ _ (StringRhs rhs) = text (LT.pack (show rhs)) -- lazy rendering...
-rhs2doc _ _ (IntRhs rhs) = text (LT.pack (show rhs)) -- lazy rendering...
-rhs2doc _ _ (FloatRhs rhs) = text (LT.pack (show rhs)) -- lazy rendering...
+rhs2doc _ _ (StringRhs rhs) = text (LT.pack (show rhs))
+rhs2doc _ _ (IntRhs rhs) = text (LT.pack (show rhs))
+rhs2doc _ _ (FloatRhs rhs) = text (LT.pack (showFloat rhs))
 rhs2doc customLhs customRhs (CompoundRhs rhs)
-    = text "{" PP.<$$> indent 4 (script2doc customLhs customRhs rhs) PP.<$$> text "}"
+    = text "{" <$$> indent 4 (script2doc customLhs customRhs rhs) <$$> text "}"
 rhs2doc _ _ (DateRhs (Date year month day)) =
     mconcat . map (text . LT.pack) $ [show year, ".", show month, ".", show day]
 

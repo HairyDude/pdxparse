@@ -103,7 +103,10 @@ main = do
                 "policies" -> processPolicy
 
         let results :: [(FilePath, [Either Text Doc])]
-            results = map (\(file, script) -> (file, map (handler file l10n) script)) scripts
+            results = map (\(file, script) -> (file, map (handler file l10n) script))
+                -- for testing -- DELETE ME for release
+                . filter (\(file, _) -> file == "events/AoWEvents.txt")
+                $ scripts
 
         forM_ results $ \(path, mesgs) -> do
             forM_ mesgs $ \mesg -> do
