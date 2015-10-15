@@ -121,11 +121,11 @@ template :: Text -> Doc -> Doc
 template name content = hcat ["{{", strictText name, "|", content, "}}"]
 
 -- Emit flag template if the argument is a tag.
-flag :: Text -> Doc
-flag name = let name' = strictText name
-    in if isTag name
-        then template "flag" name'
-        else name'
+flag :: L10n -> Text -> Doc
+flag l10n name =
+    if isTag name
+        then template "flag" (strictText $ HM.lookupDefault name name l10n)
+        else strictText name
 
 -- Emit icon template.
 icon :: Text -> Doc
@@ -215,7 +215,9 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
                 -- what it means.
                 compound "FROM" stmt
             "if" -> compound "If" stmt
-            -- Simple generic statements
+            -- Random
+            "random" -> random indent l10n stmt
+            -- Simple generic statements (RHS is a localizable atom)
             "continent"         -> simple_generic l10n "Continent is" stmt mempty
             "culture"           -> simple_generic l10n "Culture is" stmt mempty
             "government"        -> simple_generic l10n "Government is" stmt mempty
@@ -224,6 +226,8 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "kill_advisor"      -> simple_generic l10n mempty stmt "dies"
             "remove_advisor"    -> simple_generic l10n mempty stmt "leaves the country's court"
             "infantry"          -> simple_generic l10n "An infantry regiment spawns in" stmt mempty
+            -- RHS is a province ID
+            "province_id"       -> simple_province l10n "Province is" stmt mempty
             -- Simple generic statements (typewriter face)
             "set_country_flag"  -> simple_generic_tt "Set country flag" stmt
             "set_province_flag" -> simple_generic_tt "Set province flag" stmt
@@ -233,15 +237,20 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             -- Simple generic statements with icon
             "trade_goods"       -> generic_icon l10n "Produces" stmt
             "advisor"           -> generic_icon l10n "Has" stmt
+            "create_advisor"    -> generic_icon l10n "Gain" stmt
+            "has_idea_group"    -> generic_icon l10n "Has activated" stmt
+            "change_trade_goods" -> generic_icon l10n "Change trade goods produced to" stmt
             -- Simple generic statements with flag
-            "has_discovered"    -> generic_tag l10n "Has discovered" stmt
-            "is_core"           -> generic_tag l10n "Is core of" stmt
-            "owned_by"          -> generic_tag l10n "Is owned by" stmt
-            "controlled_by"     -> generic_tag l10n "Is controlled by" stmt
-            "sieged_by"         -> generic_tag l10n "Is under siege by" stmt
-            "war_with"          -> generic_tag l10n "Is at war with" stmt
-            "defensive_war_with" -> generic_tag l10n "Is in a defensive war against" stmt
-            "offensive_war_with" -> generic_tag l10n "Is in an offensive war against" stmt
+            "has_discovered"    -> generic_tag l10n (Just "Has discovered") stmt Nothing
+            "is_core"           -> generic_tag l10n (Just "Is core of") stmt Nothing
+            "owned_by"          -> generic_tag l10n (Just "Is owned by") stmt Nothing
+            "controlled_by"     -> generic_tag l10n (Just "Is controlled by") stmt Nothing
+            "sieged_by"         -> generic_tag l10n (Just "Is under siege by") stmt Nothing
+            "war_with"          -> generic_tag l10n (Just "Is at war with") stmt Nothing
+            "defensive_war_with" -> generic_tag l10n (Just "Is in a defensive war against") stmt Nothing
+            "offensive_war_with" -> generic_tag l10n (Just "Is in an offensive war against") stmt Nothing
+            "tag"               -> generic_tag l10n (Just "Is") stmt Nothing
+            "exists"            -> generic_tag l10n Nothing stmt (Just "exists")
             -- Statements that may be an icon, a flag, or a pronoun (such as ROOT)
             "religion"          -> generic_icon_or_country l10n "Religion is" stmt
             "religion_group"    -> generic_icon_or_country l10n "Religion group is" stmt
@@ -256,12 +265,21 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "is_lesser_in_union"    -> is Nothing "the junior partner in a personal union" stmt
             "is_monarch_leader"     -> is (Just "Monarch") "a military leader" stmt
             "has_siege"             -> is Nothing "under siege" stmt
+            "papacy_active"         -> is (Just "Papal interaction") "active" stmt
+            "has_cardinal"          -> has "a cardinal" stmt
+            "add_cardinal"          -> {- assume yes -} "Gain a cardinal"
+            "remove_cardinal"       -> {- assume yes -} "Lose a cardinal"
+            "is_city"               -> is (Just "Province") "a city" stmt
             -- Numeric statements
             "base_tax" -> simple_numeric "Base tax is at least" stmt mempty
             "num_of_mercenaries" -> simple_numeric "Has at least" stmt "mercenary regiment(s)"
             "manpower_percentage" -> manpower_percentage stmt
             "had_recent_war" -> simple_numeric "Was at war within the last" stmt "months(?)"
             "heir_age" -> simple_numeric "Heir is at least" stmt "years old"
+            "num_of_cardinals" -> simple_numeric "Controls at least" stmt "cardinals"
+            "development" -> simple_numeric "Has at least" stmt "development"
+            "total_number_of_cardinals" -> simple_numeric "There are at least" stmt "cardinals"
+            "colonysize" -> simple_numeric "Colony has at least" stmt "settlers"
             -- Signed numeric statements
             "stability" -> simple_numeric_signed "Stability is at least" stmt mempty
             "war_score" -> simple_numeric_signed "Warscore is at least" stmt mempty
@@ -286,7 +304,9 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             -- Rebels
             "create_revolt" -> spawn_rebels l10n Nothing stmt
             "spawn_rebels" -> spawn_rebels l10n Nothing stmt
-            "nationalist_rebels" -> spawn_rebels l10n (Just "Nationalist") stmt
+            "nationalist_rebels" -> spawn_rebels l10n (Just "Nationalist rebels") stmt
+            "has_spawned_rebels" -> has_spawned_rebels stmt
+            "likely_rebels" -> can_spawn_rebels l10n stmt
             -- Special
             "add_core"          -> add_core l10n stmt
             -- Ignored
@@ -296,7 +316,7 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             _ -> if isTag label
                  then case rhs of
                     CompoundRhs scr ->
-                        flag (HM.lookupDefault label label l10n)
+                        flag l10n (HM.lookupDefault label label l10n)
                         <> ":"
                         <> line <> pp_script (succ indent) l10n scr
                     _ -> defaultdoc
@@ -374,14 +394,18 @@ pp_mtth l10n scr
 -- General statement handlers --
 --------------------------------
 
-generic_compound :: Doc -> Int -> L10n -> Text -> GenericStatement -> Doc
-generic_compound _ indent l10n header (Statement _ (CompoundRhs scr))
+generic_compound_doc :: Doc -> Int -> L10n -> Doc -> GenericStatement -> Doc
+generic_compound_doc _ indent l10n header (Statement _ (CompoundRhs scr))
         = hcat
-            [strictText header, ":"
+            [header, ":"
             ,line
             ,pp_script (succ indent) l10n scr
             ]
-generic_compound defaultdoc _ _ _ _ = defaultdoc
+generic_compound_doc defaultdoc _ _ _ _ = defaultdoc
+
+generic_compound :: Doc -> Int -> L10n -> Text -> GenericStatement -> Doc
+generic_compound defaultdoc indent l10n header stmt
+        = generic_compound_doc defaultdoc indent l10n (strictText header) stmt
 
 -- Statement with generic on both sides translating to the form
 --  <string> <l10n value>
@@ -393,6 +417,15 @@ simple_generic l10n premsg (Statement _ (GenericRhs name)) postmsg
         ,strictText postmsg
         ]
 simple_generic _ _ stmt _ = pre_statement stmt
+
+simple_province :: L10n -> Text -> GenericStatement -> Text -> Doc
+simple_province l10n premsg (Statement lhs rhs) postmsg
+    = let loc_key = "PROV" <> case rhs of
+            IntRhs id -> show id
+            -- Province IDs shouldn't parse as float, but unfortunately they
+            -- do. Just ignore the fractional part.
+            FloatRhs id -> show (round id)
+      in simple_generic l10n premsg (Statement lhs (GenericRhs (T.pack loc_key))) postmsg
 
 -- As simple_generic but definitely no l10n. Set the RHS in typewriter face
 simple_generic_tt :: Text -> GenericStatement -> Doc
@@ -413,6 +446,8 @@ scriptIconTable = HM.fromList
     ,("grand_captain", "grand captain")
     ,("master_recruiter", "master recruiter")
     ,("military_engineer", "military engineer")
+    ,("spy_ideas", "espionage")
+    ,("tropical_wood", "tropical wood")
     ]
 
 -- As simple_generic but also add an appropriate icon before the value.
@@ -430,7 +465,7 @@ generic_icon_or_country :: L10n -> Text -> GenericStatement -> Doc
 generic_icon_or_country l10n premsg (Statement (GenericLhs category) (GenericRhs name))
     = hsep $ strictText premsg :
           if isTag name || isPronoun name
-            then ["same", "as", flag name]
+            then ["same", "as", flag l10n name]
             else [icon (HM.lookupDefault name name scriptIconTable)
                  ,strictText $ HM.lookupDefault name name l10n]
 generic_icon_or_country _ _ stmt = pre_statement stmt
@@ -482,13 +517,13 @@ is who what (Statement _ (GenericRhs yn)) | yn `elem` ["yes","no"]
 is _ _ stmt = pre_statement stmt
 
 -- Generic statement referring to a country. Use a flag.
-generic_tag :: L10n -> Text -> GenericStatement -> Doc
-generic_tag l10n prefix (Statement _ (GenericRhs who))
-    = hsep
-        [strictText prefix
-        ,flag $ HM.lookupDefault who who l10n
-        ]
-generic_tag _ _ stmt = pre_statement stmt
+generic_tag :: L10n -> Maybe Text -> GenericStatement -> Maybe Text -> Doc
+generic_tag l10n prefix (Statement _ (GenericRhs who)) suffix
+    = hsep $
+        (maybe [] ((:[]) . strictText) prefix) ++
+        [flag l10n who] ++
+        (maybe [] ((:[]) . strictText) suffix)
+generic_tag _ _ stmt _ = pre_statement stmt
 
 numeric_icon :: Text -> Maybe Text -> Text -> GenericStatement -> Doc
 numeric_icon premsg micon what (Statement _ rhs)
@@ -638,14 +673,14 @@ remove_modifier _ _ stmt = pre_statement stmt
 -- "add_core = <tag>" in province scope means "<localize tag> gains core"
 add_core :: L10n -> GenericStatement -> Doc
 add_core l10n (Statement _ (GenericRhs tag)) -- tag
-    = hsep [flag $ HM.lookupDefault tag tag l10n, "gains", "core"]
+    = hsep [flag l10n $ HM.lookupDefault tag tag l10n, "gains", "core"]
 add_core l10n (Statement _ (IntRhs num)) -- province
     = hsep ["Gain", "core", "on", "province", strictText $ HM.lookupDefault provKey provKey l10n]
     where provKey = "PROV" <> T.pack (show num)
 add_core l10n (Statement _ (FloatRhs num)) -- province
     = hsep ["Gain", "core", "on", "province", strictText $ HM.lookupDefault provKey provKey l10n]
     where provKey = "PROV" <> T.pack (showFloat num)
-add_core _ stmt = trace ("province: fallback: " ++ show stmt) $ pre_statement stmt
+add_core _ stmt = pre_statement stmt
 
 -- Add an opinion modifier towards someone (for a number of years).
 data AddOpinion = AddOpinion {
@@ -678,7 +713,7 @@ opinion l10n verb stmt@(Statement _ (CompoundRhs scr))
                     ,"opinion modifier"
                     ,dquotes $ strictText (HM.lookupDefault mod mod l10n)
                     ,"towards"
-                    ,flag $ HM.lookupDefault whom whom l10n
+                    ,flag l10n $ HM.lookupDefault whom whom l10n
                     ]
                     ++ if isNothing (op_years op) then [] else
                     ["for"
@@ -687,6 +722,52 @@ opinion l10n verb stmt@(Statement _ (CompoundRhs scr))
                     ]
               else pre_statement stmt
 add_opinion _ stmt = pre_statement stmt
+
+-- Render a rebel type atom (e.g. anti_tax_rebels) as their name and icon key.
+-- This is needed because all religious rebels localize as simply "Religious" -
+-- we want to be more specific.
+rebel_loc :: Text -> (Text,Text)
+rebel_loc "polish_noble_rebels" = ("Magnates", "magnates")
+rebel_loc "lollard_rebels"      = ("Lollard zealots", "lollards")
+rebel_loc "catholic_rebels"     = ("Catholic zealots", "catholic zealots")
+rebel_loc "protestant_rebels"   = ("Protestant zealots", "protestant zealots")
+rebel_loc "reformed_rebels"     = ("Reformed zealots", "reformed zealots")
+rebel_loc "orthodox_rebels"     = ("Orthodox zealots", "orthodox zealots")
+rebel_loc "sunni_rebels"        = ("Sunni zealots", "sunni zealots")
+rebel_loc "shiite_rebels"       = ("Shiite zealots", "shiite zealots")
+rebel_loc "buddhism_rebels"     = ("Buddhist zealots", "buddhist zealots")
+rebel_loc "mahayana_rebels"     = ("Mahayana zealots", "mahayana zealots")
+rebel_loc "vajrayana_rebels"    = ("Vajrayana zealots", "vajrayana zealots")
+rebel_loc "hinduism_rebels"     = ("Hindu zealots", "hindu zealots")
+rebel_loc "confucianism_rebels" = ("Confucian zealots", "confucian zealots")
+rebel_loc "shinto_rebels"       = ("Shinto zealots", "shinto zealots")
+rebel_loc "animism_rebels"      = ("Animist zealots", "animist zealots")
+rebel_loc "shamanism_rebels"    = ("Shamanist zealots", "shamanist zealots")
+rebel_loc "totemism_rebels"     = ("Totemist zealots", "totemist zealots")
+rebel_loc "coptic_rebels"       = ("Coptic zealots", "coptic zealots")
+rebel_loc "ibadi_rebels"        = ("Ibadi zealots", "ibadi zealots")
+rebel_loc "sikhism_rebels"      = ("Sikh zealots", "sikh zealots")
+rebel_loc "jewish_rebels"       = ("Jewish zealots", "jewish zealots")
+rebel_loc "norse_pagan_reformed_rebels" = ("Norse zealots", "norse zealots")
+rebel_loc "inti_rebels"         = ("Inti zealots", "inti zealots")
+rebel_loc "maya_rebels"         = ("Maya zealots", "maya zealots")
+rebel_loc "nahuatl_rebels"      = ("Nahuatl zealots", "nahuatl zealots")
+rebel_loc "tengri_pagan_reformed_rebels" = ("Tengri zealots", "tengri zealots")
+rebel_loc "zoroastrian_rebels"  = ("Zoroastrian zealots", "zoroastrian zealots")
+rebel_loc "ikko_ikki_rebels"    = ("Ikko-Ikkis", "ikko-ikkis")
+rebel_loc "ronin_rebels"        = ("Ronin", "ronin")
+rebel_loc "reactionary_rebels"  = ("Reactionaries", "reactionaries")
+rebel_loc "anti_tax_rebels"     = ("Peasant rabble", "peasants")
+rebel_loc "revolutionary_rebels" = ("Revolutionaries", "revolutionaries")
+rebel_loc "heretic_rebels"      = ("Heretics", "heretics")
+rebel_loc "religious_rebels"    = ("Religious zealots", "religious zealots")
+rebel_loc "nationalist_rebels"  = ("Separatists", "separatists")
+rebel_loc "noble_rebels"        = ("Noble rebels", "noble rebels")
+rebel_loc "colonial_rebels"     = ("Colonial rebels", "colonial rebels") -- ??
+rebel_loc "patriot_rebels"      = ("Patriot", "patriot")
+rebel_loc "pretender_rebels"    = ("Pretender", "pretender")
+rebel_loc "colonial_patriot_rebels" = ("Colonial Patriot", "colonial patriot") -- ??
+rebel_loc "particularist_rebels" = ("Particularist", "particularist")
 
 -- Spawn a rebel stack.
 data SpawnRebels = SpawnRebels {
@@ -722,15 +803,16 @@ spawn_rebels l10n mtype stmt = spawn_rebels' mtype stmt where
 
     pp_spawn_rebels :: SpawnRebels -> Doc
     pp_spawn_rebels reb
-        = if isJust (rebelType reb) && isJust (rebelSize reb) then
+        = if isJust (rebelSize reb) then
             let hasType = isJust (rebelType reb)
                 rtype = fromJust (rebelType reb)
                 rsize = fromJust (rebelSize reb)
                 friendlyTo = fromJust (friend reb) -- not evaluated if Nothing
                 reb_unrest = fromJust (unrest reb)
+                (rtype_loc, rtype_icon) = rebel_loc rtype
             in (hsep $
                    (if hasType
-                        then [strictText (HM.lookupDefault rtype (rtype <> "_title") l10n), "rebels"]
+                        then [icon rtype_icon, strictText rtype_loc]
                         else ["Rebels"])
                    ++
                    [PP.parens $ hsep ["size", pp_float (fromJust (rebelSize reb))]]
@@ -752,6 +834,24 @@ spawn_rebels l10n mtype stmt = spawn_rebels' mtype stmt where
                    ]
                 else mempty
         else pre_statement stmt
+
+has_spawned_rebels :: GenericStatement -> Doc
+has_spawned_rebels (Statement _ (GenericRhs rtype))
+    = let (rtype_loc, rtype_iconkey) = rebel_loc rtype
+      in hsep
+            [icon rtype_iconkey
+            ,strictText rtype_loc
+            ,"have risen in revolt"
+            ]
+
+can_spawn_rebels :: L10n -> GenericStatement -> Doc
+can_spawn_rebels l10n (Statement _ (GenericRhs rtype))
+    = let (rtype_loc, rtype_iconkey) = rebel_loc rtype
+      in hsep
+            ["Province has"
+            ,icon rtype_iconkey
+            ,strictText rtype_loc
+            ]
 
 manpower_percentage :: GenericStatement -> Doc
 manpower_percentage (Statement _ rhs)
@@ -868,3 +968,23 @@ add_casus_belli l10n direct stmt@(Statement _ (CompoundRhs scr))
                             ]
                         else []
                  else pre_statement stmt
+
+random :: Int -> L10n -> GenericStatement -> Doc
+random indent l10n stmt@(Statement _ (CompoundRhs scr))
+    | (front, back) <- break
+                        (\stmt -> case stmt of 
+                            Statement (GenericLhs "chance") _ -> True
+                            _ -> False)
+                        scr
+      , not (null back) =
+        let chance = case head back of
+                Statement _ (IntRhs n) -> fromIntegral n
+                Statement _ (FloatRhs n) -> n
+            defaultdoc = pre_statement stmt
+            compound = generic_compound defaultdoc indent l10n
+        in generic_compound_doc
+                (pre_statement stmt)
+                indent l10n
+                (hsep [pp_float chance <> "%","chance of"])
+                (Statement undefined (CompoundRhs (front ++ tail back)))
+random _ _ stmt = pre_statement stmt
