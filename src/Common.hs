@@ -7,6 +7,7 @@ import Data.Char
 import Data.List
 import Data.Maybe
 import Data.Monoid
+import Control.Applicative
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -103,8 +104,7 @@ instance PPSep Int where
     pp_num_sep = pp_num_sep . toInteger
 
 instance PPSep Double where
-    pp_num_sep n = (if n < 0 then "-" else "")
-                    <> int_pp'd <> decimal <> frac_pp'd
+    pp_num_sep n = int_pp'd <> decimal <> frac_pp'd
         where (intPart, fracPart) = properFraction n
               int_pp'd = pp_num_sep (intPart::Integer)
               frac_raw = drop 2 . show . abs $ fracPart -- drop "0."
@@ -162,76 +162,104 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
         -- not computed if not needed, thanks to laziness
     in case lhs of
         GenericLhs label -> case label of
+            -- Statements where RHS is irrelevant (usually "yes")
+            "add_cardinal"          -> "Gain a cardinal"
+            "kill_heir"             -> "Heir dies"
+            "kill_ruler"            -> "Ruler dies"
+            "remove_cardinal"       -> "Lose a cardinal"
             -- Gain/lose
             "add_adm_power" -> gain Nothing True (Just "adm") "administrative power" stmt
-            "add_dip_power" -> gain Nothing True (Just "dip") "diplomatic power" stmt
-            "add_mil_power" -> gain Nothing True (Just "mil") "military power" stmt
             "add_army_tradition" -> gain Nothing True (Just "army tradition") "army tradition" stmt
-            "add_prestige" -> gain Nothing True (Just "prestige") "prestige" stmt
-            "add_stability" -> gain Nothing True (Just "stability") "stability" stmt
-            "add_inflation" -> gain Nothing False (Just "inflation") "inflation" stmt
             "add_base_tax" -> gain Nothing False (Just "base tax") "base tax" stmt
+            "add_dip_power" -> gain Nothing True (Just "dip") "diplomatic power" stmt
             "add_heir_claim" -> gain (Just "Heir") True Nothing "claim strength" stmt
+            "add_imperial_influence" -> gain Nothing False (Just "imperial authority") "imperial authority" stmt
+            "add_inflation" -> gain Nothing False (Just "inflation") "inflation" stmt
             "add_legitimacy" -> gain Nothing False (Just "legitimacy") "legitimacy" stmt
             "add_local_autonomy" -> gain Nothing False (Just "local autonomy") "local autonomy" stmt
+            "add_manpower" -> gain_manpower stmt
+            "add_mil_power" -> gain Nothing True (Just "mil") "military power" stmt
+            "add_prestige" -> gain Nothing True (Just "prestige") "prestige" stmt
+            "add_stability" -> gain Nothing True (Just "stability") "stability" stmt
             "add_war_exhaustion" -> gain Nothing False (Just "war exhaustion") "war exhaustion" stmt
             "change_adm" -> gain (Just "Ruler") True (Just "adm") "administrative skill" stmt
             "change_dip" -> gain (Just "Ruler") True (Just "dip") "diplomatic skill" stmt
             "change_mil" -> gain (Just "Ruler") True (Just "mil") "military skill" stmt
             "change_siege" -> gain Nothing True Nothing "siege progress" stmt
-            "add_manpower" -> gain_manpower stmt
             -- Modifiers
-            "add_province_modifier" -> add_modifier "province" l10n stmt
-            "add_permanent_province_modifier" -> add_modifier "permanent province" l10n stmt
             "add_country_modifier" -> add_modifier "country" l10n stmt
-            "has_province_modifier" -> has_modifier "province" l10n stmt
+            "add_permanent_province_modifier" -> add_modifier "permanent province" l10n stmt
+            "add_province_modifier" -> add_modifier "province" l10n stmt
+            "add_ruler_modifier" -> add_modifier "ruler" l10n stmt
             "has_country_modifier" -> has_modifier "country" l10n stmt
-            "remove_province_modifier" -> remove_modifier "province" l10n stmt
+            "has_province_modifier" -> has_modifier "province" l10n stmt
             "remove_country_modifier" -> remove_modifier "country" l10n stmt
+            "remove_province_modifier" -> remove_modifier "province" l10n stmt
             -- Simple compound statements
             -- Note that "any" can mean "all" or "one or more" depending on context.
-            "every_province" -> compound "Every province in the world" stmt
-            "random_province" -> compound "One random province" stmt
-            "any_owned_province" -> compound "Owned province(s)" stmt
-            "every_owned_province" -> compound "Every owned province" stmt
-            "random_owned_province" -> compound "One random owned province" stmt
-            "any_known_country" -> compound "Known country/countries" stmt
-            "every_known_country" -> compound "Every known country" stmt
-            "any_neighbor_province" -> compound "Neighboring province(s)" stmt
-            "any_neighbor_country" -> compound "Neighboring country/countries" stmt
-            "any_rival_country" -> compound "Rival(s)" stmt
-            "random_neighbor_province" -> compound "One random neighboring province" stmt
-            "random_neighbor_country" -> compound "One random neighboring country" stmt
-            "random_list" -> compound "One of the following at random" stmt
-            "owner" -> compound "Province owner" stmt
-            "controller" -> compound "Province controller" stmt
-            "limit" -> compound "Limited to" stmt
-            "hidden_effect" -> compound "Hidden effect" stmt
-            "NOT" -> compound "None of" stmt
             "AND" -> compound "All of" stmt
-            "OR" -> compound "At least one of" stmt
-            "FROM" ->
-                -- This is ugly, but without further analysis we can't know
-                -- what it means.
-                compound "FROM" stmt
-            "if" -> compound "If" stmt
+            -- These two are ugly, but without further analysis we can't know
+            -- what it means.
+            "FROM"                      -> compound "FROM" stmt
+            "PREV"                      -> compound "PREV" stmt
+            "NOT"                       -> compound "None of" stmt
+            "OR"                        -> compound "At least one of" stmt
+            -- There is a semantic distinction between "all" and "every",
+            -- namely that the former means "this is true for all <type>" while
+            -- the latter means "do this for every <type>." But their contexts
+            -- are disjoint, so they can be presented the same way.
+            "all_owned_province"        -> compound "Every owned province" stmt
+            "any_core_country"          -> compound "Any country with a core" stmt
+            "any_country"               -> compound "Any country" stmt
+            "any_known_country"         -> compound "Any known country" stmt
+            "any_neighbor_country"      -> compound "Any neighboring country" stmt
+            "any_neighbor_province"     -> compound "Any neighboring province" stmt
+            "any_owned_province"        -> compound "Any owned province" stmt
+            "any_rival_country"         -> compound "Any rival" stmt
+            "capital_scope"             -> compound "Capital" stmt
+            "controller"                -> compound "Province controller" stmt
+            "emperor"                   -> compound "The Holy Roman Emperor" stmt
+            "every_country"             -> compound "Every country in the world" stmt
+            "every_enemy_country"       -> compound "Every enemy country" stmt
+            "every_known_country"       -> compound "Every known country" stmt
+            "every_neighbor_country"    -> compound "Every neighboring country" stmt
+            "every_owned_province"      -> compound "Every owned province" stmt
+            "every_province"            -> compound "Every province in the world" stmt
+            "every_subject_country"     -> compound "Every subject country" stmt
+            "hidden_effect"             -> compound "Hidden effect" stmt
+            "if"                        -> compound "If" stmt
+            "limit"                     -> compound "Limited to" stmt
+            "owner"                     -> compound "Province owner" stmt
+            "random_core_country"       -> compound "One random country with a core" stmt
+            "random_country"            -> compound "One random country" stmt
+            "random_list"               -> compound "One of the following at random" stmt
+            "random_neighbor_country"   -> compound "One random neighboring country" stmt
+            "random_neighbor_province"  -> compound "One random neighboring province" stmt
+            "random_owned_province"     -> compound "One random owned province" stmt
+            "random_province"           -> compound "One random province" stmt
             -- Random
             "random" -> random indent l10n stmt
             -- Simple generic statements (RHS is a localizable atom)
             "continent"         -> simple_generic l10n "Continent is" stmt mempty
             "culture"           -> simple_generic l10n "Culture is" stmt mempty
+            "culture_group"     -> simple_generic l10n "Culture is in" stmt "culture group"
             "government"        -> simple_generic l10n "Government is" stmt mempty
             "change_government" -> simple_generic l10n "Change government to" stmt mempty
+            "primary_culture"   -> simple_generic l10n "Primary culture is" stmt mempty
             "region"            -> simple_generic l10n "Is in region" stmt mempty
             "kill_advisor"      -> simple_generic l10n mempty stmt "dies"
             "remove_advisor"    -> simple_generic l10n mempty stmt "leaves the country's court"
             "infantry"          -> simple_generic l10n "An infantry regiment spawns in" stmt mempty
             -- RHS is a province ID
-            "province_id"       -> simple_province l10n "Province is" stmt mempty
+            "province_id"   -> simple_province l10n "Province is" stmt mempty
+            "owns"          -> simple_province l10n "Owns" stmt mempty
             -- Simple generic statements (typewriter face)
             "set_country_flag"  -> simple_generic_tt "Set country flag" stmt
             "set_province_flag" -> simple_generic_tt "Set province flag" stmt
+            "set_global_flag"   -> simple_generic_tt "Set global flag" stmt
+            "has_country_flag"  -> simple_generic_tt "Has country flag" stmt
             "has_province_flag" -> simple_generic_tt "Has province flag" stmt
+            "has_global_flag"   -> simple_generic_tt "Global flag is set:" stmt
             "clr_country_flag"  -> simple_generic_tt "Clear country flag" stmt
             "clr_province_flag" -> simple_generic_tt "Clear province flag" stmt
             -- Simple generic statements with icon
@@ -241,77 +269,101 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "has_idea_group"    -> generic_icon l10n "Has activated" stmt
             "change_trade_goods" -> generic_icon l10n "Change trade goods produced to" stmt
             -- Simple generic statements with flag
-            "has_discovered"    -> generic_tag l10n (Just "Has discovered") stmt Nothing
-            "is_core"           -> generic_tag l10n (Just "Is core of") stmt Nothing
-            "owned_by"          -> generic_tag l10n (Just "Is owned by") stmt Nothing
+            "cede_province"     -> generic_tag l10n (Just "Cede province to") stmt Nothing
             "controlled_by"     -> generic_tag l10n (Just "Is controlled by") stmt Nothing
-            "sieged_by"         -> generic_tag l10n (Just "Is under siege by") stmt Nothing
-            "war_with"          -> generic_tag l10n (Just "Is at war with") stmt Nothing
             "defensive_war_with" -> generic_tag l10n (Just "Is in a defensive war against") stmt Nothing
+            "discover_country"  -> generic_tag l10n (Just "Discovered by") stmt Nothing
+            "add_claim"         -> generic_tag l10n Nothing stmt (Just "gains a claim")
+            "has_discovered"    -> generic_tag l10n (Just "Has discovered") stmt Nothing
+            "inherit"           -> generic_tag l10n (Just "Inherit") stmt Nothing
+            "is_core"           -> generic_tag l10n (Just "Is core of") stmt Nothing
+            "is_neighbor_of"    -> generic_tag l10n (Just "Neighbors") stmt Nothing
+            "remove_core"       -> generic_tag l10n Nothing stmt (Just "loses core")
+            "marriage_with"     -> generic_tag l10n (Just "Has a royal marriage with") stmt Nothing
             "offensive_war_with" -> generic_tag l10n (Just "Is in an offensive war against") stmt Nothing
+            "owned_by"          -> generic_tag l10n (Just "Is owned by") stmt Nothing
+            "release"           -> generic_tag l10n (Just "Releases") stmt (Just "as a vassal")
+            "sieged_by"         -> generic_tag l10n (Just "Is under siege by") stmt Nothing
             "tag"               -> generic_tag l10n (Just "Is") stmt Nothing
-            "exists"            -> generic_tag l10n Nothing stmt (Just "exists")
+            "war_with"          -> generic_tag l10n (Just "Is at war with") stmt Nothing
+            "white_peace"       -> generic_tag l10n (Just "Makes a white peace with") stmt Nothing
+            -- Simple generic statements with flag or "yes"/"no"
+            "exists"            -> generic_tag_bool "Exists" "Does NOT exist" l10n Nothing stmt (Just "exists")
             -- Statements that may be an icon, a flag, or a pronoun (such as ROOT)
             "religion"          -> generic_icon_or_country l10n "Religion is" stmt
             "religion_group"    -> generic_icon_or_country l10n "Religion group is" stmt
             "change_religion"   -> generic_icon_or_country l10n "Change religion to" stmt
             -- Boolean statements
-            "has_port"              -> has "a port" stmt
-            "is_reformation_center" -> is Nothing "a center of reformation" stmt
-            "is_capital"            -> is Nothing "capital" stmt
-            "is_looted"             -> is Nothing "looted" stmt
-            "is_at_war"             -> is Nothing "at war" stmt
-            "kill_ruler"            -> {- assume yes -} "Ruler dies"
-            "is_lesser_in_union"    -> is Nothing "the junior partner in a personal union" stmt
-            "is_monarch_leader"     -> is (Just "Monarch") "a military leader" stmt
-            "has_siege"             -> is Nothing "under siege" stmt
-            "papacy_active"         -> is (Just "Papal interaction") "active" stmt
+            "ai"                    -> is Nothing "AI controlled" stmt
             "has_cardinal"          -> has "a cardinal" stmt
-            "add_cardinal"          -> {- assume yes -} "Gain a cardinal"
-            "remove_cardinal"       -> {- assume yes -} "Lose a cardinal"
+            "has_heir"              -> has "an heir" stmt
+            "has_port"              -> has "a port" stmt
+            "has_regency"           -> is Nothing "in a regency" stmt
+            "has_siege"             -> is Nothing "under siege" stmt
+            "is_at_war"             -> is Nothing "at war" stmt
+            "is_capital"            -> is Nothing "capital" stmt
             "is_city"               -> is (Just "Province") "a city" stmt
+            "is_emperor"            -> is Nothing "Holy Roman Emperor" stmt
+            "is_female"             -> is_female stmt
+            "is_lesser_in_union"    -> is Nothing "the junior partner in a personal union" stmt
+            "is_looted"             -> is Nothing "looted" stmt
+            "is_monarch_leader"     -> is (Just "Monarch") "a military leader" stmt
+            "is_part_of_hre"        -> is Nothing "part of the Holy Roman Empire" stmt
+            "is_reformation_center" -> is Nothing "a center of reformation" stmt
+            "is_subject"            -> is Nothing "a subject nation" stmt
+            "papacy_active"         -> is (Just "Papal interaction") "active" stmt
+            "was_player"            -> has_been Nothing "player-controlled" stmt
             -- Numeric statements
-            "base_tax" -> simple_numeric "Base tax is at least" stmt mempty
-            "num_of_mercenaries" -> simple_numeric "Has at least" stmt "mercenary regiment(s)"
-            "manpower_percentage" -> manpower_percentage stmt
-            "had_recent_war" -> simple_numeric "Was at war within the last" stmt "months(?)"
-            "heir_age" -> simple_numeric "Heir is at least" stmt "years old"
-            "num_of_cardinals" -> simple_numeric "Controls at least" stmt "cardinals"
-            "development" -> simple_numeric "Has at least" stmt "development"
+            "base_tax"                  -> simple_numeric "Base tax is at least" stmt mempty
+            "colonysize"                -> simple_numeric "Colony has at least" stmt "settlers"
+            "development"               -> simple_numeric "Has at least" stmt "development"
+            "had_recent_war"            -> simple_numeric "Was at war within the last" stmt "months(?)"
+            "heir_age"                  -> simple_numeric "Heir is at least" stmt "years old"
+            "is_year"                   -> simple_numeric "Year is" stmt "or later"
+            "manpower_percentage"       -> manpower_percentage stmt
+            "num_of_cardinals"          -> simple_numeric "Controls at least" stmt "cardinals"
+            "num_of_cities"             -> simple_numeric "Owns at least" stmt "cities"
+            "num_of_mercenaries"        -> simple_numeric "Has at least" stmt "mercenary regiment(s)"
             "total_number_of_cardinals" -> simple_numeric "There are at least" stmt "cardinals"
-            "colonysize" -> simple_numeric "Colony has at least" stmt "settlers"
+            -- Percentage statements
+            "local_autonomy" -> simple_percentage "Has at least" stmt "local autonomy"
             -- Signed numeric statements
             "stability" -> simple_numeric_signed "Stability is at least" stmt mempty
-            "war_score" -> simple_numeric_signed "Warscore is at least" stmt mempty
             "tolerance_to_this" -> simple_numeric_signed "Tolerance to this religion is at least" stmt mempty
+            "war_score" -> simple_numeric_signed "Warscore is at least" stmt mempty
             -- Statements of numeric quantities with icons
-            "war_exhaustion" -> numeric_icon "Has at least" Nothing "war exhaustion" stmt
-            "adm_tech" -> numeric_icon "Has at least" Nothing "administrative technology" stmt
-            "dip_tech" -> numeric_icon "Has at least" Nothing "diplomatic technology" stmt
-            "mil_tech" -> numeric_icon "Has at least" Nothing "military technology" stmt
             "adm" -> numeric_icon "Has at least" (Just "adm") "administrative skill" stmt
+            "adm_tech" -> numeric_icon "Has at least" Nothing "administrative technology" stmt
             "dip" -> numeric_icon "Has at least" (Just "dip") "diplomatic skill" stmt
+            "dip_tech" -> numeric_icon "Has at least" Nothing "diplomatic technology" stmt
             "mil" -> numeric_icon "Has at least" (Just "mil") "military skill" stmt
+            "mil_tech" -> numeric_icon "Has at least" Nothing "military technology" stmt
+            "war_exhaustion" -> numeric_icon "Has at least" Nothing "war exhaustion" stmt
             -- Complex statements
-            "add_faction_influence" -> faction_influence stmt
-            "add_opinion" -> opinion l10n "Add" stmt
-            "has_opinion_modifier" -> opinion l10n "Has" stmt
-            "add_years_of_income" -> add_years_of_income stmt
-            "province_event"    -> trigger_event l10n "province" stmt
-            "country_event"    -> trigger_event l10n "country" stmt
-            "add_casus_belli" -> add_casus_belli l10n False stmt
+            "add_casus_belli"         -> add_casus_belli l10n False stmt
+            "add_faction_influence"   -> faction_influence stmt
+            "add_opinion"             -> opinion l10n "Add" stmt
+            "add_years_of_income"     -> add_years_of_income stmt
+            "build_to_forcelimit"     -> build_to_forcelimit indent stmt
+            "country_event"           -> trigger_event l10n "country" stmt
+            "declare_war_with_cb"     -> declare_war_with_cb l10n stmt
+            "define_ruler"            -> define_ruler stmt
+            "had_country_flag"        -> had_flag "country" stmt
+            "had_province_flag"       -> had_flag "province" stmt
+            "has_opinion_modifier"    -> opinion l10n "Has" stmt
+            "province_event"          -> trigger_event l10n "province" stmt
             "reverse_add_casus_belli" -> add_casus_belli l10n False stmt
             -- Rebels
             "create_revolt" -> spawn_rebels l10n Nothing stmt
-            "spawn_rebels" -> spawn_rebels l10n Nothing stmt
-            "nationalist_rebels" -> spawn_rebels l10n (Just "Nationalist rebels") stmt
             "has_spawned_rebels" -> has_spawned_rebels stmt
             "likely_rebels" -> can_spawn_rebels l10n stmt
+            "nationalist_rebels" -> spawn_rebels l10n (Just "Nationalist rebels") stmt
+            "spawn_rebels" -> spawn_rebels l10n Nothing stmt
             -- Special
             "add_core"          -> add_core l10n stmt
             -- Ignored
-            "tooltip" -> "(explanatory tooltip - delete this line)"
             "custom_tooltip" -> "(custom tooltip - delete this line)"
+            "tooltip" -> "(explanatory tooltip - delete this line)"
             -- default
             _ -> if isTag label
                  then case rhs of
@@ -447,7 +499,6 @@ scriptIconTable = HM.fromList
     ,("master_recruiter", "master recruiter")
     ,("military_engineer", "military engineer")
     ,("spy_ideas", "espionage")
-    ,("tropical_wood", "tropical wood")
     ]
 
 -- As simple_generic but also add an appropriate icon before the value.
@@ -455,7 +506,10 @@ generic_icon :: L10n -> Text -> GenericStatement -> Doc
 generic_icon l10n premsg (Statement (GenericLhs category) (GenericRhs name))
     = hsep
         [strictText $ premsg
-        ,icon (HM.lookupDefault name name scriptIconTable)
+        ,icon (HM.lookupDefault
+                -- If nothing specified above, at least change underscores to spaces
+                (T.map (\c -> if c == '_' then ' ' else c) name)
+                name scriptIconTable)
         ,strictText $ HM.lookupDefault name name l10n]
 generic_icon _ _ stmt = pre_statement stmt
 
@@ -482,6 +536,19 @@ simple_numeric premsg (Statement _ rhs) postmsg
             ,strictText postmsg
             ]
 simple_numeric _ stmt _ = pre_statement stmt
+
+-- Percentage
+simple_percentage :: Text -> GenericStatement -> Text -> Doc
+simple_percentage premsg (Statement _ rhs) postmsg
+    = let n = case rhs of
+                IntRhs n' -> fromIntegral n'
+                FloatRhs n' -> n'
+      in hsep
+            [strictText premsg
+            ,pp_float n <> "%"
+            ,strictText postmsg
+            ]
+simple_percentage _ stmt _ = pre_statement stmt
 
 simple_numeric_signed :: Text -> GenericStatement -> Text -> Doc
 simple_numeric_signed premsg (Statement _ rhs) postmsg
@@ -516,6 +583,28 @@ is who what (Statement _ (GenericRhs yn)) | yn `elem` ["yes","no"]
             [strictText what]
 is _ _ stmt = pre_statement stmt
 
+-- "Has been <something>" (or "<Someone> has been <something>")
+has_been :: Maybe Text -> Text -> GenericStatement -> Doc
+has_been who what (Statement _ (GenericRhs yn)) | yn `elem` ["yes","no"]
+    = let know_who = isJust who
+          no = yn == "no"
+      in hsep $
+            (if know_who
+                then [strictText (fromJust who), "has"]
+                else ["Has"]) ++
+            (if no then ["NOT"] else []) ++
+            ["been", strictText what]
+has_been _ _ stmt = pre_statement stmt
+
+-- "Is female" (= yes) or "Is male" (= no)
+-- Better than "is NOT male" :)
+is_female :: GenericStatement -> Doc
+is_female (Statement _ (GenericRhs yn)) | yn `elem` ["yes","no"]
+    = hsep ["Ruler is"
+           ,if yn == "yes" then "female" else "male"
+           ]
+is_female stmt = pre_statement stmt
+
 -- Generic statement referring to a country. Use a flag.
 generic_tag :: L10n -> Maybe Text -> GenericStatement -> Maybe Text -> Doc
 generic_tag l10n prefix (Statement _ (GenericRhs who)) suffix
@@ -524,6 +613,12 @@ generic_tag l10n prefix (Statement _ (GenericRhs who)) suffix
         [flag l10n who] ++
         (maybe [] ((:[]) . strictText) suffix)
 generic_tag _ _ stmt _ = pre_statement stmt
+
+-- Statement may have "yes"/"no" or a tag.
+generic_tag_bool :: Text -> Text -> L10n -> Maybe Text -> GenericStatement -> Maybe Text -> Doc
+generic_tag_bool y_text n_text _ _ (Statement _ (GenericRhs "yes")) _ = strictText y_text
+generic_tag_bool y_text n_text _ _ (Statement _ (GenericRhs "no"))  _ = strictText n_text
+generic_tag_bool _ _ l10n prefix stmt suffix = generic_tag l10n prefix stmt suffix
 
 numeric_icon :: Text -> Maybe Text -> Text -> GenericStatement -> Doc
 numeric_icon premsg micon what (Statement _ rhs)
@@ -596,27 +691,27 @@ add_years_of_income stmt
 -- Second text argument is text to show after it.
 -- Bool is whether a gain is good.
 gain :: Maybe Text -> Bool -> Maybe Text -> Text -> GenericStatement -> Doc
-gain mwho good iconkey what stmt
-    | Statement _ (IntRhs n)   <- stmt = gain' (fromIntegral n)
-    | Statement _ (FloatRhs n) <- stmt = gain' n
+gain mwho good iconkey what stmt@(Statement _ rhs) =
+    if isJust mhowmuch then hsep $
+        (if know_who then [strictText who] else [])
+        ++
+        [gain_or_lose]
+        ++ (if isJust iconkey then [icon (fromJust iconkey)] else [])
+        ++
+        [pp_hl_num good pp_num_sep howmuch
+        ,strictText what
+        ]
+    else pre_statement stmt
     where
         know_who = isJust mwho
         who = fromJust mwho
-        gain' :: Double -> Doc
-        gain' howmuch = hsep $
-            (if know_who then [strictText who] else [])
-            ++
-            [gain_or_lose]
-            ++ (if isJust iconkey then [icon (fromJust iconkey)] else [])
-            ++
-            [pp_hl_num good pp_num_sep howmuch
-            ,strictText what
-            ]
-            where
-                gain_or_lose =
-                    if know_who
-                        then if howmuch < 0 then "loses" else "gains"
-                        else if howmuch < 0 then "Lose" else "Gain"
+        mhowmuch = floatRhs rhs
+        howmuch :: Double
+        howmuch = fromJust mhowmuch
+        gain_or_lose =
+            if know_who
+                then if howmuch < 0 then "loses" else "gains"
+                else if howmuch < 0 then "Lose" else "Gain"
 
 data AddModifier = AddModifier {
         name :: Maybe Text
@@ -816,10 +911,10 @@ spawn_rebels l10n mtype stmt = spawn_rebels' mtype stmt where
                         else ["Rebels"])
                    ++
                    [PP.parens $ hsep ["size", pp_float (fromJust (rebelSize reb))]]
-                   ++ if isJust (friend reb) then
+                   ++ (if isJust (friend reb) then
                    [PP.parens $ hsep ["friendly", "to",
-                                        strictText (HM.lookupDefault friendlyTo friendlyTo l10n)]
-                   ] else []
+                                        flag l10n friendlyTo]
+                   ] else [])
                    ++
                    ["rise in revolt"
                    ] ++ if isJust (win reb) && fromJust (win reb) then
@@ -988,3 +1083,242 @@ random indent l10n stmt@(Statement _ (CompoundRhs scr))
                 (hsep [pp_float chance <> "%","chance of"])
                 (Statement undefined (CompoundRhs (front ++ tail back)))
 random _ _ stmt = pre_statement stmt
+
+data DefineRuler = DefineRuler
+    {   dr_name :: Maybe Text
+    ,   dr_dynasty :: Maybe Text -- can be a tag/pronoun
+    ,   dr_age :: Maybe Double
+    ,   dr_female :: Maybe Bool
+    ,   dr_claim :: Maybe Double
+    ,   dr_regency :: Maybe Bool
+    ,   dr_adm :: Maybe Int
+    ,   dr_dip :: Maybe Int
+    ,   dr_mil :: Maybe Int
+    ,   dr_fixed :: Maybe Bool
+    }
+newDefineRuler = DefineRuler Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+
+define_ruler :: GenericStatement -> Doc
+define_ruler stmt@(Statement _ (CompoundRhs scr))
+    = pp_define_ruler $ foldl' addLine newDefineRuler scr where
+        addLine :: DefineRuler -> GenericStatement -> DefineRuler
+        addLine dr stmt@(Statement (GenericLhs lhs) rhs) = case T.map toLower lhs of
+            "name" ->
+                let mthe_name = case rhs of
+                        GenericRhs a_name -> Just a_name
+                        StringRhs a_name -> Just a_name
+                        _ -> Nothing
+                in dr { dr_name = mthe_name }
+            "dynasty" ->
+                let mthe_name = case rhs of
+                        GenericRhs a_name -> Just a_name
+                        StringRhs a_name -> Just a_name
+                        _ -> Nothing
+                in dr { dr_name = mthe_name }
+            "age" ->
+                let mage = floatRhs rhs
+                in  dr { dr_age = mage }
+            "claim" ->
+                let mclaim = floatRhs rhs
+                in  dr { dr_claim = mclaim }
+            "adm" ->
+                let madm = floatRhs rhs
+                in  dr { dr_adm = madm }
+            "dip" ->
+                let mdip = floatRhs rhs
+                in  dr { dr_dip = mdip }
+            "mil" ->
+                let mmil = floatRhs rhs
+                in  dr { dr_mil = mmil }
+            "regency" -> case rhs of
+                GenericRhs "yes" -> dr { dr_regency = Just True }
+                GenericRhs "no" -> dr { dr_regency = Just False }
+                _ -> dr
+        pp_define_ruler :: DefineRuler -> Doc
+        pp_define_ruler dr =
+            let has_name = isJust (dr_name dr)
+                name = fromJust (dr_name dr)
+                has_dynasty = isJust (dr_dynasty dr)
+                dynasty = fromJust (dr_dynasty dr)
+                has_age = isJust (dr_age dr)
+                age = fromJust (dr_age dr)
+                has_female = isJust (dr_female dr)
+                female = fromJust (dr_female dr)
+                has_claim = isJust (dr_claim dr)
+                claim = fromJust (dr_claim dr)
+                has_regency = isJust (dr_regency dr)
+                regency = fromJust (dr_regency dr)
+                has_adm = isJust (dr_adm dr)
+                adm = fromJust (dr_adm dr)
+                has_dip = isJust (dr_dip dr)
+                dip = fromJust (dr_dip dr)
+                has_mil = isJust (dr_mil dr)
+                mil = fromJust (dr_mil dr)
+                has_fixed = isJust (dr_fixed dr)
+                fixed = fromJust (dr_fixed dr)
+            in hsep $
+                ["A new"]
+                ++ (if has_age
+                    then [pp_float age, "year old"]
+                    else [])
+                ++ (if has_female
+                    then [if female then "female" else "male"]
+                    else [])
+                ++ ["ruler"]
+                ++ (if has_dynasty
+                    then ["of the"
+                         ,strictText dynasty
+                         ,"dynasty"]
+                    else [])
+                ++ (if has_name
+                    then ["named"
+                         ,strictText name]
+                    else [])
+                ++ ["comes to power"]
+                ++ (if has_regency
+                    then [if regency then "under" else "without", "a regency council"]
+                    else [])
+                ++ (if has_adm || has_dip || has_mil
+                    then ["with"]
+                        ++ [hcat . intersperse (hcat [",", space]) . map hsep . filter (not . null) $
+                            [if has_adm
+                                then [icon "adm", PP.int adm]
+                                else []
+                            , if has_dip
+                                then [icon "dip", PP.int dip]
+                                else []
+                            , if has_mil
+                                then [icon "mil", PP.int mil]
+                                else []
+                            ]]
+                    else [])
+define_ruler stmt = pre_statement stmt
+
+data HadFlag = HadFlag
+    {   hf_flag :: Maybe Text
+    ,   hf_days :: Maybe Int
+    }
+newHadFlag = HadFlag Nothing Nothing
+
+had_flag :: Text -> GenericStatement -> Doc
+had_flag category stmt@(Statement _ (CompoundRhs scr))
+    = pp_had_flag $ foldl' addLine newHadFlag scr where
+        addLine :: HadFlag -> GenericStatement -> HadFlag
+        addLine dr stmt@(Statement (GenericLhs lhs) rhs) = case T.map toLower lhs of
+            "flag" -> case rhs of
+                GenericRhs flagname -> dr { hf_flag = Just flagname }
+                StringRhs flagname -> dr { hf_flag = Just flagname }
+                _ -> dr
+            "days" -> dr { hf_days = floatRhs rhs }
+            _ -> trace ("unknown had_flag line: " ++ show stmt) dr
+        pp_had_flag :: HadFlag -> Doc
+        pp_had_flag dr
+            = if isJust (hf_flag dr) && isJust (hf_days dr)
+              then hsep
+                    ["Has had"
+                    ,strictText category
+                    ,"flag"
+                    ,enclose "<tt>" "</tt>" (strictText (fromJust (hf_flag dr)))
+                    ,"for at least"
+                    ,PP.int (fromJust (hf_days dr))
+                    ,"days"]
+              else pre_statement stmt
+
+data BuildToForcelimit = BuildToForcelimit
+    {   btf_infantry :: Maybe Double
+    ,   btf_cavalry :: Maybe Double
+    ,   btf_artillery :: Maybe Double
+    ,   btf_heavy_ship :: Maybe Double
+    ,   btf_light_ship :: Maybe Double
+    ,   btf_galley :: Maybe Double
+    ,   btf_transport :: Maybe Double
+    }
+newBuildToForcelimit = BuildToForcelimit Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+
+build_to_forcelimit :: Int -> GenericStatement -> Doc
+build_to_forcelimit indent stmt@(Statement _ (CompoundRhs scr))
+    = pp_build_to_forcelimit $ foldl' addLine newBuildToForcelimit scr where
+        addLine :: BuildToForcelimit -> GenericStatement -> BuildToForcelimit
+        addLine dr stmt@(Statement (GenericLhs lhs) rhs)
+            = let mhowmuch = floatRhs rhs
+                  howmuch = fromJust mhowmuch
+              in if isNothing mhowmuch
+                 then dr
+                 else case T.map toLower lhs of
+                    "infantry"   -> dr { btf_infantry   = Just howmuch }
+                    "cavalry"    -> dr { btf_cavalry    = Just howmuch }
+                    "artillery"  -> dr { btf_artillery  = Just howmuch }
+                    "heavy_ship" -> dr { btf_heavy_ship = Just howmuch }
+                    "light_ship" -> dr { btf_light_ship = Just howmuch }
+                    "galley"     -> dr { btf_galley     = Just howmuch }
+                    "transport"  -> dr { btf_transport  = Just howmuch }
+                    _ -> dr
+        pp_build_to_forcelimit :: BuildToForcelimit -> Doc
+        pp_build_to_forcelimit dr
+            = let has_infantry = isJust (btf_infantry dr)
+                  infantry = fromJust (btf_infantry dr)
+                  has_cavalry = isJust (btf_cavalry dr)
+                  cavalry = fromJust (btf_cavalry dr)
+                  has_artillery = isJust (btf_artillery dr)
+                  artillery = fromJust (btf_artillery dr)
+                  has_heavy_ship = isJust (btf_heavy_ship dr)
+                  heavy_ship = fromJust (btf_heavy_ship dr)
+                  has_light_ship = isJust (btf_light_ship dr)
+                  light_ship = fromJust (btf_light_ship dr)
+                  has_galley = isJust (btf_galley dr)
+                  galley = fromJust (btf_galley dr)
+                  has_transport = isJust (btf_transport dr)
+                  transport = fromJust (btf_transport dr)
+                  newindent = succ indent
+                  has_X :: (Bool, Double, Text, Text) -> [Doc]
+                  has_X (hasit, howmuch, iconkey, text)
+                      = if hasit then
+                            [line
+                            ,hcat (replicate newindent "*"), space
+                            ,pp_float (howmuch*100),"%", space
+                            ,icon iconkey, space
+                            ,strictText text]
+                          else []
+              in hcat $
+                  ["Build units up to forcelimit:"]
+                  ++ concatMap has_X
+                  [(has_infantry, infantry, "infantry", "infantry")
+                  ,(has_cavalry, cavalry, "cavalry", "cavalry")
+                  ,(has_artillery, artillery, "artillery", "artillery")
+                  ,(has_heavy_ship, heavy_ship, "heavy ship", "heavy ships")
+                  ,(has_light_ship, light_ship, "light ship", "light ships")
+                  ,(has_galley, galley, "galley", "galleys")
+                  ,(has_transport, transport, "transport", "transports")
+                  ]
+
+data DeclareWarWithCB = DeclareWarWithCB
+    {   dwcb_who :: Maybe Text
+    ,   dwcb_cb :: Maybe Text
+    }
+newDeclareWarWithCB = DeclareWarWithCB Nothing Nothing
+
+declare_war_with_cb :: L10n -> GenericStatement -> Doc
+declare_war_with_cb l10n stmt@(Statement _ (CompoundRhs scr))
+    = pp_declare_war_with_cb  $ foldl' addLine newDeclareWarWithCB scr where
+        addLine :: DeclareWarWithCB -> GenericStatement -> DeclareWarWithCB
+        addLine dwcb stmt@(Statement (GenericLhs lhs) (GenericRhs rhs))
+            = case T.map toLower lhs of
+                "who"         -> dwcb { dwcb_who = Just rhs }
+                "casus_belli" -> dwcb { dwcb_cb  = Just rhs }
+                _ -> dwcb
+        pp_declare_war_with_cb :: DeclareWarWithCB -> Doc
+        pp_declare_war_with_cb dwcb
+            = let has_who = isJust (dwcb_who dwcb)
+                  who = fromJust (dwcb_who dwcb)
+                  has_cb = isJust (dwcb_cb dwcb)
+                  cb = fromJust (dwcb_cb dwcb)
+              in if has_who && has_cb
+                 then hsep $
+                      ["Declare war on"
+                      ,flag l10n who
+                      ,"using"
+                      ,dquotes (strictText $ HM.lookupDefault cb cb l10n)
+                      ,"casus belli"
+                      ]
+                 else pre_statement stmt
+

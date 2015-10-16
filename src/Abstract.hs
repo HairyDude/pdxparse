@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell, TypeSynonymInstances, FlexibleInstances #-}
+{-# LANGUAGE OverloadedStrings, TemplateHaskell, TypeSynonymInstances, FlexibleInstances, MultiParamTypeClasses #-}
 module Abstract where
 
 {-
@@ -87,6 +87,23 @@ data Date = Date { year :: Int, month :: Int, day :: Int }
 -- A very common type of statement
 s_yes :: Text -> Statement lhs rhs
 s_yes tok = Statement (GenericLhs tok) (GenericRhs "yes")
+
+class CoerceNum a where
+    fromInt :: Int -> a
+    fromFloat :: Double -> a
+instance CoerceNum Int where
+    fromInt = id
+    fromFloat = round
+instance CoerceNum Double where
+    fromInt = fromIntegral
+    fromFloat = id
+
+-- Get a number of the desired type from a RHS.
+-- If it's a float and we want an int, round it.
+floatRhs :: CoerceNum a => GenericRhs -> Maybe a
+floatRhs (IntRhs n) = Just (fromInt n)
+floatRhs (FloatRhs n) = Just (fromFloat n)
+floatRhs _ = Nothing
 
 ------------
 -- Parser --

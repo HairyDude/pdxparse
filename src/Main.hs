@@ -105,7 +105,7 @@ main = do
         let results :: [(FilePath, [Either Text Doc])]
             results = map (\(file, script) -> (file, map (handler file l10n) script))
                 -- for testing -- DELETE ME for release
-                . filter (\(file, _) -> file == "events/AoWTradeGoods.txt")
+                . filter (\(file, _) -> file == "events/FlavorBUR.txt")
                 $ scripts
 
         forM_ results $ \(path, mesgs) -> do
