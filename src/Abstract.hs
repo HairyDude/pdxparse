@@ -33,10 +33,11 @@ import Data.Monoid
 
 import Data.Char
 import Data.List
+import Numeric (showFFloat)
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Lazy as LT
+import qualified Data.Text.Lazy as TL
 
 import Data.Attoparsec.Text (Parser, (<?>))
 import qualified Data.Attoparsec.Text as Ap
@@ -215,6 +216,26 @@ genericScript = script parse_generic parse_generic
 -- Pretty-printer --
 --------------------
 
+strictText :: Text -> Doc
+strictText = text . TL.fromStrict
+
+-- Pretty-print a number, putting a + sign in front if it's not negative.
+-- Assumes the passed-in formatting function does add a minus sign.
+pp_signed :: (Ord n, Num n) => (n -> Doc) -> n -> Doc
+pp_signed pp_num n = (if signum n >= 0 then "+" else mempty) <> pp_num n
+
+-- Pretty-print a Double. If it's a whole number, display it without a decimal.
+pp_float :: Double -> Doc
+pp_float n =
+    let trunc = floor n
+    in if fromIntegral trunc == n
+        then PP.int (fromIntegral trunc)
+        else text . TL.pack $ showFFloat Nothing n ""
+
+-- Pretty-print a Double, as Text.
+pp_float_t :: Double -> Text
+pp_float_t = TL.toStrict . displayT . renderCompact . pp_float
+
 -- Pretty-printer for a script with no custom elements.
 genericScript2doc :: GenericScript -> Doc
 genericScript2doc = F.fold . intersperse line . map genericStatement2doc
@@ -233,25 +254,19 @@ statement2doc customLhs customRhs (Statement lhs rhs)
 
 lhs2doc :: (lhs -> Doc) -> Lhs lhs -> Doc
 lhs2doc customLhs (CustomLhs lhs) = customLhs lhs
-lhs2doc _         (GenericLhs lhs) = text (LT.fromStrict lhs)
-lhs2doc _         (IntLhs lhs) = text (LT.pack (show lhs))
-
--- Display a Double as integer if possible.
-showFloat :: (Show a, RealFrac a) => a -> String
-showFloat x =
-    let floorx = floor x
-    in if fromIntegral (floor x) == x then show floorx else show x
+lhs2doc _         (GenericLhs lhs) = text (TL.fromStrict lhs)
+lhs2doc _         (IntLhs lhs) = text (TL.pack (show lhs))
 
 rhs2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Rhs lhs rhs -> Doc
 rhs2doc _ customRhs (CustomRhs rhs) = customRhs rhs
-rhs2doc _ _ (GenericRhs rhs) = text (LT.fromStrict rhs)
-rhs2doc _ _ (StringRhs rhs) = text (LT.pack (show rhs))
-rhs2doc _ _ (IntRhs rhs) = text (LT.pack (show rhs))
-rhs2doc _ _ (FloatRhs rhs) = text (LT.pack (showFloat rhs))
+rhs2doc _ _ (GenericRhs rhs) = strictText rhs
+rhs2doc _ _ (StringRhs rhs) = text (TL.pack (show rhs))
+rhs2doc _ _ (IntRhs rhs) = text (TL.pack (show rhs))
+rhs2doc _ _ (FloatRhs rhs) = pp_float rhs
 rhs2doc customLhs customRhs (CompoundRhs rhs)
     = text "{" <$$> indent 4 (script2doc customLhs customRhs rhs) <$$> text "}"
 rhs2doc _ _ (DateRhs (Date year month day)) =
-    mconcat . map (text . LT.pack) $ [show year, ".", show month, ".", show day]
+    mconcat . map (text . TL.pack) $ [show year, ".", show month, ".", show day]
 
 displayGenericScript :: GenericScript -> Text
-displayGenericScript script = LT.toStrict . displayT . renderPretty 0.8 80 $ genericScript2doc script
+displayGenericScript script = TL.toStrict . displayT . renderPretty 0.8 80 $ genericScript2doc script

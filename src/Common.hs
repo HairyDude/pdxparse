@@ -37,20 +37,12 @@ isPronoun s = T.map toLower s `S.member` pronouns where
         ,"controller"
         ]
 
-strictText :: Text -> Doc
-strictText = text . TL.fromStrict
-
 pp_script :: Int -> L10n -> GenericScript -> Doc
 pp_script indent l10n script
     = hcat . punctuate line
         . map ((mconcat (replicate indent "*" ++ [" "]) <>)
                 . pp_statement' indent l10n
               ) $ script
-
--- Pretty-print a number, putting a + sign in front if it's not negative.
--- Assumes the passed-in formatting function does add a minus sign.
-pp_signed :: (Ord n, Num n) => (n -> Doc) -> n -> Doc
-pp_signed pp_num n = (if signum n >= 0 then "+" else mempty) <> pp_num n
 
 -- Pretty-print a number, adding wiki formatting:
 -- * {{green}} if good
@@ -69,18 +61,6 @@ pp_hl_num pos pp_num n =
         -1 -> template "red" n_pp'd
         0 ->  bold n_pp'd
         1 ->  template "green" n_pp'd
-
--- Pretty-print a Double. If it's a whole number, display it without a decimal.
-pp_float :: Double -> Doc
-pp_float n =
-    let trunc = floor n
-    in if fromIntegral trunc == n
-        then PP.int (fromIntegral trunc)
-        else PP.double n
-
--- Pretty-print a Double, as Text.
-pp_float_t :: Double -> Text
-pp_float_t = TL.toStrict . displayT . renderCompact . pp_float
 
 -- Pretty-print a number, adding &#8239; (U+202F NARROW NO-BREAK SPACE) at
 -- every power of 1000.
@@ -322,9 +302,10 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "is_year"                   -> simple_numeric "Year is" stmt "or later"
             "manpower_percentage"       -> manpower_percentage stmt
             "num_of_cardinals"          -> simple_numeric "Controls at least" stmt "cardinals"
-            "num_of_cities"             -> simple_numeric "Owns at least" stmt "cities"
             "num_of_mercenaries"        -> simple_numeric "Has at least" stmt "mercenary regiment(s)"
             "total_number_of_cardinals" -> simple_numeric "There are at least" stmt "cardinals"
+            -- Statements that may be numeric or a tag
+            "num_of_cities"             -> numeric_or_tag l10n "Owns" "many" stmt "cities"
             -- Percentage statements
             "local_autonomy" -> simple_percentage "Has at least" stmt "local autonomy"
             -- Signed numeric statements
@@ -338,6 +319,7 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "dip_tech" -> numeric_icon "Has at least" Nothing "diplomatic technology" stmt
             "mil" -> numeric_icon "Has at least" (Just "mil") "military skill" stmt
             "mil_tech" -> numeric_icon "Has at least" Nothing "military technology" stmt
+            "legitimacy" -> numeric_icon "Has at least" Nothing "legitimacy" stmt
             "war_exhaustion" -> numeric_icon "Has at least" Nothing "war exhaustion" stmt
             -- Complex statements
             "add_casus_belli"         -> add_casus_belli l10n False stmt
@@ -536,6 +518,15 @@ simple_numeric premsg (Statement _ rhs) postmsg
             ,strictText postmsg
             ]
 simple_numeric _ stmt _ = pre_statement stmt
+
+numeric_or_tag :: L10n -> Text -> Text -> GenericStatement -> Text -> Doc
+numeric_or_tag l10n pre quant (Statement _ rhs) post
+    = hsep [strictText pre, case rhs of
+                IntRhs n -> hsep ["at least", PP.int n, strictText post]
+                FloatRhs n -> hsep ["at least", pp_float n, strictText post]
+                GenericRhs t -> -- assume it's a tag
+                            hsep ["at least as", strictText quant, strictText post, "as", flag l10n t]
+           ]
 
 -- Percentage
 simple_percentage :: Text -> GenericStatement -> Text -> Doc
@@ -774,7 +765,7 @@ add_core l10n (Statement _ (IntRhs num)) -- province
     where provKey = "PROV" <> T.pack (show num)
 add_core l10n (Statement _ (FloatRhs num)) -- province
     = hsep ["Gain", "core", "on", "province", strictText $ HM.lookupDefault provKey provKey l10n]
-    where provKey = "PROV" <> T.pack (showFloat num)
+    where provKey = "PROV" <> pp_float_t num
 add_core _ stmt = pre_statement stmt
 
 -- Add an opinion modifier towards someone (for a number of years).
