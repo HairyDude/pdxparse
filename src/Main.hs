@@ -95,15 +95,17 @@ main = do
     forM_ ["decisions","missions","events","policies"] $ \category -> do
         scripts <- readScripts settings category -- :: [(FilePath, GenericScript)]
 
-        let handler :: FilePath -> L10n -> GenericStatement -> Either Text Doc
+        let handler :: Text -> FilePath -> L10n -> GenericStatement -> Either Text Doc
             handler = case category of
                 "decisions" -> processDecisionGroup
                 "missions" -> processMission
                 "events" -> processEvent
                 "policies" -> processPolicy
 
-        let results :: [(FilePath, [Either Text Doc])]
-            results = map (\(file, script) -> (file, map (handler file l10n) script))
+            version = T.pack $ gameVersion settings
+
+            results :: [(FilePath, [Either Text Doc])]
+            results = map (\(file, script) -> (file, map (handler version file l10n) script))
                 -- for testing -- DELETE ME for release
                 . filter (\(file, _) -> file == "events/flavorMLO.txt")
                 $ scripts

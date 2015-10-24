@@ -45,13 +45,13 @@ data Option = Option
 newEvent = Event Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 newOption = Option Nothing Nothing Nothing Nothing Nothing
 
-processEvent :: FilePath -> L10n -> GenericStatement -> Either Text Doc
-processEvent _ l10n (StatementBare _) = Left "bare statement at top level"
-processEvent file l10n (Statement left right) = case right of
+processEvent :: Text -> FilePath -> L10n -> GenericStatement -> Either Text Doc
+processEvent _ _ l10n (StatementBare _) = Left "bare statement at top level"
+processEvent version file l10n (Statement left right) = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> Left "internal error: custom lhs"
         IntLhs _ -> Left "int lhs at top level"
-        GenericLhs _ -> pp_event l10n $ foldl' (eventAddSection file l10n) newEvent parts
+        GenericLhs _ -> pp_event version l10n $ foldl' (eventAddSection file l10n) newEvent parts
 
     _ -> Right PP.empty -- assume this is one of the administrivia statements at the top
 
@@ -130,8 +130,8 @@ optionAddEffect l10n Nothing stmt = optionAddEffect l10n (Just []) stmt
 optionAddEffect l10n (Just effs) stmt = Just (effs ++ [stmt])
 
 -- Pretty-print an event, or fail.
-pp_event :: L10n -> Event -> Either Text Doc
-pp_event l10n evt =
+pp_event :: Text -> L10n -> Event -> Either Text Doc
+pp_event version l10n evt =
     if isJust (evt_title_loc evt) && isJust (evt_options evt)
         && (isJust (evt_is_triggered_only evt) ||
             isJust (evt_mean_time_to_happen evt))
@@ -140,6 +140,7 @@ pp_event l10n evt =
             Left err -> Left $ "failed to pprint event options: " <> err
             Right (conditional, options_pp'd) -> Right . mconcat $
                 ["{{Event", line
+                ,"| version = ", strictText version, line
                 ,"| event_name = ", text (TL.fromStrict . fromJust $ evt_title_loc evt), line
                 ] ++
                 maybe [] (\desc ->

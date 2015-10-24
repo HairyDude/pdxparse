@@ -7,7 +7,10 @@ import Data.Char
 import Data.List
 import Data.Maybe
 import Data.Monoid
+import Data.String
 import Control.Applicative
+
+import Numeric (floatToDigits)
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -52,11 +55,18 @@ pp_script indent l10n script
 -- * if True, positive is good and negative is bad (e.g. stability)
 -- * if False, negative is good and positive is bad (e.g. inflation)
 -- * Either way, zero is neutral.
-pp_hl_num :: (Ord n, PPSep n) => Bool -> (n -> Doc) -> n -> Doc
-pp_hl_num pos pp_num n =
+pp_hl_num :: (Show n, Ord n, PPSep n) => Bool -> (n -> Doc) -> n -> Doc
+pp_hl_num = pp_hl_num' False
+
+-- Format a number as a percentage (e.g. 0.5 -> 50%)
+pp_hl_pc :: (Show n, Ord n, PPSep n) => Bool -> (n -> Doc) -> n -> Doc
+pp_hl_pc = pp_hl_num' True
+
+pp_hl_num' :: (Show n, Ord n, PPSep n) => Bool -> Bool -> (n -> Doc) -> n -> Doc
+pp_hl_num' is_pc pos pp_num n =
     let sign = signum n
         positivity = if pos then sign else negate sign
-        n_pp'd = pp_signed pp_num n
+        n_pp'd = pp_signed pp_num n <> if is_pc then "%" else ""
     in case positivity of
         -1 -> template "red" n_pp'd
         0 ->  bold n_pp'd
@@ -72,27 +82,38 @@ group3 = unfoldr (\cs -> if null cs then Nothing else Just (splitAt 3 cs))
 
 instance PPSep Integer where
     pp_num_sep n = strictText . T.pack $
-            (if n < 0 then "-" else "") <> pp_int_sep' (abs n)
-        where pp_int_sep' = concat . reverse
-                            . intersperse "&#8239;"
-                            . map reverse 
-                            . group3 
-                            . reverse
-                            . show
+            (if n < 0 then "-" else "") <> pp_num_sep' True (show (abs n))
+
+-- Split into groups of 3 and intersperse the groups with narrow no-break
+-- spaces.
+-- If first arg is True, start grouping at the end (e.g. for integers).
+pp_num_sep' :: Bool -> String -> String
+pp_num_sep' int
+    = mconcat
+        . (if int then reverse else id)
+        . intersperse "&#8239;"
+        . (if int then map reverse else id)
+        . group3 
+        . (if int then reverse else id)
 
 instance PPSep Int where
     pp_num_sep = pp_num_sep . toInteger
 
 instance PPSep Double where
-    pp_num_sep n = int_pp'd <> decimal <> frac_pp'd
-        where (intPart, fracPart) = properFraction n
-              int_pp'd = pp_num_sep (intPart::Integer)
-              frac_raw = drop 2 . show . abs $ fracPart -- drop "0."
-              decimal = if fracPart == 0 then "" else "."
-              frac_pp'd = if fracPart == 0 then ""
-                            else strictText . T.pack
-                                    . mconcat . intersperse "&#8239;"
-                                    . group3 $ frac_raw
+    pp_num_sep n
+        = let absn = abs n
+              (digits, exp) = floatToDigits 10 absn
+              (_, fracDigits') = splitAt exp digits
+              -- fracDigits' is [] if exp is a nonzero whole number
+              fracDigits = if fracDigits' == [0] then [] else fracDigits'
+          in (if n < 0 then "-" else "")
+                <> text (TL.pack . pp_num_sep' True $ show (truncate absn))
+                <> (if null fracDigits
+                    then ""
+                    else "."
+                         <> text (TL.pack . pp_num_sep' False $
+                             replicate (negate exp) '0' -- zeroes after decimal
+                             ++ concatMap show fracDigits))
 
 -- Simple template (one arg).
 -- NB: This does not perform escaping of pipes (i.e. replacing them with
@@ -148,24 +169,32 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "kill_ruler"            -> "Ruler dies"
             "remove_cardinal"       -> "Lose a cardinal"
             -- Gain/lose
-            "add_adm_power" -> gain Nothing True (Just "adm") "administrative power" stmt
-            "add_army_tradition" -> gain Nothing True (Just "army tradition") "army tradition" stmt
-            "add_base_tax" -> gain Nothing False (Just "base tax") "base tax" stmt
-            "add_dip_power" -> gain Nothing True (Just "dip") "diplomatic power" stmt
-            "add_heir_claim" -> gain (Just "Heir") True Nothing "claim strength" stmt
-            "add_imperial_influence" -> gain Nothing False (Just "imperial authority") "imperial authority" stmt
-            "add_inflation" -> gain Nothing False (Just "inflation") "inflation" stmt
-            "add_legitimacy" -> gain Nothing False (Just "legitimacy") "legitimacy" stmt
-            "add_local_autonomy" -> gain Nothing False (Just "local autonomy") "local autonomy" stmt
+            -- Plain numbers
+            "add_adm_power"         -> gain Plain Nothing True (Just "adm") "administrative power" stmt
+            "add_army_tradition"    -> gain Plain Nothing True (Just "army tradition") "army tradition" stmt
+            "add_base_tax"          -> gain Plain Nothing True (Just "base tax") "base tax" stmt
+            "add_base_production"   -> gain Plain Nothing True (Just "base production") "base production" stmt
+            "add_base_manpower"     -> gain Plain Nothing True (Just "manpower") "base manpower" stmt
+            "add_dip_power"         -> gain Plain Nothing True (Just "dip") "diplomatic power" stmt
+            "add_heir_claim"        -> gain Plain (Just "Heir") True Nothing "claim strength" stmt
+            "add_imperial_influence" -> gain Plain Nothing False (Just "imperial authority") "imperial authority" stmt
+            "add_legitimacy"        -> gain Plain Nothing True (Just "legitimacy") "legitimacy" stmt
+            "add_mil_power"         -> gain Plain Nothing True (Just "mil") "military power" stmt
+            "add_prestige"          -> gain Plain Nothing True (Just "prestige") "prestige" stmt
+            "add_stability"         -> gain Plain Nothing True (Just "stability") "stability" stmt
+            "add_war_exhaustion"    -> gain Plain Nothing False (Just "war exhaustion") "war exhaustion" stmt
+            "change_adm"            -> gain Plain (Just "Ruler") True (Just "adm") "administrative skill" stmt
+            "change_dip"            -> gain Plain (Just "Ruler") True (Just "dip") "diplomatic skill" stmt
+            "change_mil"            -> gain Plain (Just "Ruler") True (Just "mil") "military skill" stmt
+            "change_siege"          -> gain Plain Nothing True Nothing "siege progress" stmt
+            -- Reduced numbers
+            "add_republican_tradition" -> gain Reduced Nothing True (Just "republican tradition") "republican tradition" stmt
+            -- Percentages
+            "add_inflation"      -> gain Percent Nothing False (Just "inflation") "inflation" stmt
+            "add_local_autonomy" -> gain Percent Nothing False (Just "local autonomy") "local autonomy" stmt
+            "add_reform_desire"  -> gain Percent (Just "Catholicism") False (Just "reform desire") "reform desire" stmt
+            -- Special
             "add_manpower" -> gain_manpower stmt
-            "add_mil_power" -> gain Nothing True (Just "mil") "military power" stmt
-            "add_prestige" -> gain Nothing True (Just "prestige") "prestige" stmt
-            "add_stability" -> gain Nothing True (Just "stability") "stability" stmt
-            "add_war_exhaustion" -> gain Nothing False (Just "war exhaustion") "war exhaustion" stmt
-            "change_adm" -> gain (Just "Ruler") True (Just "adm") "administrative skill" stmt
-            "change_dip" -> gain (Just "Ruler") True (Just "dip") "diplomatic skill" stmt
-            "change_mil" -> gain (Just "Ruler") True (Just "mil") "military skill" stmt
-            "change_siege" -> gain Nothing True Nothing "siege progress" stmt
             -- Modifiers
             "add_country_modifier" -> add_modifier "country" l10n stmt
             "add_permanent_province_modifier" -> add_modifier "permanent province" l10n stmt
@@ -233,6 +262,9 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             -- RHS is a province ID
             "province_id"   -> simple_province l10n "Province is" stmt mempty
             "owns"          -> simple_province l10n "Owns" stmt mempty
+            -- RHS is an advisor ID (TODO: parse advisor files)
+            "advisor_exists"      -> simple_numeric "Advisor ID" stmt "exists"
+            "is_advisor_employed" -> simple_numeric "Advisor ID" stmt "is employed"
             -- Simple generic statements (typewriter face)
             "set_country_flag"  -> simple_generic_tt "Set country flag" stmt
             "set_province_flag" -> simple_generic_tt "Set province flag" stmt
@@ -304,6 +336,8 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "num_of_cardinals"          -> simple_numeric "Controls at least" stmt "cardinals"
             "num_of_mercenaries"        -> simple_numeric "Has at least" stmt "mercenary regiment(s)"
             "total_number_of_cardinals" -> simple_numeric "There are at least" stmt "cardinals"
+            -- Numeric statements, but the RHS is the number divided by 100
+            "republican_tradition"      -> numeric_percentage "Has at least" stmt "republican tradition"
             -- Statements that may be numeric or a tag
             "num_of_cities"             -> numeric_or_tag l10n "Owns" "many" stmt "cities"
             -- Percentage statements
@@ -329,6 +363,7 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "build_to_forcelimit"     -> build_to_forcelimit indent stmt
             "country_event"           -> trigger_event l10n "country" stmt
             "declare_war_with_cb"     -> declare_war_with_cb l10n stmt
+            "define_advisor"          -> define_advisor l10n stmt
             "define_ruler"            -> define_ruler stmt
             "had_country_flag"        -> had_flag "country" stmt
             "had_province_flag"       -> had_flag "province" stmt
@@ -350,7 +385,7 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             _ -> if isTag label
                  then case rhs of
                     CompoundRhs scr ->
-                        flag l10n (HM.lookupDefault label label l10n)
+                        flag l10n label
                         <> ":"
                         <> line <> pp_script (succ indent) l10n scr
                     _ -> defaultdoc
@@ -509,15 +544,22 @@ generic_icon_or_country _ _ stmt = pre_statement stmt
 -- Numeric statement. Allow additional text on both sides.
 simple_numeric :: Text -> GenericStatement -> Text -> Doc
 simple_numeric premsg (Statement _ rhs) postmsg
-    = let n = case rhs of
-                IntRhs n' -> fromIntegral n'
-                FloatRhs n' -> n'
-      in hsep
-            [strictText premsg
-            ,pp_float n
-            ,strictText postmsg
-            ]
+    | Just n <- floatRhs rhs = simple_numeric' premsg n postmsg
 simple_numeric _ stmt _ = pre_statement stmt
+
+-- Numeric statement, but the RHS is the number divided by 100. For example,
+-- republican tradition does this. NB: NOT for percentages.
+numeric_percentage :: Text -> GenericStatement -> Text -> Doc
+numeric_percentage premsg (Statement _ rhs) postmsg
+    | Just n <- floatRhs rhs = simple_numeric' premsg (n*100) postmsg
+numeric_percentage _ stmt _ = pre_statement stmt
+
+simple_numeric' :: Text -> Double -> Text -> Doc
+simple_numeric' premsg n postmsg
+    = hsep [strictText premsg
+           ,pp_float n
+           ,strictText postmsg
+           ]
 
 numeric_or_tag :: L10n -> Text -> Text -> GenericStatement -> Text -> Doc
 numeric_or_tag l10n pre quant (Statement _ rhs) post
@@ -677,19 +719,29 @@ add_years_of_income stmt
             ,"of", "income"
             ]
 
+data NumType         -- Treat 1 as:
+    = Plain          -- 1
+    | Reduced        -- 100
+    | Percent        -- 1%
+    | ReducedPercent -- 100%
+    deriving (Show, Eq, Ord)
+
 -- "Gain" or "Lose" simple numbers, e.g. army tradition.
+-- First Bool is whether to treat the quantity as a percentage.
 -- First text argument is the icon key (or Nothing if none available).
 -- Second text argument is text to show after it.
--- Bool is whether a gain is good.
-gain :: Maybe Text -> Bool -> Maybe Text -> Text -> GenericStatement -> Doc
-gain mwho good iconkey what stmt@(Statement _ rhs) =
+-- Second Bool is whether a gain is good.
+gain :: NumType -> Maybe Text -> Bool -> Maybe Text -> Text -> GenericStatement -> Doc
+gain numtype mwho good iconkey what stmt@(Statement _ rhs) =
     if isJust mhowmuch then hsep $
         (if know_who then [strictText who] else [])
         ++
         [gain_or_lose]
         ++ (if isJust iconkey then [icon (fromJust iconkey)] else [])
         ++
-        [pp_hl_num good pp_num_sep howmuch
+        [(if numtype `elem` [Percent, ReducedPercent] then pp_hl_pc else pp_hl_num)
+            good pp_num_sep
+            (if numtype `elem` [Reduced, ReducedPercent] then howmuch * 100 else howmuch)
         ,strictText what
         ]
     else pre_statement stmt
@@ -1034,7 +1086,7 @@ add_casus_belli l10n direct stmt@(Statement _ (CompoundRhs scr))
                   months = fromJust (acb_months acb)
               in if has_target && has_type
                  then hsep $
-                       (if direct then
+                       (if not direct then
                             ["Gain"
                             ,dquotes (strictText type_loc)
                             ,"casus belli against"
@@ -1074,6 +1126,98 @@ random indent l10n stmt@(Statement _ (CompoundRhs scr))
                 (hsep [pp_float chance <> "%","chance of"])
                 (Statement undefined (CompoundRhs (front ++ tail back)))
 random _ _ stmt = pre_statement stmt
+
+data DefineAdvisor = DefineAdvisor
+    {   da_type :: Maybe Text
+    ,   da_type_loc :: Maybe Text
+    ,   da_name :: Maybe Text
+    ,   da_discount :: Maybe Bool
+    ,   da_location :: Maybe Int
+    ,   da_location_loc :: Maybe Text
+    ,   da_skill :: Maybe Int
+    }
+newDefineAdvisor = DefineAdvisor Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+
+define_advisor :: L10n -> GenericStatement -> Doc
+define_advisor l10n stmt@(Statement _ (CompoundRhs scr))
+    = pp_define_advisor $ foldl' addLine newDefineAdvisor scr where
+        addLine :: DefineAdvisor -> GenericStatement -> DefineAdvisor
+        addLine da stmt@(Statement (GenericLhs lhs) rhs) = case T.map toLower lhs of
+            "type" ->
+                let mthe_type = case rhs of
+                        GenericRhs a_type -> Just a_type
+                        StringRhs a_type -> Just a_type
+                        _ -> Nothing
+                in da { da_type = mthe_type
+                      , da_type_loc = flip HM.lookup l10n =<< mthe_type }
+            "name" ->
+                let mthe_name = case rhs of
+                        GenericRhs a_name -> Just a_name
+                        StringRhs a_name -> Just a_name
+                        _ -> Nothing
+                in da { da_name = mthe_name }
+            "discount" ->
+                let yn = case rhs of
+                        GenericRhs yn' -> Just yn'
+                        StringRhs yn' -> Just yn'
+                        _ -> Nothing
+                in if yn == Just "yes" then da { da_discount = Just True }
+                   else if yn == Just "no" then da { da_discount = Just False }
+                   else da
+            "location" ->
+                let location_code = case rhs of
+                        IntRhs code -> Just code
+                        -- Province ID isn't supposed to be float, but it's
+                        -- parsed that way.
+                        FloatRhs code -> Just $ round code
+                        _ -> Nothing
+                    location_loc = flip HM.lookup l10n . ("PROV" <>) . T.pack . show =<< location_code
+                in da { da_location = location_code
+                      , da_location_loc = location_loc }
+            "skill" -> da { da_skill = round `fmap` (floatRhs rhs::Maybe Double) }
+        pp_define_advisor :: DefineAdvisor -> Doc
+        pp_define_advisor da =
+            let has_type = isJust (da_type da)
+                thetype = fromJust (da_type da)
+                has_type_loc = isJust (da_type_loc da)
+                type_loc = fromJust (da_type_loc da)
+                has_name = isJust (da_name da)
+                name = fromJust (da_name da)
+                has_discount = isJust (da_discount da)
+                discount = fromJust (da_discount da)
+                has_location = isJust (da_location da)
+                location = fromJust (da_location da)
+                has_location_loc = isJust (da_location_loc da)
+                location_loc = fromJust (da_location_loc da)
+                has_skill = isJust (da_skill da)
+                skill = fromJust (da_skill da)
+            in if has_type && has_skill then hsep $
+                ["Gain skill"
+                ,PP.int skill
+                ,strictText $
+                    if has_type_loc
+                        then type_loc
+                        else thetype
+                ,"advisor"
+                ]
+                ++
+                (if has_name
+                    then ["named", strictText name]
+                    else [])
+                ++
+                (if has_location
+                    then ["in",
+                          if has_location_loc
+                            then strictText location_loc
+                            else text . TL.pack . show $ location]
+                    else [])
+                ++
+                (if has_discount
+                    then [if discount
+                            then "(50% cheaper than normal to employ)"
+                            else "(at normal salary)"]
+                    else [])
+             else pre_statement stmt
 
 data DefineRuler = DefineRuler
     {   dr_name :: Maybe Text
@@ -1201,7 +1345,7 @@ had_flag category stmt@(Statement _ (CompoundRhs scr))
                 StringRhs flagname -> dr { hf_flag = Just flagname }
                 _ -> dr
             "days" -> dr { hf_days = floatRhs rhs }
-            _ -> trace ("unknown had_flag line: " ++ show stmt) dr
+            _ -> dr
         pp_had_flag :: HadFlag -> Doc
         pp_had_flag dr
             = if isJust (hf_flag dr) && isJust (hf_days dr)

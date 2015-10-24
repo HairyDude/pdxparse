@@ -25,18 +25,20 @@ import Abstract
 -- intermediate structure. Maybe values don't need to be present in the
 -- settings file.
 data SettingsInput = SettingsInput {
-        steamDriveI :: Maybe String
-    ,   steamDirI   :: Maybe FilePath
-    ,   steamAppsI  :: Maybe FilePath
-    ,   gameI       :: String
-    ,   languageI   :: String
+        steamDriveI  :: Maybe String
+    ,   steamDirI    :: Maybe FilePath
+    ,   steamAppsI   :: Maybe FilePath
+    ,   gameI        :: String
+    ,   languageI    :: String
+    ,   gameVersionI :: String
     } deriving (Show)
 
 data Settings = Settings {
-        steamDir   :: FilePath
-    ,   steamApps  :: FilePath
-    ,   game       :: String
-    ,   language   :: String
+        steamDir    :: FilePath
+    ,   steamApps   :: FilePath
+    ,   game        :: String
+    ,   language    :: String
+    ,   gameVersion :: String
     } deriving (Show)
 
 instance FromJSON SettingsInput where
@@ -49,6 +51,7 @@ instance FromJSON SettingsInput where
                             <*> liftM (fmap T.unpack) (o' .:? "steam_apps")
                             <*> liftM T.unpack (o' .: "game")
                             <*> liftM T.unpack (o' .: "language")
+                            <*> liftM T.unpack (o' .: "version")
             _ -> fail "bad settings file"
 
 data Platform
@@ -95,7 +98,8 @@ readSettings = do
             return Settings { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
                             , game = gameI settings
-                            , language = languageI settings}
+                            , language = languageI settings
+                            , gameVersion = gameVersionI settings}
         Left exc -> do
             hPutStrLn stderr $ "Couldn't parse settings: " ++ show exc
             exitFailure

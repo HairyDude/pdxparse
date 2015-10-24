@@ -22,3 +22,6 @@ settings:
 
     # Language to extract in.
     language: "english"
+
+    # Game version (major patch number).
+    version: "1.13"
