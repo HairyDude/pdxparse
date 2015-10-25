@@ -2,11 +2,15 @@
 module Settings (
         Settings (..)
     ,   readSettings
+    ,   module SettingsTypes
     ) where
 
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
+
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HM
 
 import Data.Yaml
 
@@ -21,6 +25,8 @@ import System.FilePath
 import Control.Monad
 
 import Abstract
+import Localization
+import SettingsTypes
 
 -- intermediate structure. Maybe values don't need to be present in the
 -- settings file.
@@ -32,14 +38,7 @@ data SettingsInput = SettingsInput {
     ,   languageI    :: String
     ,   gameVersionI :: String
     } deriving (Show)
-
-data Settings = Settings {
-        steamDir    :: FilePath
-    ,   steamApps   :: FilePath
-    ,   game        :: String
-    ,   language    :: String
-    ,   gameVersion :: String
-    } deriving (Show)
+-- Settings is defined in SettingsTypes
 
 instance FromJSON SettingsInput where
     parseJSON (Object o) = do
@@ -74,7 +73,7 @@ platform = case System.Info.os of
         else Unknown
 {-# INLINE platform #-}
 
--- | Read the settings file. If we can't, abort.
+-- | Read the settings and localization files. If we can't, abort.
 readSettings :: IO Settings
 readSettings = do
     result <- decodeFileEither "settings.yml"
@@ -89,17 +88,29 @@ readSettings = do
                     MacOS -> do
                         home <- getHomeDirectory
                         return $ home </> "Library/Application Support"
+                    -- TODO: allow user to specify drive only.
                     WindowsXP -> return $ maybe "C" id (steamDriveI settings) ++ ":"
                                       </> maybe "Program Files" id (steamDirI settings)
                     Windows -> return $ maybe "C" id (steamDriveI settings) ++ ":"
                                       </> maybe "Program Files (x86)" id (steamDirI settings)
                     Unknown -> fail $ "Unknown platform: " ++ System.Info.os
             let steamAppsCanonicalized = maybe "Steam/steamapps/common" id (steamAppsI settings)
-            return Settings { steamDir = steamDirCanonicalized
+                provisionalSettings = Settings
+                            { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
                             , game = gameI settings
                             , language = languageI settings
-                            , gameVersion = gameVersionI settings}
+                            , gameVersion = T.pack (gameVersionI settings)
+                            , gameL10n = undefined
+                            , l10n = undefined
+                            , currentFile = Nothing
+                            , currentIndent = Nothing }
+            game_l10n <- readL10n provisionalSettings
+            l10n <- -- TODO: internationalize this
+                    return HM.empty
+            return provisionalSettings
+                    { gameL10n = game_l10n
+                    , l10n = l10n }
         Left exc -> do
             hPutStrLn stderr $ "Couldn't parse settings: " ++ show exc
             exitFailure

@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Policies where
 
+import Control.Monad.Reader
+
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -8,7 +10,7 @@ import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>))
 import qualified Text.PrettyPrint.Leijen.Text as PP
 
 import Abstract
-import Localization (L10n)
+import SettingsTypes
 
-processPolicy :: Text -> FilePath -> L10n -> GenericStatement -> Either Text Doc
-processPolicy _ _ _ _ = Left "not implemented"
+processPolicy :: GenericStatement -> PP (Either Text Doc)
+processPolicy _ = return $ Left "not implemented"

@@ -3,12 +3,14 @@ module Common where
 
 import Debug.Trace
 
+import Control.Applicative
+import Control.Monad.Reader
+
 import Data.Char
 import Data.List
 import Data.Maybe
 import Data.Monoid
 import Data.String
-import Control.Applicative
 
 import Numeric (floatToDigits)
 
@@ -40,12 +42,15 @@ isPronoun s = T.map toLower s `S.member` pronouns where
         ,"controller"
         ]
 
-pp_script :: Int -> L10n -> GenericScript -> Doc
-pp_script indent l10n script
-    = hcat . punctuate line
-        . map ((mconcat (replicate indent "*" ++ [" "]) <>)
-                . pp_statement' indent l10n
-              ) $ script
+-- Define currentIndent before calling this.
+pp_script :: GenericScript -> PP Doc
+pp_script script = do
+    l10n <- asks gameL10n
+    indent <- fromJust <$> asks currentIndent
+    statements_pp'd <- mapM pp_statement' script
+    return . hcat . punctuate line
+        . map (mconcat (replicate indent "*" ++ [" "]) <>)
+        $ statements_pp'd
 
 -- Pretty-print a number, adding wiki formatting:
 -- * {{green}} if good
@@ -122,9 +127,10 @@ template :: Text -> Doc -> Doc
 template name content = hcat ["{{", strictText name, "|", content, "}}"]
 
 -- Emit flag template if the argument is a tag.
-flag :: L10n -> Text -> Doc
-flag l10n name =
-    if isTag name
+flag :: Text -> PP Doc
+flag name = do
+    l10n <- asks gameL10n
+    return $ if isTag name
         then template "flag" (strictText $ HM.lookupDefault name name l10n)
         else strictText name
 
@@ -152,22 +158,22 @@ pre_statement stmt = "<pre>" <> genericStatement2doc stmt <> "</pre>"
 -- Most statements are expected to be of a particular form. If they're not, we
 -- just echo the statement instead of failing. This is also what we do with
 -- unrecognized statements.
-pp_statement :: L10n -> GenericStatement -> Doc
-pp_statement = pp_statement' 1
+pp_statement :: GenericStatement -> PP Doc
+pp_statement = indentUp . pp_statement'
 
 -- Pretty-print a statement, preceding it with the given number of bullets.
-pp_statement' :: Int -> L10n -> GenericStatement -> Doc
-pp_statement' indent l10n stmt@(Statement lhs rhs) =
+pp_statement' :: GenericStatement -> PP Doc
+pp_statement' stmt@(Statement lhs rhs) =
     let defaultdoc = pre_statement stmt
-        compound = generic_compound defaultdoc indent l10n
+        compound = generic_compound defaultdoc
         -- not computed if not needed, thanks to laziness
     in case lhs of
         GenericLhs label -> case label of
             -- Statements where RHS is irrelevant (usually "yes")
-            "add_cardinal"          -> "Gain a cardinal"
-            "kill_heir"             -> "Heir dies"
-            "kill_ruler"            -> "Ruler dies"
-            "remove_cardinal"       -> "Lose a cardinal"
+            "add_cardinal"          -> return "Gain a cardinal"
+            "kill_heir"             -> return "Heir dies"
+            "kill_ruler"            -> return "Ruler dies"
+            "remove_cardinal"       -> return "Lose a cardinal"
             -- Gain/lose
             -- Plain numbers
             "add_adm_power"         -> gain Plain Nothing True (Just "adm") "administrative power" stmt
@@ -196,14 +202,14 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             -- Special
             "add_manpower" -> gain_manpower stmt
             -- Modifiers
-            "add_country_modifier" -> add_modifier "country" l10n stmt
-            "add_permanent_province_modifier" -> add_modifier "permanent province" l10n stmt
-            "add_province_modifier" -> add_modifier "province" l10n stmt
-            "add_ruler_modifier" -> add_modifier "ruler" l10n stmt
-            "has_country_modifier" -> has_modifier "country" l10n stmt
-            "has_province_modifier" -> has_modifier "province" l10n stmt
-            "remove_country_modifier" -> remove_modifier "country" l10n stmt
-            "remove_province_modifier" -> remove_modifier "province" l10n stmt
+            "add_country_modifier" -> add_modifier "country" stmt
+            "add_permanent_province_modifier" -> add_modifier "permanent province" stmt
+            "add_province_modifier" -> add_modifier "province" stmt
+            "add_ruler_modifier" -> add_modifier "ruler" stmt
+            "has_country_modifier" -> has_modifier "country" stmt
+            "has_province_modifier" -> has_modifier "province" stmt
+            "remove_country_modifier" -> remove_modifier "country" stmt
+            "remove_province_modifier" -> remove_modifier "province" stmt
             -- Simple compound statements
             -- Note that "any" can mean "all" or "one or more" depending on context.
             "AND" -> compound "All of" stmt
@@ -247,21 +253,21 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "random_owned_province"     -> compound "One random owned province" stmt
             "random_province"           -> compound "One random province" stmt
             -- Random
-            "random" -> random indent l10n stmt
+            "random" -> random stmt
             -- Simple generic statements (RHS is a localizable atom)
-            "continent"         -> simple_generic l10n "Continent is" stmt mempty
-            "culture"           -> simple_generic l10n "Culture is" stmt mempty
-            "culture_group"     -> simple_generic l10n "Culture is in" stmt "culture group"
-            "government"        -> simple_generic l10n "Government is" stmt mempty
-            "change_government" -> simple_generic l10n "Change government to" stmt mempty
-            "primary_culture"   -> simple_generic l10n "Primary culture is" stmt mempty
-            "region"            -> simple_generic l10n "Is in region" stmt mempty
-            "kill_advisor"      -> simple_generic l10n mempty stmt "dies"
-            "remove_advisor"    -> simple_generic l10n mempty stmt "leaves the country's court"
-            "infantry"          -> simple_generic l10n "An infantry regiment spawns in" stmt mempty
+            "continent"         -> simple_generic "Continent is" stmt mempty
+            "culture"           -> simple_generic "Culture is" stmt mempty
+            "culture_group"     -> simple_generic "Culture is in" stmt "culture group"
+            "government"        -> simple_generic "Government is" stmt mempty
+            "change_government" -> simple_generic "Change government to" stmt mempty
+            "primary_culture"   -> simple_generic "Primary culture is" stmt mempty
+            "region"            -> simple_generic "Is in region" stmt mempty
+            "kill_advisor"      -> simple_generic mempty stmt "dies"
+            "remove_advisor"    -> simple_generic mempty stmt "leaves the country's court"
+            "infantry"          -> simple_generic "An infantry regiment spawns in" stmt mempty
             -- RHS is a province ID
-            "province_id"   -> simple_province l10n "Province is" stmt mempty
-            "owns"          -> simple_province l10n "Owns" stmt mempty
+            "province_id"   -> simple_province "Province is" stmt mempty
+            "owns"          -> simple_province "Owns" stmt mempty
             -- RHS is an advisor ID (TODO: parse advisor files)
             "advisor_exists"      -> simple_numeric "Advisor ID" stmt "exists"
             "is_advisor_employed" -> simple_numeric "Advisor ID" stmt "is employed"
@@ -275,36 +281,36 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "clr_country_flag"  -> simple_generic_tt "Clear country flag" stmt
             "clr_province_flag" -> simple_generic_tt "Clear province flag" stmt
             -- Simple generic statements with icon
-            "trade_goods"       -> generic_icon l10n "Produces" stmt
-            "advisor"           -> generic_icon l10n "Has" stmt
-            "create_advisor"    -> generic_icon l10n "Gain" stmt
-            "has_idea_group"    -> generic_icon l10n "Has activated" stmt
-            "change_trade_goods" -> generic_icon l10n "Change trade goods produced to" stmt
+            "trade_goods"       -> generic_icon "Produces" stmt
+            "advisor"           -> generic_icon "Has" stmt
+            "create_advisor"    -> generic_icon "Gain" stmt
+            "has_idea_group"    -> generic_icon "Has activated" stmt
+            "change_trade_goods" -> generic_icon "Change trade goods produced to" stmt
             -- Simple generic statements with flag
-            "cede_province"     -> generic_tag l10n (Just "Cede province to") stmt Nothing
-            "controlled_by"     -> generic_tag l10n (Just "Is controlled by") stmt Nothing
-            "defensive_war_with" -> generic_tag l10n (Just "Is in a defensive war against") stmt Nothing
-            "discover_country"  -> generic_tag l10n (Just "Discovered by") stmt Nothing
-            "add_claim"         -> generic_tag l10n Nothing stmt (Just "gains a claim")
-            "has_discovered"    -> generic_tag l10n (Just "Has discovered") stmt Nothing
-            "inherit"           -> generic_tag l10n (Just "Inherit") stmt Nothing
-            "is_core"           -> generic_tag l10n (Just "Is core of") stmt Nothing
-            "is_neighbor_of"    -> generic_tag l10n (Just "Neighbors") stmt Nothing
-            "remove_core"       -> generic_tag l10n Nothing stmt (Just "loses core")
-            "marriage_with"     -> generic_tag l10n (Just "Has a royal marriage with") stmt Nothing
-            "offensive_war_with" -> generic_tag l10n (Just "Is in an offensive war against") stmt Nothing
-            "owned_by"          -> generic_tag l10n (Just "Is owned by") stmt Nothing
-            "release"           -> generic_tag l10n (Just "Releases") stmt (Just "as a vassal")
-            "sieged_by"         -> generic_tag l10n (Just "Is under siege by") stmt Nothing
-            "tag"               -> generic_tag l10n (Just "Is") stmt Nothing
-            "war_with"          -> generic_tag l10n (Just "Is at war with") stmt Nothing
-            "white_peace"       -> generic_tag l10n (Just "Makes a white peace with") stmt Nothing
+            "cede_province"     -> generic_tag (Just "Cede province to") stmt Nothing
+            "controlled_by"     -> generic_tag (Just "Is controlled by") stmt Nothing
+            "defensive_war_with" -> generic_tag (Just "Is in a defensive war against") stmt Nothing
+            "discover_country"  -> generic_tag (Just "Discovered by") stmt Nothing
+            "add_claim"         -> generic_tag Nothing stmt (Just "gains a claim")
+            "has_discovered"    -> generic_tag (Just "Has discovered") stmt Nothing
+            "inherit"           -> generic_tag (Just "Inherit") stmt Nothing
+            "is_core"           -> generic_tag (Just "Is core of") stmt Nothing
+            "is_neighbor_of"    -> generic_tag (Just "Neighbors") stmt Nothing
+            "remove_core"       -> generic_tag Nothing stmt (Just "loses core")
+            "marriage_with"     -> generic_tag (Just "Has a royal marriage with") stmt Nothing
+            "offensive_war_with" -> generic_tag (Just "Is in an offensive war against") stmt Nothing
+            "owned_by"          -> generic_tag (Just "Is owned by") stmt Nothing
+            "release"           -> generic_tag (Just "Releases") stmt (Just "as a vassal")
+            "sieged_by"         -> generic_tag (Just "Is under siege by") stmt Nothing
+            "tag"               -> generic_tag (Just "Is") stmt Nothing
+            "war_with"          -> generic_tag (Just "Is at war with") stmt Nothing
+            "white_peace"       -> generic_tag (Just "Makes a white peace with") stmt Nothing
             -- Simple generic statements with flag or "yes"/"no"
-            "exists"            -> generic_tag_bool "Exists" "Does NOT exist" l10n Nothing stmt (Just "exists")
+            "exists"            -> generic_tag_bool "Exists" "Does NOT exist" Nothing stmt (Just "exists")
             -- Statements that may be an icon, a flag, or a pronoun (such as ROOT)
-            "religion"          -> generic_icon_or_country l10n "Religion is" stmt
-            "religion_group"    -> generic_icon_or_country l10n "Religion group is" stmt
-            "change_religion"   -> generic_icon_or_country l10n "Change religion to" stmt
+            "religion"          -> generic_icon_or_country "Religion is" stmt
+            "religion_group"    -> generic_icon_or_country "Religion group is" stmt
+            "change_religion"   -> generic_icon_or_country "Change religion to" stmt
             -- Boolean statements
             "ai"                    -> is Nothing "AI controlled" stmt
             "has_cardinal"          -> has "a cardinal" stmt
@@ -339,7 +345,7 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             -- Numeric statements, but the RHS is the number divided by 100
             "republican_tradition"      -> numeric_percentage "Has at least" stmt "republican tradition"
             -- Statements that may be numeric or a tag
-            "num_of_cities"             -> numeric_or_tag l10n "Owns" "many" stmt "cities"
+            "num_of_cities"             -> numeric_or_tag "Owns" "many" stmt "cities"
             -- Percentage statements
             "local_autonomy" -> simple_percentage "Has at least" stmt "local autonomy"
             -- Signed numeric statements
@@ -356,52 +362,58 @@ pp_statement' indent l10n stmt@(Statement lhs rhs) =
             "legitimacy" -> numeric_icon "Has at least" Nothing "legitimacy" stmt
             "war_exhaustion" -> numeric_icon "Has at least" Nothing "war exhaustion" stmt
             -- Complex statements
-            "add_casus_belli"         -> add_casus_belli l10n False stmt
+            "add_casus_belli"         -> add_casus_belli False stmt
             "add_faction_influence"   -> faction_influence stmt
-            "add_opinion"             -> opinion l10n "Add" stmt
+            "add_opinion"             -> opinion "Add" stmt
             "add_years_of_income"     -> add_years_of_income stmt
-            "build_to_forcelimit"     -> build_to_forcelimit indent stmt
-            "country_event"           -> trigger_event l10n "country" stmt
-            "declare_war_with_cb"     -> declare_war_with_cb l10n stmt
-            "define_advisor"          -> define_advisor l10n stmt
+            "build_to_forcelimit"     -> build_to_forcelimit stmt
+            "country_event"           -> trigger_event "country" stmt
+            "declare_war_with_cb"     -> declare_war_with_cb stmt
+            "define_advisor"          -> define_advisor stmt
             "define_ruler"            -> define_ruler stmt
             "had_country_flag"        -> had_flag "country" stmt
             "had_province_flag"       -> had_flag "province" stmt
-            "has_opinion_modifier"    -> opinion l10n "Has" stmt
-            "province_event"          -> trigger_event l10n "province" stmt
-            "reverse_add_casus_belli" -> add_casus_belli l10n False stmt
+            "has_opinion_modifier"    -> opinion "Has" stmt
+            "province_event"          -> trigger_event "province" stmt
+            "reverse_add_casus_belli" -> add_casus_belli False stmt
             -- Rebels
-            "create_revolt" -> spawn_rebels l10n Nothing stmt
+            "create_revolt" -> spawn_rebels Nothing stmt
             "has_spawned_rebels" -> has_spawned_rebels stmt
-            "likely_rebels" -> can_spawn_rebels l10n stmt
-            "nationalist_rebels" -> spawn_rebels l10n (Just "Nationalist rebels") stmt
-            "spawn_rebels" -> spawn_rebels l10n Nothing stmt
+            "likely_rebels" -> can_spawn_rebels stmt
+            "nationalist_rebels" -> spawn_rebels (Just "Nationalist rebels") stmt
+            "spawn_rebels" -> spawn_rebels Nothing stmt
             -- Special
-            "add_core"          -> add_core l10n stmt
+            "add_core"          -> add_core stmt
             -- Ignored
-            "custom_tooltip" -> "(custom tooltip - delete this line)"
-            "tooltip" -> "(explanatory tooltip - delete this line)"
+            "custom_tooltip" -> return "(custom tooltip - delete this line)"
+            "tooltip" -> return "(explanatory tooltip - delete this line)"
             -- default
             _ -> if isTag label
                  then case rhs of
-                    CompoundRhs scr ->
-                        flag l10n label
-                        <> ":"
-                        <> line <> pp_script (succ indent) l10n scr
-                    _ -> defaultdoc
-                 else defaultdoc
-        IntLhs n -> case rhs of -- Treat as a province tag
-            CompoundRhs scr ->
-                let provN = T.pack (show n)
-                in hcat
-                    ["Province"
-                    ,space
-                    ,strictText (HM.lookupDefault ("Province " <> provN) ("PROV" <> provN) l10n)
-                    ,":"
-                    ,line
-                    ,pp_script (succ indent) l10n scr
-                    ]
-            _ -> defaultdoc
+                    CompoundRhs scr -> do
+                        lflag <- flag label
+                        script_pp'd <- indentUp (pp_script scr)
+                        return $
+                            lflag
+                            <> ":"
+                            <> line <> script_pp'd
+                    _ -> return defaultdoc
+                 else return defaultdoc
+        IntLhs n -> do
+            l10n <- asks gameL10n
+            case rhs of -- Treat as a province tag
+                CompoundRhs scr -> do
+                    let provN = T.pack (show n)
+                    script_pp'd <- pp_script scr
+                    return $ hcat
+                        ["Province"
+                        ,space
+                        ,strictText (HM.lookupDefault ("Province " <> provN) ("PROV" <> provN) l10n)
+                        ,":"
+                        ,line
+                        ,script_pp'd
+                        ]
+                _ -> return defaultdoc
 
 
 ------------------------------------------------------------------------
@@ -416,9 +428,9 @@ data MTTH = MTTH
         } deriving Show
 newMTTH = MTTH Nothing Nothing Nothing --[]
 addField mtth _ = mtth -- unrecognized
-pp_mtth :: L10n -> GenericScript -> Doc
-pp_mtth l10n scr
-    = pp_mtth $ foldl' addField newMTTH scr
+pp_mtth :: GenericScript -> PP Doc
+pp_mtth scr
+    = return . pp_mtth' $ foldl' addField newMTTH scr
     where
         addField mtth (Statement (GenericLhs "years") (IntRhs n))
             = mtth { years = Just n }
@@ -435,7 +447,7 @@ pp_mtth l10n scr
         addField mtth (Statement (GenericLhs "modifier") (CompoundRhs rhs))
         --            = addFactor mtth rhs
             = mtth -- TODO
-        pp_mtth mtth@(MTTH years months days) =
+        pp_mtth' mtth@(MTTH years months days) =
             let hasYears = isJust years
                 hasMonths = isJust months
                 hasDays = isJust days
@@ -463,44 +475,47 @@ pp_mtth l10n scr
 -- General statement handlers --
 --------------------------------
 
-generic_compound_doc :: Doc -> Int -> L10n -> Doc -> GenericStatement -> Doc
-generic_compound_doc _ indent l10n header (Statement _ (CompoundRhs scr))
-        = hcat
+generic_compound_doc :: Doc -> Doc -> GenericStatement -> PP Doc
+generic_compound_doc _ header (Statement _ (CompoundRhs scr))
+    = do
+        script_pp'd <- pp_script scr
+        return $ hcat
             [header, ":"
             ,line
-            ,pp_script (succ indent) l10n scr
+            ,script_pp'd
             ]
-generic_compound_doc defaultdoc _ _ _ _ = defaultdoc
+generic_compound_doc defaultdoc _ _ = return defaultdoc
 
-generic_compound :: Doc -> Int -> L10n -> Text -> GenericStatement -> Doc
-generic_compound defaultdoc indent l10n header stmt
-        = generic_compound_doc defaultdoc indent l10n (strictText header) stmt
+generic_compound :: Doc -> Text -> GenericStatement -> PP Doc
+generic_compound defaultdoc header stmt
+        = generic_compound_doc defaultdoc (strictText header) stmt
 
 -- Statement with generic on both sides translating to the form
 --  <string> <l10n value>
-simple_generic :: L10n -> Text -> GenericStatement -> Text -> Doc
-simple_generic l10n premsg (Statement _ (GenericRhs name)) postmsg
-    = hsep
+simple_generic :: Text -> GenericStatement -> Text -> PP Doc
+simple_generic premsg (Statement _ (GenericRhs name)) postmsg
+    = (\name_loc -> hsep
         [strictText premsg
-        ,strictText $ HM.lookupDefault name name l10n
+        ,strictText name_loc
         ,strictText postmsg
-        ]
-simple_generic _ _ stmt _ = pre_statement stmt
+        ])
+      <$> getGameL10n name
+simple_generic _ stmt _ = return $ pre_statement stmt
 
-simple_province :: L10n -> Text -> GenericStatement -> Text -> Doc
-simple_province l10n premsg (Statement lhs rhs) postmsg
+simple_province :: Text -> GenericStatement -> Text -> PP Doc
+simple_province premsg (Statement lhs rhs) postmsg
     = let loc_key = "PROV" <> case rhs of
             IntRhs id -> show id
             -- Province IDs shouldn't parse as float, but unfortunately they
             -- do. Just ignore the fractional part.
             FloatRhs id -> show (round id)
-      in simple_generic l10n premsg (Statement lhs (GenericRhs (T.pack loc_key))) postmsg
+      in simple_generic premsg (Statement lhs (GenericRhs (T.pack loc_key))) postmsg
 
 -- As simple_generic but definitely no l10n. Set the RHS in typewriter face
-simple_generic_tt :: Text -> GenericStatement -> Doc
+simple_generic_tt :: Text -> GenericStatement -> PP Doc
 simple_generic_tt premsg (Statement _ (GenericRhs name))
-    = mconcat [strictText $ premsg, space, "<tt>", strictText name, "</tt>"]
-simple_generic_tt _ stmt = pre_statement stmt
+    = return $ mconcat [strictText $ premsg, space, "<tt>", strictText name, "</tt>"]
+simple_generic_tt _ stmt = return $ pre_statement stmt
 
 -- Table of script atom -> icon key. Only ones that are different are listed.
 scriptIconTable :: HashMap Text Text
@@ -519,147 +534,154 @@ scriptIconTable = HM.fromList
     ]
 
 -- As simple_generic but also add an appropriate icon before the value.
-generic_icon :: L10n -> Text -> GenericStatement -> Doc
-generic_icon l10n premsg (Statement (GenericLhs category) (GenericRhs name))
-    = hsep
+generic_icon :: Text -> GenericStatement -> PP Doc
+generic_icon premsg (Statement (GenericLhs category) (GenericRhs name))
+    = (\name_loc -> hsep
         [strictText $ premsg
         ,icon (HM.lookupDefault
                 -- If nothing specified above, at least change underscores to spaces
                 (T.map (\c -> if c == '_' then ' ' else c) name)
                 name scriptIconTable)
-        ,strictText $ HM.lookupDefault name name l10n]
-generic_icon _ _ stmt = pre_statement stmt
+        ,strictText name_loc])
+      <$> getGameL10n name
+generic_icon _ stmt = return $ pre_statement stmt
 
 -- As generic_icon but say "same as <foo>" if foo refers to a country
 -- (in which case, add a flag if it's a specific country).
-generic_icon_or_country :: L10n -> Text -> GenericStatement -> Doc
-generic_icon_or_country l10n premsg (Statement (GenericLhs category) (GenericRhs name))
-    = hsep $ strictText premsg :
+generic_icon_or_country :: Text -> GenericStatement -> PP Doc
+generic_icon_or_country premsg (Statement (GenericLhs category) (GenericRhs name)) = do
+    nflag <- flag name -- laziness means this might not get evaluated
+    name_loc <- getGameL10n name
+    return . hsep $ strictText premsg :
           if isTag name || isPronoun name
-            then ["same", "as", flag l10n name]
+            then ["same", "as", nflag]
             else [icon (HM.lookupDefault name name scriptIconTable)
-                 ,strictText $ HM.lookupDefault name name l10n]
-generic_icon_or_country _ _ stmt = pre_statement stmt
+                 ,strictText name_loc]
+generic_icon_or_country _ stmt = return $ pre_statement stmt
 
 -- Numeric statement. Allow additional text on both sides.
-simple_numeric :: Text -> GenericStatement -> Text -> Doc
+simple_numeric :: Text -> GenericStatement -> Text -> PP Doc
 simple_numeric premsg (Statement _ rhs) postmsg
     | Just n <- floatRhs rhs = simple_numeric' premsg n postmsg
-simple_numeric _ stmt _ = pre_statement stmt
+simple_numeric _ stmt _ = return $ pre_statement stmt
 
 -- Numeric statement, but the RHS is the number divided by 100. For example,
 -- republican tradition does this. NB: NOT for percentages.
-numeric_percentage :: Text -> GenericStatement -> Text -> Doc
+numeric_percentage :: Text -> GenericStatement -> Text -> PP Doc
 numeric_percentage premsg (Statement _ rhs) postmsg
     | Just n <- floatRhs rhs = simple_numeric' premsg (n*100) postmsg
-numeric_percentage _ stmt _ = pre_statement stmt
+numeric_percentage _ stmt _ = return $ pre_statement stmt
 
-simple_numeric' :: Text -> Double -> Text -> Doc
+simple_numeric' :: Text -> Double -> Text -> PP Doc
 simple_numeric' premsg n postmsg
-    = hsep [strictText premsg
-           ,pp_float n
-           ,strictText postmsg
-           ]
+    = return $ hsep
+        [strictText premsg
+        ,pp_float n
+        ,strictText postmsg
+        ]
 
-numeric_or_tag :: L10n -> Text -> Text -> GenericStatement -> Text -> Doc
-numeric_or_tag l10n pre quant (Statement _ rhs) post
-    = hsep [strictText pre, case rhs of
-                IntRhs n -> hsep ["at least", PP.int n, strictText post]
-                FloatRhs n -> hsep ["at least", pp_float n, strictText post]
-                GenericRhs t -> -- assume it's a tag
-                            hsep ["at least as", strictText quant, strictText post, "as", flag l10n t]
-           ]
+numeric_or_tag :: Text -> Text -> GenericStatement -> Text -> PP Doc
+numeric_or_tag pre quant (Statement _ rhs) post = do
+    rest <- case rhs of
+                IntRhs n -> return $ hsep ["at least", PP.int n, strictText post]
+                FloatRhs n -> return $ hsep ["at least", pp_float n, strictText post]
+                GenericRhs t -> do -- assume it's a tag
+                    tflag <- flag t
+                    return $ hsep ["at least as", strictText quant, strictText post, "as", tflag]
+    return $ hsep [strictText pre, rest]
 
 -- Percentage
-simple_percentage :: Text -> GenericStatement -> Text -> Doc
+simple_percentage :: Text -> GenericStatement -> Text -> PP Doc
 simple_percentage premsg (Statement _ rhs) postmsg
     = let n = case rhs of
                 IntRhs n' -> fromIntegral n'
                 FloatRhs n' -> n'
-      in hsep
+      in return $ hsep
             [strictText premsg
             ,pp_float n <> "%"
             ,strictText postmsg
             ]
-simple_percentage _ stmt _ = pre_statement stmt
+simple_percentage _ stmt _ = return $ pre_statement stmt
 
-simple_numeric_signed :: Text -> GenericStatement -> Text -> Doc
+simple_numeric_signed :: Text -> GenericStatement -> Text -> PP Doc
 simple_numeric_signed premsg (Statement _ rhs) postmsg
     = let n = case rhs of
                 IntRhs n' -> fromIntegral n'
                 FloatRhs n' -> n'
-      in hsep
+      in return $ hsep
             [strictText premsg
             ,pp_signed pp_float n
             ,strictText postmsg
             ]
 
 -- "Has <something>"
-has :: Text -> GenericStatement -> Doc
+has :: Text -> GenericStatement -> PP Doc
 has what (Statement _ (GenericRhs yn)) | yn `elem` ["yes","no"]
-    = hsep
+    = return $ hsep
         [if yn == "yes" then "Has" else "Does NOT have"
         ,strictText what
         ]
-has _ stmt = pre_statement stmt
+has _ stmt = return $ pre_statement stmt
 
 -- "Is <something>" (or "<Someone> is <something>")
-is :: Maybe Text -> Text -> GenericStatement -> Doc
+is :: Maybe Text -> Text -> GenericStatement -> PP Doc
 is who what (Statement _ (GenericRhs yn)) | yn `elem` ["yes","no"]
     = let know_who = isJust who
           no = yn == "no"
-      in hsep $
+      in return . hsep $
             (if know_who
                 then [strictText (fromJust who), "is"]
                 else ["Is"]) ++
             (if no then ["NOT"] else []) ++
             [strictText what]
-is _ _ stmt = pre_statement stmt
+is _ _ stmt = return $ pre_statement stmt
 
 -- "Has been <something>" (or "<Someone> has been <something>")
-has_been :: Maybe Text -> Text -> GenericStatement -> Doc
+has_been :: Maybe Text -> Text -> GenericStatement -> PP Doc
 has_been who what (Statement _ (GenericRhs yn)) | yn `elem` ["yes","no"]
     = let know_who = isJust who
           no = yn == "no"
-      in hsep $
+      in return . hsep $
             (if know_who
                 then [strictText (fromJust who), "has"]
                 else ["Has"]) ++
             (if no then ["NOT"] else []) ++
             ["been", strictText what]
-has_been _ _ stmt = pre_statement stmt
+has_been _ _ stmt = return $ pre_statement stmt
 
 -- "Is female" (= yes) or "Is male" (= no)
 -- Better than "is NOT male" :)
-is_female :: GenericStatement -> Doc
+is_female :: GenericStatement -> PP Doc
 is_female (Statement _ (GenericRhs yn)) | yn `elem` ["yes","no"]
-    = hsep ["Ruler is"
-           ,if yn == "yes" then "female" else "male"
-           ]
-is_female stmt = pre_statement stmt
+    = return $ hsep
+        ["Ruler is"
+        ,if yn == "yes" then "female" else "male"
+        ]
+is_female stmt = return $ pre_statement stmt
 
 -- Generic statement referring to a country. Use a flag.
-generic_tag :: L10n -> Maybe Text -> GenericStatement -> Maybe Text -> Doc
-generic_tag l10n prefix (Statement _ (GenericRhs who)) suffix
-    = hsep $
+generic_tag :: Maybe Text -> GenericStatement -> Maybe Text -> PP Doc
+generic_tag prefix (Statement _ (GenericRhs who)) suffix = do
+    whoflag <- flag who
+    return . hsep $
         (maybe [] ((:[]) . strictText) prefix) ++
-        [flag l10n who] ++
+        [whoflag] ++
         (maybe [] ((:[]) . strictText) suffix)
-generic_tag _ _ stmt _ = pre_statement stmt
+generic_tag _ stmt _ = return $ pre_statement stmt
 
 -- Statement may have "yes"/"no" or a tag.
-generic_tag_bool :: Text -> Text -> L10n -> Maybe Text -> GenericStatement -> Maybe Text -> Doc
-generic_tag_bool y_text n_text _ _ (Statement _ (GenericRhs "yes")) _ = strictText y_text
-generic_tag_bool y_text n_text _ _ (Statement _ (GenericRhs "no"))  _ = strictText n_text
-generic_tag_bool _ _ l10n prefix stmt suffix = generic_tag l10n prefix stmt suffix
+generic_tag_bool :: Text -> Text -> Maybe Text -> GenericStatement -> Maybe Text -> PP Doc
+generic_tag_bool y_text n_text _ (Statement _ (GenericRhs "yes")) _ = return $ strictText y_text
+generic_tag_bool y_text n_text _ (Statement _ (GenericRhs "no"))  _ = return $ strictText n_text
+generic_tag_bool _ _ prefix stmt suffix = generic_tag prefix stmt suffix
 
-numeric_icon :: Text -> Maybe Text -> Text -> GenericStatement -> Doc
+numeric_icon :: Text -> Maybe Text -> Text -> GenericStatement -> PP Doc
 numeric_icon premsg micon what (Statement _ rhs)
     = let amt = case rhs of
             IntRhs n -> fromIntegral n
             FloatRhs n -> n
           the_icon = maybe what id micon
-      in hsep
+      in return $ hsep
             [strictText premsg
             ,icon the_icon
             ,pp_float amt
@@ -675,9 +697,9 @@ data FactionInfluence = FactionInfluence {
     ,   influence :: Maybe Double
     }
 newInfluence = FactionInfluence Nothing Nothing
-faction_influence :: GenericStatement -> Doc
+faction_influence :: GenericStatement -> PP Doc
 faction_influence stmt@(Statement _ (CompoundRhs scr))
-    = pp_influence $ foldl' addField newInfluence scr
+    = return . pp_influence $ foldl' addField newInfluence scr
     where
         pp_influence inf =
             if isJust (faction inf) && isJust (influence inf)
@@ -705,12 +727,12 @@ faction_influence stmt@(Statement _ (CompoundRhs scr))
         addField inf (Statement (GenericLhs "influence") (IntRhs amt)) = inf { influence = Just (fromIntegral amt) }
         addField inf _ = inf -- unknown statement
 
-add_years_of_income :: GenericStatement -> Doc
+add_years_of_income :: GenericStatement -> PP Doc
 add_years_of_income stmt
     | Statement _ (IntRhs n)   <- stmt = add_years_of_income' (fromIntegral n)
     | Statement _ (FloatRhs n) <- stmt = add_years_of_income' n
     where
-        add_years_of_income' howmuch = hsep
+        add_years_of_income' howmuch = return $ hsep
             [if howmuch < 0 then "Lose" else "Gain"
             ,icon "ducats"
             ,"ducats", "equal", "to"
@@ -727,12 +749,12 @@ data NumType         -- Treat 1 as:
     deriving (Show, Eq, Ord)
 
 -- "Gain" or "Lose" simple numbers, e.g. army tradition.
--- First Bool is whether to treat the quantity as a percentage.
+-- NumType determines how to treat the quantity (percentage or not, reduced or not).
 -- First text argument is the icon key (or Nothing if none available).
 -- Second text argument is text to show after it.
 -- Second Bool is whether a gain is good.
-gain :: NumType -> Maybe Text -> Bool -> Maybe Text -> Text -> GenericStatement -> Doc
-gain numtype mwho good iconkey what stmt@(Statement _ rhs) =
+gain :: NumType -> Maybe Text -> Bool -> Maybe Text -> Text -> GenericStatement -> PP Doc
+gain numtype mwho good iconkey what stmt@(Statement _ rhs) = return $
     if isJust mhowmuch then hsep $
         (if know_who then [strictText who] else [])
         ++
@@ -762,8 +784,8 @@ data AddModifier = AddModifier {
     } deriving Show
 newAddModifier = AddModifier Nothing Nothing
 
-add_modifier :: Text -> L10n -> GenericStatement -> Doc
-add_modifier kind l10n stmt@(Statement _ (CompoundRhs scr))
+add_modifier :: Text -> GenericStatement -> PP Doc
+add_modifier kind stmt@(Statement _ (CompoundRhs scr))
     = pp_add_modifier $ foldl' addLine newAddModifier scr
     where
         addLine :: AddModifier -> GenericStatement -> AddModifier 
@@ -771,15 +793,15 @@ add_modifier kind l10n stmt@(Statement _ (CompoundRhs scr))
         addLine apm (Statement (GenericLhs "name") (StringRhs name)) = apm { name = Just name }
         addLine apm (Statement (GenericLhs "duration") (FloatRhs duration)) = apm { duration = Just duration }
         addLine apm _ = apm -- e.g. hidden = yes
-        pp_add_modifier :: AddModifier -> Doc
+        pp_add_modifier :: AddModifier -> PP Doc
         pp_add_modifier apm
-            = if isJust (name apm) then
+            = if isJust (name apm) then do
                 let dur = fromJust (duration apm)
-                in hsep $
+                    key = fromJust (name apm)
+                name_loc <- getGameL10n key
+                return . hsep $
                     ["Add", strictText kind, "modifier"
-                    ,dquotes (strictText $
-                        let key = fromJust . name $ apm
-                        in  HM.lookupDefault key key l10n)
+                    ,dquotes (strictText name_loc)
                     ]
                     ++ if isJust (duration apm) then
                         if dur < 0 then ["indefinitely"] else
@@ -788,37 +810,40 @@ add_modifier kind l10n stmt@(Statement _ (CompoundRhs scr))
                         ,"days"
                         ]
                     else []
-              else pre_statement stmt
-add_modifier _ _ stmt = pre_statement stmt
+              else return $ pre_statement stmt
+add_modifier _ stmt = return $ pre_statement stmt
 
-has_modifier :: Text -> L10n -> GenericStatement -> Doc
-has_modifier kind l10n (Statement _ (GenericRhs label))
-    = hsep
+has_modifier :: Text -> GenericStatement -> PP Doc
+has_modifier kind (Statement _ (GenericRhs label))
+    = (\label_loc -> hsep
         ["Has", strictText kind, "modifier"
-        ,dquotes (strictText $ HM.lookupDefault label label l10n)
-        ]
-has_modifier _ _ stmt = pre_statement stmt
+        ,dquotes (strictText label_loc)
+        ])
+      <$> getGameL10n label
+has_modifier _ stmt = return $ pre_statement stmt
 
-remove_modifier :: Text -> L10n -> GenericStatement -> Doc
-remove_modifier kind l10n (Statement _ (GenericRhs label))
-    = hsep
+remove_modifier :: Text -> GenericStatement -> PP Doc
+remove_modifier kind (Statement _ (GenericRhs label))
+    = (\label_loc -> hsep
         ["Remove", strictText kind, "modifier"
-        ,dquotes (strictText $ HM.lookupDefault label label l10n)
-        ]
-remove_modifier _ _ stmt = pre_statement stmt
+        ,dquotes (strictText label_loc)
+        ])
+      <$> getGameL10n label
+remove_modifier _ stmt = return $ pre_statement stmt
 
 -- "add_core = <n>" in country scope means "Gain core on <localize PROVn>"
 -- "add_core = <tag>" in province scope means "<localize tag> gains core"
-add_core :: L10n -> GenericStatement -> Doc
-add_core l10n (Statement _ (GenericRhs tag)) -- tag
-    = hsep [flag l10n $ HM.lookupDefault tag tag l10n, "gains", "core"]
-add_core l10n (Statement _ (IntRhs num)) -- province
-    = hsep ["Gain", "core", "on", "province", strictText $ HM.lookupDefault provKey provKey l10n]
-    where provKey = "PROV" <> T.pack (show num)
-add_core l10n (Statement _ (FloatRhs num)) -- province
-    = hsep ["Gain", "core", "on", "province", strictText $ HM.lookupDefault provKey provKey l10n]
-    where provKey = "PROV" <> pp_float_t num
-add_core _ stmt = pre_statement stmt
+add_core :: GenericStatement -> PP Doc
+add_core (Statement _ (GenericRhs tag)) = do -- tag
+    tagflag <- flag tag
+    return $ hsep [tagflag, "gains", "core"]
+add_core (Statement _ (IntRhs num)) = do -- province
+    prov <- getGameL10n ("PROV" <> T.pack (show num))
+    return $ hsep ["Gain", "core", "on", "province", strictText prov]
+add_core (Statement _ (FloatRhs num)) = do -- province
+    prov <- getGameL10n ("PROV" <> T.pack (show num))
+    return $ hsep ["Gain", "core", "on", "province", strictText prov]
+add_core stmt = return $ pre_statement stmt
 
 -- Add an opinion modifier towards someone (for a number of years).
 data AddOpinion = AddOpinion {
@@ -828,8 +853,8 @@ data AddOpinion = AddOpinion {
     } deriving Show
 newAddOpinion = AddOpinion Nothing Nothing Nothing
 
-opinion :: L10n -> Text -> GenericStatement -> Doc
-opinion l10n verb stmt@(Statement _ (CompoundRhs scr))
+opinion :: Text -> GenericStatement -> PP Doc
+opinion verb stmt@(Statement _ (CompoundRhs scr))
     = pp_add_opinion $ foldl' addLine newAddOpinion scr
     where
         addLine :: AddOpinion -> GenericStatement -> AddOpinion
@@ -843,22 +868,24 @@ opinion l10n verb stmt@(Statement _ (CompoundRhs scr))
             = op { op_years = Just (fromIntegral n) }
         addLine op _ = op
         pp_add_opinion op
-            = if isJust (who op) && isJust (modifier op) then
+            = if isJust (who op) && isJust (modifier op) then do
                 let whom = fromJust (who op)
                     mod = fromJust (modifier op)
-                in hsep $
+                whomflag <- flag whom
+                mod <- getGameL10n (fromJust (modifier op))
+                return . hsep $
                     [strictText verb
                     ,"opinion modifier"
-                    ,dquotes $ strictText (HM.lookupDefault mod mod l10n)
+                    ,dquotes $ strictText mod
                     ,"towards"
-                    ,flag l10n $ HM.lookupDefault whom whom l10n
+                    ,whomflag
                     ]
                     ++ if isNothing (op_years op) then [] else
                     ["for"
                     ,pp_float (fromJust (op_years op))
                     ,"years"
                     ]
-              else pre_statement stmt
+              else return $ pre_statement stmt
 add_opinion _ stmt = pre_statement stmt
 
 -- Render a rebel type atom (e.g. anti_tax_rebels) as their name and icon key.
@@ -917,8 +944,8 @@ data SpawnRebels = SpawnRebels {
     } deriving Show
 newSpawnRebels = SpawnRebels Nothing Nothing Nothing Nothing Nothing
 
-spawn_rebels :: L10n -> Maybe Text -> GenericStatement  -> Doc
-spawn_rebels l10n mtype stmt = spawn_rebels' mtype stmt where
+spawn_rebels :: Maybe Text -> GenericStatement  -> PP Doc
+spawn_rebels mtype stmt = spawn_rebels' mtype stmt where
     spawn_rebels' Nothing stmt@(Statement _ (CompoundRhs scr))
         = pp_spawn_rebels $ foldl' addLine newSpawnRebels scr
     spawn_rebels' rtype stmt@(Statement _ (IntRhs size))
@@ -939,24 +966,24 @@ spawn_rebels l10n mtype stmt = spawn_rebels' mtype stmt where
         = op { unrest = Just n }
     addLine op _ = op
 
-    pp_spawn_rebels :: SpawnRebels -> Doc
+    pp_spawn_rebels :: SpawnRebels -> PP Doc
     pp_spawn_rebels reb
-        = if isJust (rebelSize reb) then
+        = if isJust (rebelSize reb) then do
             let hasType = isJust (rebelType reb)
                 rtype = fromJust (rebelType reb)
                 rsize = fromJust (rebelSize reb)
                 friendlyTo = fromJust (friend reb) -- not evaluated if Nothing
                 reb_unrest = fromJust (unrest reb)
                 (rtype_loc, rtype_icon) = rebel_loc rtype
-            in (hsep $
+            friendlyFlag <- flag friendlyTo
+            return ((hsep $
                    (if hasType
                         then [icon rtype_icon, strictText rtype_loc]
                         else ["Rebels"])
                    ++
                    [PP.parens $ hsep ["size", pp_float (fromJust (rebelSize reb))]]
                    ++ (if isJust (friend reb) then
-                   [PP.parens $ hsep ["friendly", "to",
-                                        flag l10n friendlyTo]
+                   [PP.parens $ hsep ["friendly", "to", friendlyFlag]
                    ] else [])
                    ++
                    ["rise in revolt"
@@ -970,33 +997,33 @@ spawn_rebels l10n mtype stmt = spawn_rebels' mtype stmt where
                    ,pp_float reb_unrest
                    ,hsep ["progress","towards","the","next","uprising"]
                    ]
-                else mempty
-        else pre_statement stmt
+                else mempty)
+        else return $ pre_statement stmt
 
-has_spawned_rebels :: GenericStatement -> Doc
+has_spawned_rebels :: GenericStatement -> PP Doc
 has_spawned_rebels (Statement _ (GenericRhs rtype))
     = let (rtype_loc, rtype_iconkey) = rebel_loc rtype
-      in hsep
+      in return $ hsep
             [icon rtype_iconkey
             ,strictText rtype_loc
             ,"have risen in revolt"
             ]
 
-can_spawn_rebels :: L10n -> GenericStatement -> Doc
-can_spawn_rebels l10n (Statement _ (GenericRhs rtype))
+can_spawn_rebels :: GenericStatement -> PP Doc
+can_spawn_rebels (Statement _ (GenericRhs rtype))
     = let (rtype_loc, rtype_iconkey) = rebel_loc rtype
-      in hsep
+      in return $ hsep
             ["Province has"
             ,icon rtype_iconkey
             ,strictText rtype_loc
             ]
 
-manpower_percentage :: GenericStatement -> Doc
+manpower_percentage :: GenericStatement -> PP Doc
 manpower_percentage (Statement _ rhs)
     = let pc = case rhs of
             IntRhs n -> fromIntegral n -- unlikely, but could be 1
             FloatRhs n -> n
-      in hsep
+      in return $ hsep
             ["Available manpower is at least"
             ,pp_float (pc * 100) <> "%"
             ,"of maximum"
@@ -1008,24 +1035,26 @@ data TriggerEvent = TriggerEvent
         , e_days :: Maybe Int
         }
 newTriggerEvent = TriggerEvent Nothing Nothing Nothing
-trigger_event :: L10n -> Text -> GenericStatement -> Doc
-trigger_event l10n category stmt@(Statement _ (CompoundRhs scr))
-    = pp_trigger_event $ foldl' addLine newTriggerEvent scr
+trigger_event :: Text -> GenericStatement -> PP Doc
+trigger_event category stmt@(Statement _ (CompoundRhs scr))
+    = pp_trigger_event =<< foldM addLine newTriggerEvent scr
     where
-        addLine :: TriggerEvent -> GenericStatement -> TriggerEvent
+        addLine :: TriggerEvent -> GenericStatement -> PP TriggerEvent
         addLine evt (Statement (GenericLhs "id") (GenericRhs id))
-            = evt { e_id = Just id, e_title_loc = HM.lookup (id <> ".t") l10n }
-        addLine evt (Statement (GenericLhs "days") rhs) = case rhs of
+            = (\t_loc -> evt { e_id = Just id, e_title_loc = t_loc })
+              <$> getGameL10nIfPresent (id <> ".t")
+        addLine evt (Statement (GenericLhs "days") rhs) = return $ case rhs of
             IntRhs n -> evt { e_days = Just n }
             FloatRhs n -> evt { e_days = Just (round n) }
-        addLine evt _ = evt
+        addLine evt _ = return evt
+        pp_trigger_event :: TriggerEvent -> PP Doc
         pp_trigger_event evt
             = let have_loc = isJust (e_title_loc evt)
                   have_days = isJust (e_days evt)
                   mid = e_id evt
                   loc = e_title_loc evt
                   days = e_days evt
-              in if isJust mid then hsep $
+              in if isJust mid then return . hsep $
                     ["Trigger"
                     ,strictText category
                     ,"event"
@@ -1036,15 +1065,15 @@ trigger_event l10n category stmt@(Statement _ (CompoundRhs scr))
                         ,"day(s)"
                         ]
                     else []
-                 else pre_statement stmt
+                 else return $ pre_statement stmt
 
-gain_manpower :: GenericStatement -> Doc
+gain_manpower :: GenericStatement -> PP Doc
 gain_manpower (Statement _ rhs) =
     let amt = case rhs of
             IntRhs n -> fromIntegral n
             FloatRhs n -> n
         gain_or_lose = if amt < 0 then "Lose" else "Gain"
-    in hsep
+    in return $ hsep
         [gain_or_lose
         ,icon "manpower"
         ,pp_hl_num True pp_float amt
@@ -1061,22 +1090,26 @@ data AddCB = AddCB
     }
 newAddCB = AddCB Nothing Nothing Nothing Nothing Nothing
 -- "direct" is False for reverse_add_casus_belli
-add_casus_belli :: L10n -> Bool -> GenericStatement -> Doc
-add_casus_belli l10n direct stmt@(Statement _ (CompoundRhs scr))
-    = pp_add_cb $ foldl' addLine newAddCB scr where
-        addLine :: AddCB -> GenericStatement -> AddCB
+add_casus_belli :: Bool -> GenericStatement -> PP Doc
+add_casus_belli direct stmt@(Statement _ (CompoundRhs scr))
+    = pp_add_cb =<< foldM addLine newAddCB scr where
+        addLine :: AddCB -> GenericStatement -> PP AddCB
         addLine acb (Statement (GenericLhs "target") (GenericRhs target))
-            = acb { acb_target = Just target
-                  , acb_target_loc = HM.lookup target l10n }
+            = (\target_loc -> acb
+                  { acb_target = Just target
+                  , acb_target_loc = target_loc })
+              <$> getGameL10nIfPresent target
         addLine acb (Statement (GenericLhs "type") (GenericRhs cbtype))
-            = acb { acb_type = Just cbtype
-                  , acb_type_loc = HM.lookup cbtype l10n }
+            = (\cbtype_loc -> acb
+                  { acb_type = Just cbtype
+                  , acb_type_loc = cbtype_loc })
+              <$> getGameL10nIfPresent cbtype
         addLine acb (Statement (GenericLhs "months") rhs)
-            = acb { acb_months = Just months }
+            = return $ acb { acb_months = Just months }
             where months = case rhs of
                     IntRhs n -> fromIntegral n
                     FloatRhs n -> n
-        pp_add_cb :: AddCB -> Doc
+        pp_add_cb :: AddCB -> PP Doc
         pp_add_cb acb
             = let has_target = isJust (acb_target acb)
                   has_type = isJust (acb_type acb)
@@ -1085,7 +1118,7 @@ add_casus_belli l10n direct stmt@(Statement _ (CompoundRhs scr))
                   type_loc = maybe (fromJust (acb_type acb)) id (acb_type_loc acb)
                   months = fromJust (acb_months acb)
               in if has_target && has_type
-                 then hsep $
+                 then return . hsep $
                        (if not direct then
                             ["Gain"
                             ,dquotes (strictText type_loc)
@@ -1105,10 +1138,10 @@ add_casus_belli l10n direct stmt@(Statement _ (CompoundRhs scr))
                             ,"months"
                             ]
                         else []
-                 else pre_statement stmt
+                 else return $ pre_statement stmt
 
-random :: Int -> L10n -> GenericStatement -> Doc
-random indent l10n stmt@(Statement _ (CompoundRhs scr))
+random :: GenericStatement -> PP Doc
+random stmt@(Statement _ (CompoundRhs scr))
     | (front, back) <- break
                         (\stmt -> case stmt of 
                             Statement (GenericLhs "chance") _ -> True
@@ -1119,13 +1152,12 @@ random indent l10n stmt@(Statement _ (CompoundRhs scr))
                 Statement _ (IntRhs n) -> fromIntegral n
                 Statement _ (FloatRhs n) -> n
             defaultdoc = pre_statement stmt
-            compound = generic_compound defaultdoc indent l10n
+            compound = generic_compound defaultdoc
         in generic_compound_doc
                 (pre_statement stmt)
-                indent l10n
                 (hsep [pp_float chance <> "%","chance of"])
                 (Statement undefined (CompoundRhs (front ++ tail back)))
-random _ _ stmt = pre_statement stmt
+random stmt = return $ pre_statement stmt
 
 data DefineAdvisor = DefineAdvisor
     {   da_type :: Maybe Text
@@ -1138,25 +1170,27 @@ data DefineAdvisor = DefineAdvisor
     }
 newDefineAdvisor = DefineAdvisor Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
-define_advisor :: L10n -> GenericStatement -> Doc
-define_advisor l10n stmt@(Statement _ (CompoundRhs scr))
-    = pp_define_advisor $ foldl' addLine newDefineAdvisor scr where
-        addLine :: DefineAdvisor -> GenericStatement -> DefineAdvisor
+define_advisor :: GenericStatement -> PP Doc
+define_advisor stmt@(Statement _ (CompoundRhs scr))
+    = pp_define_advisor =<< foldM addLine newDefineAdvisor scr where
+        addLine :: DefineAdvisor -> GenericStatement -> PP DefineAdvisor
         addLine da stmt@(Statement (GenericLhs lhs) rhs) = case T.map toLower lhs of
             "type" ->
                 let mthe_type = case rhs of
                         GenericRhs a_type -> Just a_type
                         StringRhs a_type -> Just a_type
                         _ -> Nothing
-                in da { da_type = mthe_type
-                      , da_type_loc = flip HM.lookup l10n =<< mthe_type }
-            "name" ->
+                in (\mtype_loc -> da
+                        { da_type = mthe_type
+                        , da_type_loc = mtype_loc })
+                   <$> (maybe (return Nothing) getGameL10nIfPresent mthe_type)
+            "name" -> return $
                 let mthe_name = case rhs of
                         GenericRhs a_name -> Just a_name
                         StringRhs a_name -> Just a_name
                         _ -> Nothing
                 in da { da_name = mthe_name }
-            "discount" ->
+            "discount" -> return $
                 let yn = case rhs of
                         GenericRhs yn' -> Just yn'
                         StringRhs yn' -> Just yn'
@@ -1164,19 +1198,21 @@ define_advisor l10n stmt@(Statement _ (CompoundRhs scr))
                 in if yn == Just "yes" then da { da_discount = Just True }
                    else if yn == Just "no" then da { da_discount = Just False }
                    else da
-            "location" ->
-                let location_code = case rhs of
+            "location" -> do
+                let location_code :: Maybe Int
+                    location_code = case rhs of
                         IntRhs code -> Just code
                         -- Province ID isn't supposed to be float, but it's
                         -- parsed that way.
                         FloatRhs code -> Just $ round code
                         _ -> Nothing
-                    location_loc = flip HM.lookup l10n . ("PROV" <>) . T.pack . show =<< location_code
-                in da { da_location = location_code
-                      , da_location_loc = location_loc }
-            "skill" -> da { da_skill = round `fmap` (floatRhs rhs::Maybe Double) }
-        pp_define_advisor :: DefineAdvisor -> Doc
-        pp_define_advisor da =
+                location_loc <- maybe (return Nothing) getGameL10nIfPresent
+                                      (("PROV" <>) . T.pack . show <$> location_code)
+                return $ da { da_location = location_code
+                            , da_location_loc = location_loc }
+            "skill" -> return $ da { da_skill = round `fmap` (floatRhs rhs::Maybe Double) }
+        pp_define_advisor :: DefineAdvisor -> PP Doc
+        pp_define_advisor da = return $
             let has_type = isJust (da_type da)
                 thetype = fromJust (da_type da)
                 has_type_loc = isJust (da_type_loc da)
@@ -1233,9 +1269,9 @@ data DefineRuler = DefineRuler
     }
 newDefineRuler = DefineRuler Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
-define_ruler :: GenericStatement -> Doc
+define_ruler :: GenericStatement -> PP Doc
 define_ruler stmt@(Statement _ (CompoundRhs scr))
-    = pp_define_ruler $ foldl' addLine newDefineRuler scr where
+    = return . pp_define_ruler $ foldl' addLine newDefineRuler scr where
         addLine :: DefineRuler -> GenericStatement -> DefineRuler
         addLine dr stmt@(Statement (GenericLhs lhs) rhs) = case T.map toLower lhs of
             "name" ->
@@ -1327,7 +1363,7 @@ define_ruler stmt@(Statement _ (CompoundRhs scr))
                                 else []
                             ]]
                     else [])
-define_ruler stmt = pre_statement stmt
+define_ruler stmt = return $ pre_statement stmt
 
 data HadFlag = HadFlag
     {   hf_flag :: Maybe Text
@@ -1335,9 +1371,9 @@ data HadFlag = HadFlag
     }
 newHadFlag = HadFlag Nothing Nothing
 
-had_flag :: Text -> GenericStatement -> Doc
+had_flag :: Text -> GenericStatement -> PP Doc
 had_flag category stmt@(Statement _ (CompoundRhs scr))
-    = pp_had_flag $ foldl' addLine newHadFlag scr where
+    = return . pp_had_flag $ foldl' addLine newHadFlag scr where
         addLine :: HadFlag -> GenericStatement -> HadFlag
         addLine dr stmt@(Statement (GenericLhs lhs) rhs) = case T.map toLower lhs of
             "flag" -> case rhs of
@@ -1370,8 +1406,8 @@ data BuildToForcelimit = BuildToForcelimit
     }
 newBuildToForcelimit = BuildToForcelimit Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
-build_to_forcelimit :: Int -> GenericStatement -> Doc
-build_to_forcelimit indent stmt@(Statement _ (CompoundRhs scr))
+build_to_forcelimit :: GenericStatement -> PP Doc
+build_to_forcelimit stmt@(Statement _ (CompoundRhs scr))
     = pp_build_to_forcelimit $ foldl' addLine newBuildToForcelimit scr where
         addLine :: BuildToForcelimit -> GenericStatement -> BuildToForcelimit
         addLine dr stmt@(Statement (GenericLhs lhs) rhs)
@@ -1388,43 +1424,43 @@ build_to_forcelimit indent stmt@(Statement _ (CompoundRhs scr))
                     "galley"     -> dr { btf_galley     = Just howmuch }
                     "transport"  -> dr { btf_transport  = Just howmuch }
                     _ -> dr
-        pp_build_to_forcelimit :: BuildToForcelimit -> Doc
-        pp_build_to_forcelimit dr
-            = let has_infantry = isJust (btf_infantry dr)
-                  infantry = fromJust (btf_infantry dr)
-                  has_cavalry = isJust (btf_cavalry dr)
-                  cavalry = fromJust (btf_cavalry dr)
-                  has_artillery = isJust (btf_artillery dr)
-                  artillery = fromJust (btf_artillery dr)
-                  has_heavy_ship = isJust (btf_heavy_ship dr)
-                  heavy_ship = fromJust (btf_heavy_ship dr)
-                  has_light_ship = isJust (btf_light_ship dr)
-                  light_ship = fromJust (btf_light_ship dr)
-                  has_galley = isJust (btf_galley dr)
-                  galley = fromJust (btf_galley dr)
-                  has_transport = isJust (btf_transport dr)
-                  transport = fromJust (btf_transport dr)
-                  newindent = succ indent
-                  has_X :: (Bool, Double, Text, Text) -> [Doc]
-                  has_X (hasit, howmuch, iconkey, text)
-                      = if hasit then
-                            [line
-                            ,hcat (replicate newindent "*"), space
-                            ,pp_float (howmuch*100),"%", space
-                            ,icon iconkey, space
-                            ,strictText text]
-                          else []
-              in hcat $
-                  ["Build units up to forcelimit:"]
-                  ++ concatMap has_X
-                  [(has_infantry, infantry, "infantry", "infantry")
-                  ,(has_cavalry, cavalry, "cavalry", "cavalry")
-                  ,(has_artillery, artillery, "artillery", "artillery")
-                  ,(has_heavy_ship, heavy_ship, "heavy ship", "heavy ships")
-                  ,(has_light_ship, light_ship, "light ship", "light ships")
-                  ,(has_galley, galley, "galley", "galleys")
-                  ,(has_transport, transport, "transport", "transports")
-                  ]
+        pp_build_to_forcelimit :: BuildToForcelimit -> PP Doc
+        pp_build_to_forcelimit dr = withCurrentIndent $ \indent -> do
+            let has_infantry = isJust (btf_infantry dr)
+                infantry = fromJust (btf_infantry dr)
+                has_cavalry = isJust (btf_cavalry dr)
+                cavalry = fromJust (btf_cavalry dr)
+                has_artillery = isJust (btf_artillery dr)
+                artillery = fromJust (btf_artillery dr)
+                has_heavy_ship = isJust (btf_heavy_ship dr)
+                heavy_ship = fromJust (btf_heavy_ship dr)
+                has_light_ship = isJust (btf_light_ship dr)
+                light_ship = fromJust (btf_light_ship dr)
+                has_galley = isJust (btf_galley dr)
+                galley = fromJust (btf_galley dr)
+                has_transport = isJust (btf_transport dr)
+                transport = fromJust (btf_transport dr)
+                newindent = succ indent
+                has_X :: (Bool, Double, Text, Text) -> [Doc]
+                has_X (hasit, howmuch, iconkey, text)
+                    = if hasit then
+                          [line
+                          ,hcat (replicate newindent "*"), space
+                          ,pp_float (howmuch*100),"%", space
+                          ,icon iconkey, space
+                          ,strictText text]
+                        else []
+            return . hcat $
+                ["Build units up to forcelimit:"]
+                ++ concatMap has_X
+                [(has_infantry, infantry, "infantry", "infantry")
+                ,(has_cavalry, cavalry, "cavalry", "cavalry")
+                ,(has_artillery, artillery, "artillery", "artillery")
+                ,(has_heavy_ship, heavy_ship, "heavy ship", "heavy ships")
+                ,(has_light_ship, light_ship, "light ship", "light ships")
+                ,(has_galley, galley, "galley", "galleys")
+                ,(has_transport, transport, "transport", "transports")
+                ]
 
 data DeclareWarWithCB = DeclareWarWithCB
     {   dwcb_who :: Maybe Text
@@ -1432,28 +1468,31 @@ data DeclareWarWithCB = DeclareWarWithCB
     }
 newDeclareWarWithCB = DeclareWarWithCB Nothing Nothing
 
-declare_war_with_cb :: L10n -> GenericStatement -> Doc
-declare_war_with_cb l10n stmt@(Statement _ (CompoundRhs scr))
-    = pp_declare_war_with_cb  $ foldl' addLine newDeclareWarWithCB scr where
+declare_war_with_cb :: GenericStatement -> PP Doc
+declare_war_with_cb stmt@(Statement _ (CompoundRhs scr))
+    = pp_declare_war_with_cb $ foldl' addLine newDeclareWarWithCB scr where
         addLine :: DeclareWarWithCB -> GenericStatement -> DeclareWarWithCB
         addLine dwcb stmt@(Statement (GenericLhs lhs) (GenericRhs rhs))
             = case T.map toLower lhs of
                 "who"         -> dwcb { dwcb_who = Just rhs }
                 "casus_belli" -> dwcb { dwcb_cb  = Just rhs }
                 _ -> dwcb
-        pp_declare_war_with_cb :: DeclareWarWithCB -> Doc
+        pp_declare_war_with_cb :: DeclareWarWithCB -> PP Doc
         pp_declare_war_with_cb dwcb
             = let has_who = isJust (dwcb_who dwcb)
                   who = fromJust (dwcb_who dwcb)
                   has_cb = isJust (dwcb_cb dwcb)
                   cb = fromJust (dwcb_cb dwcb)
               in if has_who && has_cb
-                 then hsep $
+                 then do
+                    whoflag <- flag who
+                    l10n <- asks gameL10n
+                    return . hsep $
                       ["Declare war on"
-                      ,flag l10n who
+                      ,whoflag
                       ,"using"
                       ,dquotes (strictText $ HM.lookupDefault cb cb l10n)
                       ,"casus belli"
                       ]
-                 else pre_statement stmt
+                 else return $ pre_statement stmt
 

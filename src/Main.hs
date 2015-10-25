@@ -1,11 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import Control.Applicative
 import Control.Arrow
 import Control.Exception
 import Control.Monad
 import Data.List
 import Data.Monoid
+import Control.Monad.Reader
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
@@ -29,7 +31,6 @@ import System.IO
 import qualified Data.Attoparsec.Text as Ap
 
 import Abstract
-import Localization
 import Settings
 
 -- Script handlers
@@ -52,10 +53,8 @@ readFileRetry path = do
     -- Catching exceptions in pure code is a rather convoluted process...
     e <- try (let e = TE.decodeUtf8 raw in e `seq` return e)
     case (e::Either UnicodeException Text) of
-        Right result -> do
-            return result
-        Left err -> do
-            return $ TE.decodeLatin1 raw
+        Right result -> return result
+        Left _ -> return $ TE.decodeLatin1 raw
 
 readScript :: Settings -> FilePath -> IO GenericScript
 readScript settings file = do
@@ -88,29 +87,29 @@ readScripts settings category =
 main :: IO ()
 main = do
     settings <- readSettings
-    l10n <- readL10n settings
 
     createDirectoryIfMissing False "output"
 
     forM_ ["decisions","missions","events","policies"] $ \category -> do
         scripts <- readScripts settings category -- :: [(FilePath, GenericScript)]
 
-        let handler :: Text -> FilePath -> L10n -> GenericStatement -> Either Text Doc
+        let handler :: GenericStatement -> PP (Either Text Doc)
             handler = case category of
                 "decisions" -> processDecisionGroup
                 "missions" -> processMission
                 "events" -> processEvent
                 "policies" -> processPolicy
 
-            version = T.pack $ gameVersion settings
-
-            results :: [(FilePath, [Either Text Doc])]
-            results = map (\(file, script) -> (file, map (handler version file l10n) script))
+            results :: PP [(FilePath, [Either Text Doc])]
+            results = mapM (\(file, script) ->
+                            (,) file <$>
+                                local (\s -> s { currentFile = Just file })
+                                      (mapM handler script))
                 -- for testing -- DELETE ME for release
                 . filter (\(file, _) -> file == "events/flavorMLO.txt")
                 $ scripts
 
-        forM_ results $ \(path, mesgs) -> do
+        forM_ (runReader results settings) $ \(path, mesgs) -> do
             forM_ mesgs $ \mesg -> do
                 case mesg of
                     Left err -> do

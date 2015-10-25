@@ -1,4 +1,7 @@
-module Localization where
+module Localization
+        ( readL10n -- :: Settings -> IO L10n
+        , module SettingsTypes
+        ) where
 
 import Control.Monad
 
@@ -18,9 +21,7 @@ import System.Directory
 import System.FilePath
 import System.IO (hPutStrLn, stderr)
 
-import Settings
-
-type L10n = HashMap Text Text
+import SettingsTypes
 
 readL10n :: Settings -> IO L10n
 readL10n settings = do
