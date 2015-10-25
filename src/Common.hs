@@ -1,16 +1,19 @@
 {-# LANGUAGE OverloadedStrings, PatternGuards #-}
 module Common where
 
+import Prelude hiding (sequence, mapM)
+
 import Debug.Trace
 
 import Control.Applicative
-import Control.Monad.Reader
+import Control.Monad.Reader hiding (sequence, mapM)
 
 import Data.Char
 import Data.List
 import Data.Maybe
 import Data.Monoid
 import Data.String
+import Data.Traversable
 
 import Numeric (floatToDigits)
 
@@ -75,6 +78,12 @@ pp_hl_num' is_pc pos pp_num n =
         0 ->  bold n_pp'd
         1 ->  template "green" n_pp'd
 
+-- Get the localization for a province ID, if available.
+getProvLoc :: Int -> PP Text
+getProvLoc n =
+    let provid_t = T.pack (show n)
+    in getGameL10nDefault provid_t ("PROV" <> provid_t)
+
 -- Pretty-print a number, adding &#8239; (U+202F NARROW NO-BREAK SPACE) at
 -- every power of 1000.
 class Num a => PPSep a where
@@ -129,7 +138,11 @@ flag :: Text -> PP Doc
 flag name =
     if isTag name
         then template "flag" . strictText <$> getGameL10n name
-        else return $ strictText name
+        else return $ case name of
+                "ROOT" -> "Our country" -- will need editing for capitalization in some cases
+                "PREV" -> "Previously mentioned country"
+                -- Suggestions of a description for FROM are welcome.
+                _ -> strictText name
 
 -- Emit icon template.
 icon :: Text -> Doc
@@ -181,6 +194,7 @@ pp_statement' stmt@(Statement lhs rhs) =
             "add_dip_power"         -> gain Plain Nothing True (Just "dip") "diplomatic power" stmt
             "add_heir_claim"        -> gain Plain (Just "Heir") True Nothing "claim strength" stmt
             "add_imperial_influence" -> gain Plain Nothing False (Just "imperial authority") "imperial authority" stmt
+            "add_karma"             -> gain Plain Nothing True (Just "karma") "karma" stmt
             "add_legitimacy"        -> gain Plain Nothing True (Just "legitimacy") "legitimacy" stmt
             "add_mil_power"         -> gain Plain Nothing True (Just "mil") "military power" stmt
             "add_prestige"          -> gain Plain Nothing True (Just "prestige") "prestige" stmt
@@ -209,7 +223,8 @@ pp_statement' stmt@(Statement lhs rhs) =
             "remove_province_modifier" -> remove_modifier "province" stmt
             -- Simple compound statements
             -- Note that "any" can mean "all" or "one or more" depending on context.
-            "AND" -> compound "All of" stmt
+            "AND"  -> compound "All of" stmt
+            "ROOT" -> compound "Our country" stmt
             -- These two are ugly, but without further analysis we can't know
             -- what it means.
             "FROM"                      -> compound "FROM" stmt
@@ -221,6 +236,7 @@ pp_statement' stmt@(Statement lhs rhs) =
             -- the latter means "do this for every <type>." But their contexts
             -- are disjoint, so they can be presented the same way.
             "all_owned_province"        -> compound "Every owned province" stmt
+            "any_ally"                  -> compound "Any ally" stmt
             "any_core_country"          -> compound "Any country with a core" stmt
             "any_country"               -> compound "Any country" stmt
             "any_known_country"         -> compound "Any known country" stmt
@@ -235,6 +251,7 @@ pp_statement' stmt@(Statement lhs rhs) =
             "every_enemy_country"       -> compound "Every enemy country" stmt
             "every_known_country"       -> compound "Every known country" stmt
             "every_neighbor_country"    -> compound "Every neighboring country" stmt
+            "every_neighbor_province"   -> compound "Every neighboring province" stmt
             "every_owned_province"      -> compound "Every owned province" stmt
             "every_province"            -> compound "Every province in the world" stmt
             "every_subject_country"     -> compound "Every subject country" stmt
@@ -242,6 +259,7 @@ pp_statement' stmt@(Statement lhs rhs) =
             "if"                        -> compound "If" stmt
             "limit"                     -> compound "Limited to" stmt
             "owner"                     -> compound "Province owner" stmt
+            "random_ally"               -> compound "One random ally" stmt
             "random_core_country"       -> compound "One random country with a core" stmt
             "random_country"            -> compound "One random country" stmt
             "random_list"               -> compound "One of the following at random" stmt
@@ -252,38 +270,43 @@ pp_statement' stmt@(Statement lhs rhs) =
             -- Random
             "random" -> random stmt
             -- Simple generic statements (RHS is a localizable atom)
+            "change_government" -> simple_generic "Change government to" stmt mempty
             "continent"         -> simple_generic "Continent is" stmt mempty
             "culture"           -> simple_generic "Culture is" stmt mempty
             "culture_group"     -> simple_generic "Culture is in" stmt "culture group"
             "government"        -> simple_generic "Government is" stmt mempty
-            "change_government" -> simple_generic "Change government to" stmt mempty
+            "has_advisor"       -> simple_generic "Has" stmt "advisor"
+            "infantry"          -> simple_generic "An infantry regiment spawns in" stmt mempty
+            "kill_advisor"      -> simple_generic mempty stmt "dies"
             "primary_culture"   -> simple_generic "Primary culture is" stmt mempty
             "region"            -> simple_generic "Is in region" stmt mempty
-            "kill_advisor"      -> simple_generic mempty stmt "dies"
             "remove_advisor"    -> simple_generic mempty stmt "leaves the country's court"
-            "infantry"          -> simple_generic "An infantry regiment spawns in" stmt mempty
             -- RHS is a province ID
             "province_id"   -> simple_province "Province is" stmt mempty
             "owns"          -> simple_province "Owns" stmt mempty
             -- RHS is an advisor ID (TODO: parse advisor files)
-            "advisor_exists"      -> simple_numeric "Advisor ID" stmt "exists"
-            "is_advisor_employed" -> simple_numeric "Advisor ID" stmt "is employed"
+            "advisor_exists"      -> numeric Plain "Advisor ID" stmt "exists"
+            "is_advisor_employed" -> numeric Plain "Advisor ID" stmt "is employed"
             -- Simple generic statements (typewriter face)
-            "set_country_flag"  -> simple_generic_tt "Set country flag" stmt
-            "set_province_flag" -> simple_generic_tt "Set province flag" stmt
-            "set_global_flag"   -> simple_generic_tt "Set global flag" stmt
-            "has_country_flag"  -> simple_generic_tt "Has country flag" stmt
-            "has_province_flag" -> simple_generic_tt "Has province flag" stmt
-            "has_global_flag"   -> simple_generic_tt "Global flag is set:" stmt
             "clr_country_flag"  -> simple_generic_tt "Clear country flag" stmt
             "clr_province_flag" -> simple_generic_tt "Clear province flag" stmt
+            "clr_ruler_flag"    -> simple_generic_tt "Clear ruler flag" stmt
+            "has_country_flag"  -> simple_generic_tt "Has country flag" stmt
+            "has_global_flag"   -> simple_generic_tt "Global flag is set:" stmt
+            "has_province_flag" -> simple_generic_tt "Has province flag" stmt
+            "has_ruler_flag"    -> simple_generic_tt "Has ruler flag" stmt
+            "set_country_flag"  -> simple_generic_tt "Set country flag" stmt
+            "set_global_flag"   -> simple_generic_tt "Set global flag" stmt
+            "set_province_flag" -> simple_generic_tt "Set province flag" stmt
+            "set_ruler_flag"    -> simple_generic_tt "Set ruler flag" stmt
             -- Simple generic statements with icon
-            "trade_goods"       -> generic_icon "Produces" stmt
             "advisor"           -> generic_icon "Has" stmt
+            "change_trade_goods" -> generic_icon "Change trade goods produced to" stmt
             "create_advisor"    -> generic_icon "Gain" stmt
             "has_idea_group"    -> generic_icon "Has activated" stmt
-            "change_trade_goods" -> generic_icon "Change trade goods produced to" stmt
+            "trade_goods"       -> generic_icon "Produces" stmt
             -- Simple generic statements with flag
+            "alliance_with"     -> generic_tag (Just "Allied with") stmt Nothing
             "cede_province"     -> generic_tag (Just "Cede province to") stmt Nothing
             "controlled_by"     -> generic_tag (Just "Is controlled by") stmt Nothing
             "defensive_war_with" -> generic_tag (Just "Is in a defensive war against") stmt Nothing
@@ -291,8 +314,8 @@ pp_statement' stmt@(Statement lhs rhs) =
             "add_claim"         -> generic_tag Nothing stmt (Just "gains a claim")
             "has_discovered"    -> generic_tag (Just "Has discovered") stmt Nothing
             "inherit"           -> generic_tag (Just "Inherit") stmt Nothing
-            "is_core"           -> generic_tag (Just "Is core of") stmt Nothing
             "is_neighbor_of"    -> generic_tag (Just "Neighbors") stmt Nothing
+            "is_subject_of"     -> generic_tag (Just "Is a subject of") stmt Nothing
             "remove_core"       -> generic_tag Nothing stmt (Just "loses core")
             "marriage_with"     -> generic_tag (Just "Has a royal marriage with") stmt Nothing
             "offensive_war_with" -> generic_tag (Just "Is in an offensive war against") stmt Nothing
@@ -300,6 +323,7 @@ pp_statement' stmt@(Statement lhs rhs) =
             "release"           -> generic_tag (Just "Releases") stmt (Just "as a vassal")
             "sieged_by"         -> generic_tag (Just "Is under siege by") stmt Nothing
             "tag"               -> generic_tag (Just "Is") stmt Nothing
+            "truce_with"        -> generic_tag (Just "Has a truce with") stmt Nothing
             "war_with"          -> generic_tag (Just "Is at war with") stmt Nothing
             "white_peace"       -> generic_tag (Just "Makes a white peace with") stmt Nothing
             -- Simple generic statements with flag or "yes"/"no"
@@ -308,6 +332,9 @@ pp_statement' stmt@(Statement lhs rhs) =
             "religion"          -> generic_icon_or_country "Religion is" stmt
             "religion_group"    -> generic_icon_or_country "Religion group is" stmt
             "change_religion"   -> generic_icon_or_country "Change religion to" stmt
+            -- Statements that may be either a tag or a province
+            "is_core"  -> generic_tag_or_province (Just "Is core of") (Just "Has core on") stmt Nothing Nothing
+            "is_claim" -> generic_tag_or_province Nothing (Just "Has claim on") stmt (Just "has a claim") Nothing
             -- Boolean statements
             "ai"                    -> is Nothing "AI controlled" stmt
             "has_cardinal"          -> has "a cardinal" stmt
@@ -329,26 +356,32 @@ pp_statement' stmt@(Statement lhs rhs) =
             "papacy_active"         -> is (Just "Papal interaction") "active" stmt
             "was_player"            -> has_been Nothing "player-controlled" stmt
             -- Numeric statements
-            "base_tax"                  -> simple_numeric "Base tax is at least" stmt mempty
-            "colonysize"                -> simple_numeric "Colony has at least" stmt "settlers"
-            "development"               -> simple_numeric "Has at least" stmt "development"
-            "had_recent_war"            -> simple_numeric "Was at war within the last" stmt "months(?)"
-            "heir_age"                  -> simple_numeric "Heir is at least" stmt "years old"
-            "is_year"                   -> simple_numeric "Year is" stmt "or later"
-            "manpower_percentage"       -> manpower_percentage stmt
-            "num_of_cardinals"          -> simple_numeric "Controls at least" stmt "cardinals"
-            "num_of_mercenaries"        -> simple_numeric "Has at least" stmt "mercenary regiment(s)"
-            "total_number_of_cardinals" -> simple_numeric "There are at least" stmt "cardinals"
+            "base_tax"                  -> numeric Plain "Base tax is at least" stmt mempty
+            "colonysize"                -> numeric Plain "Colony has at least" stmt "settlers"
+            "development"               -> numeric Plain "Has at least" stmt "development"
+            "had_recent_war"            -> numeric Plain "Was at war within the last" stmt "months(?)"
+            "heir_age"                  -> numeric Plain "Heir is at least" stmt "years old"
+            "is_year"                   -> numeric Plain "Year is" stmt "or later"
+            "num_of_allies"             -> numeric Plain "Has at least" stmt "allies"
+            "num_of_cardinals"          -> numeric Plain "Controls at least" stmt "cardinals"
+            "num_of_mercenaries"        -> numeric Plain "Has at least" stmt "mercenary regiment(s)"
+            "num_of_rebel_armies"       -> numeric Plain "At least" stmt "rebel army/armies are present in the country"
+            "total_number_of_cardinals" -> numeric Plain "There are at least" stmt "cardinals"
+            "unrest"                    -> numeric Plain "Unrest is at least" stmt mempty
             -- Numeric statements, but the RHS is the number divided by 100
-            "republican_tradition"      -> numeric_percentage "Has at least" stmt "republican tradition"
+            "republican_tradition"      -> numeric Reduced "Has at least" stmt "republican tradition"
+            -- Percentage statements
+            "local_autonomy"            -> numeric Percent "Has at least" stmt "local autonomy"
+            -- Percentage statements, but the RHS is the number divided by 100
+            "manpower_percentage"       -> numeric ReducedPercent "Manpower is at least" stmt "of maximum"
+            "mercantilism"              -> numeric ReducedPercent "Mercantilism is at least" stmt mempty
             -- Statements that may be numeric or a tag
             "num_of_cities"             -> numeric_or_tag "Owns" "many" stmt "cities"
-            -- Percentage statements
-            "local_autonomy" -> simple_percentage "Has at least" stmt "local autonomy"
             -- Signed numeric statements
-            "stability" -> simple_numeric_signed "Stability is at least" stmt mempty
-            "tolerance_to_this" -> simple_numeric_signed "Tolerance to this religion is at least" stmt mempty
-            "war_score" -> simple_numeric_signed "Warscore is at least" stmt mempty
+            "karma"             -> numeric_signed Plain "Karma is at least" stmt mempty
+            "stability"         -> numeric_signed Plain "Stability is at least" stmt mempty
+            "tolerance_to_this" -> numeric_signed Plain "Tolerance to this religion is at least" stmt mempty
+            "war_score"         -> numeric_signed Plain "Warscore is at least" stmt mempty
             -- Statements of numeric quantities with icons
             "adm" -> numeric_icon "Has at least" (Just "adm") "administrative skill" stmt
             "adm_tech" -> numeric_icon "Has at least" Nothing "administrative technology" stmt
@@ -370,6 +403,7 @@ pp_statement' stmt@(Statement lhs rhs) =
             "define_ruler"            -> define_ruler stmt
             "had_country_flag"        -> had_flag "country" stmt
             "had_province_flag"       -> had_flag "province" stmt
+            "had_ruler_flag"          -> had_flag "ruler" stmt
             "has_opinion_modifier"    -> opinion "Has" stmt
             "province_event"          -> trigger_event "province" stmt
             "reverse_add_casus_belli" -> add_casus_belli False stmt
@@ -377,10 +411,11 @@ pp_statement' stmt@(Statement lhs rhs) =
             "create_revolt" -> spawn_rebels Nothing stmt
             "has_spawned_rebels" -> has_spawned_rebels stmt
             "likely_rebels" -> can_spawn_rebels stmt
-            "nationalist_rebels" -> spawn_rebels (Just "Nationalist rebels") stmt
+            "nationalist_rebels" -> spawn_rebels (Just "nationalist_rebels") stmt
             "spawn_rebels" -> spawn_rebels Nothing stmt
             -- Special
-            "add_core"          -> add_core stmt
+            "add_core"  -> add_core stmt
+            "has_dlc"   -> has_dlc stmt
             -- Ignored
             "custom_tooltip" -> return "(custom tooltip - delete this line)"
             "tooltip" -> return "(explanatory tooltip - delete this line)"
@@ -395,7 +430,12 @@ pp_statement' stmt@(Statement lhs rhs) =
                             <> ":"
                             <> line <> script_pp'd
                     _ -> return defaultdoc
-                 else return defaultdoc
+                 else do
+                    mloc <- getGameL10nIfPresent label
+                    case mloc of
+                        -- Check for localizable atoms, e.g. regions
+                        Just loc -> compound loc stmt
+                        Nothing -> return defaultdoc
         IntLhs n -> do -- Treat as a province tag
             let provN = T.pack (show n)
             prov_loc <- getGameL10nDefault ("Province " <> provN) ("PROV" <> provN)
@@ -475,7 +515,7 @@ pp_mtth scr
 generic_compound_doc :: Doc -> Doc -> GenericStatement -> PP Doc
 generic_compound_doc _ header (Statement _ (CompoundRhs scr))
     = do
-        script_pp'd <- pp_script scr
+        script_pp'd <- indentUp (pp_script scr)
         return $ hcat
             [header, ":"
             ,line
@@ -556,26 +596,59 @@ generic_icon_or_country premsg (Statement (GenericLhs category) (GenericRhs name
                  ,strictText name_loc]
 generic_icon_or_country _ stmt = return $ pre_statement stmt
 
+generic_tag_or_province :: Maybe Text -> Maybe Text -> GenericStatement -> Maybe Text -> Maybe Text -> PP Doc
+generic_tag_or_province pre_tag pre_prov (Statement _ rhs) post_tag post_prov
+    = let eobject = case rhs of
+            GenericRhs tag -> Left tag
+            IntRhs provid -> Right provid
+            FloatRhs provid -> Right (round provid)
+      in case eobject of
+            Left tag -> do -- is a tag
+                tagflag <- flag tag
+                return . hsep $
+                    (if isJust pre_tag
+                        then [strictText (fromJust pre_tag)]
+                        else []) ++
+                    [tagflag] ++
+                    if isJust post_tag
+                        then [strictText (fromJust post_tag)]
+                        else []
+            Right provid -> do -- is a province id
+                prov_loc <- getProvLoc provid
+                return . hsep $
+                    (if isJust pre_prov
+                        then [strictText (fromJust pre_prov)]
+                        else []) ++
+                    ["province", strictText prov_loc] ++
+                    if isJust post_prov
+                        then [strictText (fromJust post_prov)]
+                        else []
+
 -- Numeric statement. Allow additional text on both sides.
-simple_numeric :: Text -> GenericStatement -> Text -> PP Doc
-simple_numeric premsg (Statement _ rhs) postmsg
-    | Just n <- floatRhs rhs = simple_numeric' premsg n postmsg
-simple_numeric _ stmt _ = return $ pre_statement stmt
+-- Don't add a + if the number is positive.
+numeric :: NumType -> Text -> GenericStatement -> Text -> PP Doc
+numeric ntype premsg (Statement _ rhs) postmsg
+    | Just n <- floatRhs rhs = numeric' False ntype premsg n postmsg
+numeric _ _ stmt _ = return $ pre_statement stmt
 
--- Numeric statement, but the RHS is the number divided by 100. For example,
--- republican tradition does this. NB: NOT for percentages.
-numeric_percentage :: Text -> GenericStatement -> Text -> PP Doc
-numeric_percentage premsg (Statement _ rhs) postmsg
-    | Just n <- floatRhs rhs = simple_numeric' premsg (n*100) postmsg
-numeric_percentage _ stmt _ = return $ pre_statement stmt
-
-simple_numeric' :: Text -> Double -> Text -> PP Doc
-simple_numeric' premsg n postmsg
-    = return $ hsep
-        [strictText premsg
-        ,pp_float n
-        ,strictText postmsg
-        ]
+numeric' :: Bool -> NumType -> Text -> Double -> Text -> PP Doc
+numeric' signed ntype premsg n postmsg
+    = let num = case ntype of
+            Plain -> n
+            Reduced -> n * 100
+            Percent -> n
+            ReducedPercent -> n * 100
+      in return . hsep $
+            [strictText premsg
+            ,(if signed -- assume negative will already get a "-"
+                then if num >= 0 then "+" else mempty
+                else mempty)
+             <> pp_float num
+             <> if ntype `elem` [Percent, ReducedPercent]
+                 then "%"
+                 else mempty
+            ,strictText postmsg
+            ]
 
 numeric_or_tag :: Text -> Text -> GenericStatement -> Text -> PP Doc
 numeric_or_tag pre quant (Statement _ rhs) post = do
@@ -587,29 +660,12 @@ numeric_or_tag pre quant (Statement _ rhs) post = do
                     return $ hsep ["at least as", strictText quant, strictText post, "as", tflag]
     return $ hsep [strictText pre, rest]
 
--- Percentage
-simple_percentage :: Text -> GenericStatement -> Text -> PP Doc
-simple_percentage premsg (Statement _ rhs) postmsg
+numeric_signed :: NumType -> Text -> GenericStatement -> Text -> PP Doc
+numeric_signed ntype premsg (Statement _ rhs) postmsg
     = let n = case rhs of
                 IntRhs n' -> fromIntegral n'
                 FloatRhs n' -> n'
-      in return $ hsep
-            [strictText premsg
-            ,pp_float n <> "%"
-            ,strictText postmsg
-            ]
-simple_percentage _ stmt _ = return $ pre_statement stmt
-
-simple_numeric_signed :: Text -> GenericStatement -> Text -> PP Doc
-simple_numeric_signed premsg (Statement _ rhs) postmsg
-    = let n = case rhs of
-                IntRhs n' -> fromIntegral n'
-                FloatRhs n' -> n'
-      in return $ hsep
-            [strictText premsg
-            ,pp_signed pp_float n
-            ,strictText postmsg
-            ]
+      in numeric' True ntype premsg n postmsg
 
 -- "Has <something>"
 has :: Text -> GenericStatement -> PP Doc
@@ -835,10 +891,10 @@ add_core (Statement _ (GenericRhs tag)) = do -- tag
     tagflag <- flag tag
     return $ hsep [tagflag, "gains", "core"]
 add_core (Statement _ (IntRhs num)) = do -- province
-    prov <- getGameL10n ("PROV" <> T.pack (show num))
+    prov <- getProvLoc num
     return $ hsep ["Gain", "core", "on", "province", strictText prov]
 add_core (Statement _ (FloatRhs num)) = do -- province
-    prov <- getGameL10n ("PROV" <> T.pack (show num))
+    prov <- getProvLoc (round num)
     return $ hsep ["Gain", "core", "on", "province", strictText prov]
 add_core stmt = return $ pre_statement stmt
 
@@ -888,48 +944,51 @@ add_opinion _ stmt = pre_statement stmt
 -- Render a rebel type atom (e.g. anti_tax_rebels) as their name and icon key.
 -- This is needed because all religious rebels localize as simply "Religious" -
 -- we want to be more specific.
-rebel_loc :: Text -> (Text,Text)
-rebel_loc "polish_noble_rebels" = ("Magnates", "magnates")
-rebel_loc "lollard_rebels"      = ("Lollard zealots", "lollards")
-rebel_loc "catholic_rebels"     = ("Catholic zealots", "catholic zealots")
-rebel_loc "protestant_rebels"   = ("Protestant zealots", "protestant zealots")
-rebel_loc "reformed_rebels"     = ("Reformed zealots", "reformed zealots")
-rebel_loc "orthodox_rebels"     = ("Orthodox zealots", "orthodox zealots")
-rebel_loc "sunni_rebels"        = ("Sunni zealots", "sunni zealots")
-rebel_loc "shiite_rebels"       = ("Shiite zealots", "shiite zealots")
-rebel_loc "buddhism_rebels"     = ("Buddhist zealots", "buddhist zealots")
-rebel_loc "mahayana_rebels"     = ("Mahayana zealots", "mahayana zealots")
-rebel_loc "vajrayana_rebels"    = ("Vajrayana zealots", "vajrayana zealots")
-rebel_loc "hinduism_rebels"     = ("Hindu zealots", "hindu zealots")
-rebel_loc "confucianism_rebels" = ("Confucian zealots", "confucian zealots")
-rebel_loc "shinto_rebels"       = ("Shinto zealots", "shinto zealots")
-rebel_loc "animism_rebels"      = ("Animist zealots", "animist zealots")
-rebel_loc "shamanism_rebels"    = ("Shamanist zealots", "shamanist zealots")
-rebel_loc "totemism_rebels"     = ("Totemist zealots", "totemist zealots")
-rebel_loc "coptic_rebels"       = ("Coptic zealots", "coptic zealots")
-rebel_loc "ibadi_rebels"        = ("Ibadi zealots", "ibadi zealots")
-rebel_loc "sikhism_rebels"      = ("Sikh zealots", "sikh zealots")
-rebel_loc "jewish_rebels"       = ("Jewish zealots", "jewish zealots")
-rebel_loc "norse_pagan_reformed_rebels" = ("Norse zealots", "norse zealots")
-rebel_loc "inti_rebels"         = ("Inti zealots", "inti zealots")
-rebel_loc "maya_rebels"         = ("Maya zealots", "maya zealots")
-rebel_loc "nahuatl_rebels"      = ("Nahuatl zealots", "nahuatl zealots")
-rebel_loc "tengri_pagan_reformed_rebels" = ("Tengri zealots", "tengri zealots")
-rebel_loc "zoroastrian_rebels"  = ("Zoroastrian zealots", "zoroastrian zealots")
-rebel_loc "ikko_ikki_rebels"    = ("Ikko-Ikkis", "ikko-ikkis")
-rebel_loc "ronin_rebels"        = ("Ronin", "ronin")
-rebel_loc "reactionary_rebels"  = ("Reactionaries", "reactionaries")
-rebel_loc "anti_tax_rebels"     = ("Peasant rabble", "peasants")
-rebel_loc "revolutionary_rebels" = ("Revolutionaries", "revolutionaries")
-rebel_loc "heretic_rebels"      = ("Heretics", "heretics")
-rebel_loc "religious_rebels"    = ("Religious zealots", "religious zealots")
-rebel_loc "nationalist_rebels"  = ("Separatists", "separatists")
-rebel_loc "noble_rebels"        = ("Noble rebels", "noble rebels")
-rebel_loc "colonial_rebels"     = ("Colonial rebels", "colonial rebels") -- ??
-rebel_loc "patriot_rebels"      = ("Patriot", "patriot")
-rebel_loc "pretender_rebels"    = ("Pretender", "pretender")
-rebel_loc "colonial_patriot_rebels" = ("Colonial Patriot", "colonial patriot") -- ??
-rebel_loc "particularist_rebels" = ("Particularist", "particularist")
+rebel_loc :: HashMap Text (Text,Text)
+rebel_loc = HM.fromList
+        [("polish_noble_rebels",    ("Magnates", "magnates"))
+        ,("lollard_rebels",         ("Lollard zealots", "lollards"))
+        ,("catholic_rebels",        ("Catholic zealots", "catholic zealots"))
+        ,("protestant_rebels",      ("Protestant zealots", "protestant zealots"))
+        ,("reformed_rebels",        ("Reformed zealots", "reformed zealots"))
+        ,("orthodox_rebels",        ("Orthodox zealots", "orthodox zealots"))
+        ,("sunni_rebels",           ("Sunni zealots", "sunni zealots"))
+        ,("shiite_rebels",          ("Shiite zealots", "shiite zealots"))
+        ,("buddhism_rebels",        ("Buddhist zealots", "buddhist zealots"))
+        ,("mahayana_rebels",        ("Mahayana zealots", "mahayana zealots"))
+        ,("vajrayana_rebels",       ("Vajrayana zealots", "vajrayana zealots"))
+        ,("hinduism_rebels",        ("Hindu zealots", "hindu zealots"))
+        ,("confucianism_rebels",    ("Confucian zealots", "confucian zealots"))
+        ,("shinto_rebels",          ("Shinto zealots", "shinto zealots"))
+        ,("animism_rebels",         ("Animist zealots", "animist zealots"))
+        ,("shamanism_rebels",       ("Shamanist zealots", "shamanist zealots"))
+        ,("totemism_rebels",        ("Totemist zealots", "totemist zealots"))
+        ,("coptic_rebels",          ("Coptic zealots", "coptic zealots"))
+        ,("ibadi_rebels",           ("Ibadi zealots", "ibadi zealots"))
+        ,("sikhism_rebels",         ("Sikh zealots", "sikh zealots"))
+        ,("jewish_rebels",          ("Jewish zealots", "jewish zealots"))
+        ,("norse_pagan_reformed_rebels", ("Norse zealots", "norse zealots"))
+        ,("inti_rebels",            ("Inti zealots", "inti zealots"))
+        ,("maya_rebels",            ("Maya zealots", "maya zealots"))
+        ,("nahuatl_rebels",         ("Nahuatl zealots", "nahuatl zealots"))
+        ,("tengri_pagan_reformed_rebels", ("Tengri zealots", "tengri zealots"))
+        ,("zoroastrian_rebels",     ("Zoroastrian zealots", "zoroastrian zealots"))
+        ,("ikko_ikki_rebels",       ("Ikko-Ikkis", "ikko-ikkis"))
+        ,("ronin_rebels",           ("Ronin", "ronin"))
+        ,("reactionary_rebels",     ("Reactionaries", "reactionaries"))
+        ,("anti_tax_rebels",        ("Peasant rabble", "peasants"))
+        ,("revolutionary_rebels",   ("Revolutionaries", "revolutionaries"))
+        ,("heretic_rebels",         ("Heretics", "heretics"))
+        ,("religious_rebels",       ("Religious zealots", "religious zealots"))
+        ,("nationalist_rebels",     ("Separatists", "separatists"))
+        ,("noble_rebels",           ("Noble rebels", "noble rebels"))
+        ,("colonial_rebels",        ("Colonial rebels", "colonial rebels")) -- ??
+        ,("patriot_rebels",         ("Patriot", "patriot"))
+        ,("pretender_rebels",       ("Pretender", "pretender"))
+        ,("colonial_patriot_rebels", ("Colonial Patriot", "colonial patriot")) -- ??
+        ,("particularist_rebels",   ("Particularist", "particularist"))
+        ,("nationalist_rebels",   ("Nationalist", "separatists"))
+        ]
 
 -- Spawn a rebel stack.
 data SpawnRebels = SpawnRebels {
@@ -971,7 +1030,7 @@ spawn_rebels mtype stmt = spawn_rebels' mtype stmt where
                 rsize = fromJust (rebelSize reb)
                 friendlyTo = fromJust (friend reb) -- not evaluated if Nothing
                 reb_unrest = fromJust (unrest reb)
-                (rtype_loc, rtype_icon) = rebel_loc rtype
+                (rtype_loc, rtype_icon) = fromJust $ HM.lookup rtype rebel_loc
             friendlyFlag <- flag friendlyTo
             return ((hsep $
                    (if hasType
@@ -999,7 +1058,7 @@ spawn_rebels mtype stmt = spawn_rebels' mtype stmt where
 
 has_spawned_rebels :: GenericStatement -> PP Doc
 has_spawned_rebels (Statement _ (GenericRhs rtype))
-    = let (rtype_loc, rtype_iconkey) = rebel_loc rtype
+    = let (rtype_loc, rtype_iconkey) = fromJust $ HM.lookup rtype rebel_loc
       in return $ hsep
             [icon rtype_iconkey
             ,strictText rtype_loc
@@ -1008,22 +1067,11 @@ has_spawned_rebels (Statement _ (GenericRhs rtype))
 
 can_spawn_rebels :: GenericStatement -> PP Doc
 can_spawn_rebels (Statement _ (GenericRhs rtype))
-    = let (rtype_loc, rtype_iconkey) = rebel_loc rtype
+    = let (rtype_loc, rtype_iconkey) = fromJust $ HM.lookup rtype rebel_loc
       in return $ hsep
             ["Province has"
             ,icon rtype_iconkey
             ,strictText rtype_loc
-            ]
-
-manpower_percentage :: GenericStatement -> PP Doc
-manpower_percentage (Statement _ rhs)
-    = let pc = case rhs of
-            IntRhs n -> fromIntegral n -- unlikely, but could be 1
-            FloatRhs n -> n
-      in return $ hsep
-            ["Available manpower is at least"
-            ,pp_float (pc * 100) <> "%"
-            ,"of maximum"
             ]
 
 data TriggerEvent = TriggerEvent
@@ -1164,8 +1212,9 @@ data DefineAdvisor = DefineAdvisor
     ,   da_location :: Maybe Int
     ,   da_location_loc :: Maybe Text
     ,   da_skill :: Maybe Int
+    ,   da_female :: Maybe Bool
     }
-newDefineAdvisor = DefineAdvisor Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+newDefineAdvisor = DefineAdvisor Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 define_advisor :: GenericStatement -> PP Doc
 define_advisor stmt@(Statement _ (CompoundRhs scr))
@@ -1203,11 +1252,18 @@ define_advisor stmt@(Statement _ (CompoundRhs scr))
                         -- parsed that way.
                         FloatRhs code -> Just $ round code
                         _ -> Nothing
-                location_loc <- maybe (return Nothing) getGameL10nIfPresent
-                                      (("PROV" <>) . T.pack . show <$> location_code)
+                location_loc <- sequence (getProvLoc <$> location_code)
                 return $ da { da_location = location_code
                             , da_location_loc = location_loc }
             "skill" -> return $ da { da_skill = round `fmap` (floatRhs rhs::Maybe Double) }
+            "female" -> return $
+                let yn = case rhs of
+                        GenericRhs yn' -> Just yn'
+                        StringRhs yn' -> Just yn'
+                        _ -> Nothing
+                in if yn == Just "yes" then da { da_female = Just True }
+                   else if yn == Just "no" then da { da_female = Just False }
+                   else da
         pp_define_advisor :: DefineAdvisor -> PP Doc
         pp_define_advisor da = return $
             let has_type = isJust (da_type da)
@@ -1224,15 +1280,24 @@ define_advisor stmt@(Statement _ (CompoundRhs scr))
                 location_loc = fromJust (da_location_loc da)
                 has_skill = isJust (da_skill da)
                 skill = fromJust (da_skill da)
-            in if has_type && has_skill then hsep $
+                has_female = isJust (da_female da)
+                female = fromJust (da_female da)
+            in if has_skill then hsep $
                 ["Gain skill"
                 ,PP.int skill
-                ,strictText $
-                    if has_type_loc
-                        then type_loc
-                        else thetype
-                ,"advisor"
                 ]
+                ++ if has_female
+                    then if female
+                        then ["female"]
+                        else ["male"]
+                    else []
+                ++ if has_type
+                    then [strictText $
+                        if has_type_loc
+                            then type_loc
+                            else thetype]
+                    else []
+                ++ ["advisor"]
                 ++
                 (if has_name
                     then ["named", strictText name]
@@ -1302,6 +1367,19 @@ define_ruler stmt@(Statement _ (CompoundRhs scr))
                 GenericRhs "yes" -> dr { dr_regency = Just True }
                 GenericRhs "no" -> dr { dr_regency = Just False }
                 _ -> dr
+            "fixed" -> case rhs of
+                GenericRhs "yes" -> dr { dr_fixed = Just True }
+                GenericRhs "no" -> dr { dr_fixed = Just False }
+                _ -> dr
+            "attach_leader" -> dr -- not sure what this means
+            "female" ->
+                let yn = case rhs of
+                        GenericRhs yn' -> Just yn'
+                        StringRhs yn' -> Just yn'
+                        _ -> Nothing
+                in if yn == Just "yes" then dr { dr_female = Just True }
+                   else if yn == Just "no" then dr { dr_female = Just False }
+                   else dr
         pp_define_ruler :: DefineRuler -> Doc
         pp_define_ruler dr =
             let has_name = isJust (dr_name dr)
@@ -1348,6 +1426,11 @@ define_ruler stmt@(Statement _ (CompoundRhs scr))
                     else [])
                 ++ (if has_adm || has_dip || has_mil
                     then ["with"]
+                        ++ if has_fixed
+                            then if fixed
+                                then ["fixed"]
+                                else ["flexible"]
+                            else []
                         ++ [hcat . intersperse (hcat [",", space]) . map hsep . filter (not . null) $
                             [if has_adm
                                 then [icon "adm", PP.int adm]
@@ -1493,3 +1576,19 @@ declare_war_with_cb stmt@(Statement _ (CompoundRhs scr))
                       ]
                  else return $ pre_statement stmt
 
+has_dlc :: GenericStatement -> PP Doc
+has_dlc (Statement _ (StringRhs dlc))
+    = return . hsep $
+       dlc_icon ++
+       [strictText dlc
+       ,"is active"]
+    where
+        mdlc_key = HM.lookup dlc . HM.fromList $
+            [("Conquest of Paradise", "cop")
+            ,("Wealth of Nations", "won")
+            ,("Res Publica", "rp")
+            ,("Art of War", "aow")
+            ,("El Dorado", "ed")
+            ,("Common Sense", "cs")
+            ]
+        dlc_icon = if isNothing mdlc_key then [] else [icon (fromJust mdlc_key)]

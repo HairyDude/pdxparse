@@ -80,13 +80,13 @@ indentUp go = do
     local (\s -> s { currentIndent = mindent' }) go
 
 -- Pass the current indent to the action.
--- If there is no current indent, set it to 0.
+-- If there is no current indent, set it to 1.
 withCurrentIndent :: (Int -> PP a) -> PP a
 withCurrentIndent go = do
     mindent <- asks currentIndent
     local (\s ->
             if isNothing mindent
-            then s { currentIndent = Just 0 }
+            then s { currentIndent = Just 1 }
             else s)
           (go . fromJust =<< asks currentIndent)
 

@@ -219,6 +219,17 @@ genericScript = script parse_generic parse_generic
 strictText :: Text -> Doc
 strictText = text . TL.fromStrict
 
+nl2br :: Text -> Text
+nl2br = mconcat . unfoldr replaceNextBreak . Just where
+    replaceNextBreak :: Maybe Text -> Maybe (Text, Maybe Text)
+    replaceNextBreak Nothing = Nothing
+    replaceNextBreak (Just t)
+        = let (left, right) = T.breakOn "\n" t
+              right' = T.drop 1 right
+          in if T.null right -- no newlines found
+                then Just (left, Nothing)
+                else Just (left <> "<br/>", Just right')
+
 -- Pretty-print a number, putting a + sign in front if it's not negative.
 -- Assumes the passed-in formatting function does add a minus sign.
 pp_signed :: (Ord n, Num n) => (n -> Doc) -> n -> Doc

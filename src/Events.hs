@@ -8,7 +8,7 @@ import Prelude hiding (mapM)
 import Control.Applicative
 import Control.Monad.Reader hiding (mapM)
 
-import Data.List (foldl', intersperse)
+import Data.List (foldl', unfoldr, intersperse)
 import Data.Either
 import Data.Maybe
 import Data.Monoid
@@ -194,7 +194,7 @@ pp_event evt = do
                     ] ++
                     maybe [] (\desc ->
                                 ["| event_text = "
-                                ,text (TL.fromStrict desc)
+                                ,text . TL.fromStrict . nl2br $ desc
                                 ,line])
                               (evt_desc_loc evt) ++
                     maybe [] (\i_t_o ->

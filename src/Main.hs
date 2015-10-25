@@ -103,7 +103,7 @@ main = do
                                 local (\s -> s { currentFile = Just file })
                                       (mapM handler script))
                 -- for testing -- DELETE ME for release
-                . filter (\(file, _) -> file == "events/flavorMLO.txt")
+                . filter (\(file, _) -> file == "events/Buddhism.txt")
                 $ scripts
 
         forM_ (runReader results settings) $ \(path, mesgs) -> do
