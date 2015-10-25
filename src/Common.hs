@@ -18,6 +18,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 
+-- TODO: get rid of these, do icon key lookups from another module
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
@@ -42,11 +43,8 @@ isPronoun s = T.map toLower s `S.member` pronouns where
         ,"controller"
         ]
 
--- Define currentIndent before calling this.
 pp_script :: GenericScript -> PP Doc
-pp_script script = do
-    l10n <- asks gameL10n
-    indent <- fromJust <$> asks currentIndent
+pp_script script = withCurrentIndent $ \indent -> do
     statements_pp'd <- mapM pp_statement' script
     return . hcat . punctuate line
         . map (mconcat (replicate indent "*" ++ [" "]) <>)
@@ -128,11 +126,10 @@ template name content = hcat ["{{", strictText name, "|", content, "}}"]
 
 -- Emit flag template if the argument is a tag.
 flag :: Text -> PP Doc
-flag name = do
-    l10n <- asks gameL10n
-    return $ if isTag name
-        then template "flag" (strictText $ HM.lookupDefault name name l10n)
-        else strictText name
+flag name =
+    if isTag name
+        then template "flag" . strictText <$> getGameL10n name
+        else return $ strictText name
 
 -- Emit icon template.
 icon :: Text -> Doc
@@ -399,16 +396,16 @@ pp_statement' stmt@(Statement lhs rhs) =
                             <> line <> script_pp'd
                     _ -> return defaultdoc
                  else return defaultdoc
-        IntLhs n -> do
-            l10n <- asks gameL10n
-            case rhs of -- Treat as a province tag
+        IntLhs n -> do -- Treat as a province tag
+            let provN = T.pack (show n)
+            prov_loc <- getGameL10nDefault ("Province " <> provN) ("PROV" <> provN)
+            case rhs of
                 CompoundRhs scr -> do
-                    let provN = T.pack (show n)
                     script_pp'd <- pp_script scr
                     return $ hcat
                         ["Province"
                         ,space
-                        ,strictText (HM.lookupDefault ("Province " <> provN) ("PROV" <> provN) l10n)
+                        ,strictText prov_loc
                         ,":"
                         ,line
                         ,script_pp'd
@@ -1486,12 +1483,12 @@ declare_war_with_cb stmt@(Statement _ (CompoundRhs scr))
               in if has_who && has_cb
                  then do
                     whoflag <- flag who
-                    l10n <- asks gameL10n
+                    cb_loc <- getGameL10n cb
                     return . hsep $
                       ["Declare war on"
                       ,whoflag
                       ,"using"
-                      ,dquotes (strictText $ HM.lookupDefault cb cb l10n)
+                      ,dquotes (strictText cb_loc)
                       ,"casus belli"
                       ]
                  else return $ pre_statement stmt

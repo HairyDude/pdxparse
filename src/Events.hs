@@ -1,6 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Events where
 
+import Debug.Trace
+
 import Prelude hiding (mapM)
 
 import Control.Applicative
@@ -11,9 +13,6 @@ import Data.Either
 import Data.Maybe
 import Data.Monoid
 import Data.Traversable
-
-import Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HM
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -58,9 +57,6 @@ processEvent (Statement left right) = case right of
         CustomLhs _ -> return $ Left "internal error: custom lhs"
         IntLhs _ -> return $ Left "int lhs at top level"
         GenericLhs _ -> do
-            -- TODO: convert pp_event to Reader
-            version <- asks gameVersion
-            l10n <- asks gameL10n
             mfile <- asks currentFile
             maybe (return $ Left "no current file")
                   (\file ->
@@ -72,7 +68,6 @@ processEvent (Statement left right) = case right of
 -- Do not call this with a state in which currentFile is Nothing.
 eventAddSection :: Event -> GenericStatement -> PP Event
 eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file -> do
-    l10n <- asks gameL10n
     case label of
         "id" -> case rhs of
             StringRhs id -> return evt { evt_id = Just id }
@@ -82,20 +77,24 @@ eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file
             FloatRhs id -> return evt { evt_id = Just (pp_float_t id) }
             _ -> error $ "bad id in " ++ file ++ ": " ++ show rhs
         "title" -> case rhs of
-            StringRhs title ->
+            StringRhs title -> do
+                t_loc <- getGameL10nIfPresent title
                 return evt { evt_title = Just title
-                           , evt_title_loc = HM.lookup title l10n }
-            GenericRhs title ->
+                           , evt_title_loc = t_loc }
+            GenericRhs title -> do
+                t_loc <- getGameL10nIfPresent title
                 return evt { evt_title = Just title
-                           , evt_title_loc = HM.lookup title l10n }
+                           , evt_title_loc = t_loc }
             _ -> error $ "bad title in " ++ file
         "desc" -> case rhs of
-            StringRhs desc ->
+            StringRhs desc -> do
+                desc_loc <- getGameL10nIfPresent desc
                 return evt { evt_desc = Just desc
-                           , evt_desc_loc = HM.lookup desc l10n }
-            GenericRhs desc ->
+                           , evt_desc_loc = desc_loc }
+            GenericRhs desc -> do
+                desc_loc <- getGameL10nIfPresent desc
                 return evt { evt_desc = Just desc
-                           , evt_desc_loc = HM.lookup desc l10n }
+                           , evt_desc_loc = desc_loc }
             _ -> error "bad desc"
         "picture" -> case rhs of
             GenericRhs pic -> return evt { evt_picture = Just pic }
@@ -132,7 +131,6 @@ addOption (Just opts) opt = do
 
 optionAddStatement :: Option -> GenericStatement -> PP Option
 optionAddStatement opt stmt@(Statement (GenericLhs label) rhs) = do
-    l10n <- asks gameL10n
     case label of
         "name" -> case rhs of
             StringRhs name ->
@@ -167,7 +165,6 @@ optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 pp_event :: Event -> PP (Either Text Doc)
 pp_event evt = do
     version <- asks gameVersion
-    l10n <- asks l10n
     if isJust (evt_title_loc evt) && isJust (evt_options evt)
         && (isJust (evt_is_triggered_only evt) ||
             isJust (evt_mean_time_to_happen evt))
@@ -222,7 +219,6 @@ pp_event evt = do
 
 pp_options :: [Option] -> PP (Either Text (Bool, Doc))
 pp_options opts = do
-    l10n <- asks gameL10n
     options_pp'd <- mapM pp_option opts
     return $ case partitionEithers options_pp'd of
         ([], triggered_opts_pp'd) ->
@@ -233,7 +229,6 @@ pp_options opts = do
 
 pp_option :: Option -> PP (Either Text (Bool, Doc))
 pp_option opt = do
-    l10n <- asks gameL10n
     if isJust (opt_name_loc opt)
         -- NB: some options have no effect, e.g. start of Peasants' War.
     then -- Valid option, carry on

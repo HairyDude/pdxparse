@@ -9,9 +9,6 @@ import Data.List
 import Data.Monoid
 import Control.Monad.Reader
 
-import Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HM
-
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 

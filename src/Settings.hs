@@ -95,22 +95,20 @@ readSettings = do
                                       </> maybe "Program Files (x86)" id (steamDirI settings)
                     Unknown -> fail $ "Unknown platform: " ++ System.Info.os
             let steamAppsCanonicalized = maybe "Steam/steamapps/common" id (steamAppsI settings)
-                provisionalSettings = Settings
+                provisionalSettings = emptySettings
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
                             , game = gameI settings
                             , language = languageI settings
                             , gameVersion = T.pack (gameVersionI settings)
-                            , gameL10n = undefined
-                            , l10n = undefined
                             , currentFile = Nothing
                             , currentIndent = Nothing }
             game_l10n <- readL10n provisionalSettings
             l10n <- -- TODO: internationalize this
                     return HM.empty
-            return provisionalSettings
-                    { gameL10n = game_l10n
-                    , l10n = l10n }
+            return $ provisionalSettings
+                    `setGameL10n` game_l10n
+                    `setL10n` l10n
         Left exc -> do
             hPutStrLn stderr $ "Couldn't parse settings: " ++ show exc
             exitFailure
