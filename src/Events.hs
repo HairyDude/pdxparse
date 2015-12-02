@@ -173,22 +173,22 @@ pp_event evt = do
         case eoptions_pp'd of
             Left err -> return . Left $ "failed to pprint event options: " <> err
             Right (conditional, options_pp'd) -> do
-                let evtArg :: (Event -> Maybe a) -> (a -> PP Doc) -> PP [Doc]
-                    evtArg field fmt
+                let evtArg :: Text -> (Event -> Maybe a) -> (a -> PP Doc) -> PP [Doc]
+                    evtArg fieldname field fmt
                         = maybe (return [])
                             (\field_content -> do
                                 content_pp'd <- fmt field_content 
                                 return
-                                    ["| immediate = "
+                                    ["| ", strictText fieldname, " = "
                                     ,line
                                     ,content_pp'd
                                     ,line])
                             (field evt)
-                trigger_pp'd <- evtArg evt_trigger pp_script
-                mtth_pp'd <- evtArg evt_mean_time_to_happen pp_mtth
-                immediate_pp'd <- evtArg evt_immediate pp_script
+                trigger_pp'd <- evtArg "trigger" evt_trigger pp_script
+                mtth_pp'd <- evtArg "mean_time_to_happen" evt_mean_time_to_happen pp_mtth
+                immediate_pp'd <- evtArg "immediate" evt_immediate pp_script
                 return . Right . mconcat $
-                    ["{{Event", line
+                    ["{{Event", "<!-- ", strictText . fromJust . evt_id $ evt, " -->", line
                     ,"| version = ", strictText version, line
                     ,"| event_name = ", text (TL.fromStrict . fromJust $ evt_title_loc evt), line
                     ] ++
@@ -198,7 +198,7 @@ pp_event evt = do
                                 ,line])
                               (evt_desc_loc evt) ++
                     maybe [] (\i_t_o ->
-                                ["| triggered_only = "
+                                ["| triggered only = "
                                 ,(if i_t_o then "(please describe trigger here)"
                                   else "No")
                                 ,line])

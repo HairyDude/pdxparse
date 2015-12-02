@@ -24,4 +24,4 @@ settings:
     language: "english"
 
     # Game version (major patch number).
-    version: "1.13"
+    version: "1.14"

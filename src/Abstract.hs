@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell, TypeSynonymInstances, FlexibleInstances, MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Abstract where
 
 {-

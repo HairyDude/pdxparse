@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, PatternGuards #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Common where
 
 import Prelude hiding (sequence, mapM)
@@ -6,7 +6,7 @@ import Prelude hiding (sequence, mapM)
 import Debug.Trace
 
 import Control.Applicative
-import Control.Monad.Reader hiding (sequence, mapM)
+import Control.Monad.Reader hiding (sequence, mapM, forM)
 
 import Data.Char
 import Data.List
@@ -138,7 +138,7 @@ flag :: Text -> PP Doc
 flag name =
     if isTag name
         then template "flag" . strictText <$> getGameL10n name
-        else return $ case name of
+        else return $ case T.map toUpper name of
                 "ROOT" -> "Our country" -- will need editing for capitalization in some cases
                 "PREV" -> "Previously mentioned country"
                 -- Suggestions of a description for FROM are welcome.
@@ -164,14 +164,14 @@ labelIcon label content = hsep [template "icon" label, content]
 pre_statement :: GenericStatement -> Doc
 pre_statement stmt = "<pre>" <> genericStatement2doc stmt <> "</pre>"
 
--- Pretty-print a statement, preceding it with a single layer of bullets.
+-- Pretty-print a statement, preceding it with one extra layer of bullets.
 -- Most statements are expected to be of a particular form. If they're not, we
 -- just echo the statement instead of failing. This is also what we do with
 -- unrecognized statements.
 pp_statement :: GenericStatement -> PP Doc
 pp_statement = indentUp . pp_statement'
 
--- Pretty-print a statement, preceding it with the given number of bullets.
+-- Pretty-print a statement.
 pp_statement' :: GenericStatement -> PP Doc
 pp_statement' stmt@(Statement lhs rhs) =
     let defaultdoc = pre_statement stmt
@@ -188,28 +188,39 @@ pp_statement' stmt@(Statement lhs rhs) =
             -- Plain numbers
             "add_adm_power"         -> gain Plain Nothing True (Just "adm") "administrative power" stmt
             "add_army_tradition"    -> gain Plain Nothing True (Just "army tradition") "army tradition" stmt
+            "add_authority"         -> gain Plain Nothing True (Just "authority") "authority" stmt
             "add_base_tax"          -> gain Plain Nothing True (Just "base tax") "base tax" stmt
             "add_base_production"   -> gain Plain Nothing True (Just "base production") "base production" stmt
             "add_base_manpower"     -> gain Plain Nothing True (Just "manpower") "base manpower" stmt
             "add_dip_power"         -> gain Plain Nothing True (Just "dip") "diplomatic power" stmt
+            "add_doom"              -> gain Plain Nothing False (Just "doom") "doom" stmt
             "add_heir_claim"        -> gain Plain (Just "Heir") True Nothing "claim strength" stmt
+            "add_devotion"          -> gain Plain Nothing True (Just "devotion") "devotion" stmt
+            "add_horde_unity"       -> gain Plain Nothing True (Just "horde unity") "horde unity" stmt
             "add_imperial_influence" -> gain Plain Nothing False (Just "imperial authority") "imperial authority" stmt
             "add_karma"             -> gain Plain Nothing True (Just "karma") "karma" stmt
             "add_legitimacy"        -> gain Plain Nothing True (Just "legitimacy") "legitimacy" stmt
             "add_mil_power"         -> gain Plain Nothing True (Just "mil") "military power" stmt
+            "add_navy_tradition"    -> gain Plain Nothing True (Just "navy tradition") "navy tradition" stmt
+            "add_papal_influence"   -> gain Plain Nothing True (Just "papal influence") "papal influence" stmt
             "add_prestige"          -> gain Plain Nothing True (Just "prestige") "prestige" stmt
             "add_stability"         -> gain Plain Nothing True (Just "stability") "stability" stmt
             "add_war_exhaustion"    -> gain Plain Nothing False (Just "war exhaustion") "war exhaustion" stmt
+            "add_yearly_manpower"   -> gain Plain Nothing True (Just "yearly_manpower") "years' worth of manpower" stmt
             "change_adm"            -> gain Plain (Just "Ruler") True (Just "adm") "administrative skill" stmt
             "change_dip"            -> gain Plain (Just "Ruler") True (Just "dip") "diplomatic skill" stmt
             "change_mil"            -> gain Plain (Just "Ruler") True (Just "mil") "military skill" stmt
             "change_siege"          -> gain Plain Nothing True Nothing "siege progress" stmt
             -- Reduced numbers
+            "add_patriarch_authority"  -> gain Reduced Nothing True (Just "patriarch authority") "patriarch authority" stmt
+            "add_piety"                -> gain Reduced Nothing True (Just "piety") "piety" stmt
             "add_republican_tradition" -> gain Reduced Nothing True (Just "republican tradition") "republican tradition" stmt
             -- Percentages
             "add_inflation"      -> gain Percent Nothing False (Just "inflation") "inflation" stmt
             "add_local_autonomy" -> gain Percent Nothing False (Just "local autonomy") "local autonomy" stmt
             "add_reform_desire"  -> gain Percent (Just "Catholicism") False (Just "reform desire") "reform desire" stmt
+            -- Reduced percentages
+            "add_mercantilism"   -> gain ReducedPercent Nothing True (Just "mercantilism") "mercantilism" stmt
             -- Special
             "add_manpower" -> gain_manpower stmt
             -- Modifiers
@@ -217,8 +228,10 @@ pp_statement' stmt@(Statement lhs rhs) =
             "add_permanent_province_modifier" -> add_modifier "permanent province" stmt
             "add_province_modifier" -> add_modifier "province" stmt
             "add_ruler_modifier" -> add_modifier "ruler" stmt
+            "add_trade_modifier" -> add_modifier "trade" stmt
             "has_country_modifier" -> has_modifier "country" stmt
             "has_province_modifier" -> has_modifier "province" stmt
+            "has_trade_modifier" -> has_modifier "trade" stmt
             "remove_country_modifier" -> remove_modifier "country" stmt
             "remove_province_modifier" -> remove_modifier "province" stmt
             -- Simple compound statements
@@ -236,6 +249,8 @@ pp_statement' stmt@(Statement lhs rhs) =
             -- the latter means "do this for every <type>." But their contexts
             -- are disjoint, so they can be presented the same way.
             "all_owned_province"        -> compound "Every owned province" stmt
+            "area"                      -> compound "Area containing this province" stmt
+            "any_active_trade_node"     -> compound "Any trade node with a merchant present" stmt
             "any_ally"                  -> compound "Any ally" stmt
             "any_core_country"          -> compound "Any country with a core" stmt
             "any_country"               -> compound "Any country" stmt
@@ -274,13 +289,20 @@ pp_statement' stmt@(Statement lhs rhs) =
             "continent"         -> simple_generic "Continent is" stmt mempty
             "culture"           -> simple_generic "Culture is" stmt mempty
             "culture_group"     -> simple_generic "Culture is in" stmt "culture group"
+            "dynasty"           -> simple_generic "Ruler is of" stmt "dynasty"
+            "end_disaster"      -> simple_generic "Disaster" stmt "ends"
             "government"        -> simple_generic "Government is" stmt mempty
             "has_advisor"       -> simple_generic "Has" stmt "advisor"
+            "has_terrain"       -> simple_generic "Has" stmt "terrain"
             "infantry"          -> simple_generic "An infantry regiment spawns in" stmt mempty
             "kill_advisor"      -> simple_generic mempty stmt "dies"
             "primary_culture"   -> simple_generic "Primary culture is" stmt mempty
             "region"            -> simple_generic "Is in region" stmt mempty
             "remove_advisor"    -> simple_generic mempty stmt "leaves the country's court"
+            "remove_estate"     -> simple_generic "Remove province from the" stmt "estate"
+            -- Simple generic statements (RHS is a localizable atom that should
+            -- be enclosed in single quotation marks)
+            "has_disaster"      -> generic_squot "The" stmt "disaster is ongoing"
             -- RHS is a province ID
             "province_id"   -> simple_province "Province is" stmt mempty
             "owns"          -> simple_province "Owns" stmt mempty
@@ -305,6 +327,8 @@ pp_statement' stmt@(Statement lhs rhs) =
             "create_advisor"    -> generic_icon "Gain" stmt
             "has_idea_group"    -> generic_icon "Has activated" stmt
             "trade_goods"       -> generic_icon "Produces" stmt
+            "has_estate"        -> generic_icon "Has estate" stmt
+            "set_estate"        -> generic_icon "Give to estate" stmt
             -- Simple generic statements with flag
             "alliance_with"     -> generic_tag (Just "Allied with") stmt Nothing
             "cede_province"     -> generic_tag (Just "Cede province to") stmt Nothing
@@ -339,7 +363,9 @@ pp_statement' stmt@(Statement lhs rhs) =
             "ai"                    -> is Nothing "AI controlled" stmt
             "has_cardinal"          -> has "a cardinal" stmt
             "has_heir"              -> has "an heir" stmt
+            "has_owner_religion"    -> has "its owner's religion" stmt
             "has_port"              -> has "a port" stmt
+            "has_seat_in_parliament" -> has "a seat in Parliament" stmt
             "has_regency"           -> is Nothing "in a regency" stmt
             "has_siege"             -> is Nothing "under siege" stmt
             "is_at_war"             -> is Nothing "at war" stmt
@@ -350,27 +376,43 @@ pp_statement' stmt@(Statement lhs rhs) =
             "is_lesser_in_union"    -> is Nothing "the junior partner in a personal union" stmt
             "is_looted"             -> is Nothing "looted" stmt
             "is_monarch_leader"     -> is (Just "Monarch") "a military leader" stmt
+            "is_overseas"           -> is Nothing "overseas" stmt
             "is_part_of_hre"        -> is Nothing "part of the Holy Roman Empire" stmt
             "is_reformation_center" -> is Nothing "a center of reformation" stmt
             "is_subject"            -> is Nothing "a subject nation" stmt
             "papacy_active"         -> is (Just "Papal interaction") "active" stmt
+            "unit_in_siege"         -> is Nothing "under siege" stmt -- duplicate?
             "was_player"            -> has_been Nothing "player-controlled" stmt
             -- Numeric statements
+            "army_tradition"            -> numeric Plain "Army tradition is at least" stmt mempty
+            "base_manpower"             -> numeric Plain "Base manpower is at least" stmt mempty
+            "base_production"           -> numeric Plain "Base production is at least" stmt mempty
             "base_tax"                  -> numeric Plain "Base tax is at least" stmt mempty
             "colonysize"                -> numeric Plain "Colony has at least" stmt "settlers"
+            "create_admiral"            -> numeric Plain "Gain admiral with" stmt "navy tradition"
+            "create_general"            -> numeric Plain "Gain leader with" stmt "army tradition"
             "development"               -> numeric Plain "Has at least" stmt "development"
             "had_recent_war"            -> numeric Plain "Was at war within the last" stmt "months(?)"
             "heir_age"                  -> numeric Plain "Heir is at least" stmt "years old"
+            "horde_unity"               -> numeric Plain "Horde unity is at least" stmt mempty
             "is_year"                   -> numeric Plain "Year is" stmt "or later"
+            "monthly_income"            -> numeric Plain "Monthly income is at least {{icon|ducats}}" stmt "ducats"
             "num_of_allies"             -> numeric Plain "Has at least" stmt "allies"
             "num_of_cardinals"          -> numeric Plain "Controls at least" stmt "cardinals"
+            "num_of_colonists"          -> numeric Plain "Has at least" stmt "colonist(s)"
+            "num_of_loans"              -> numeric Plain "Has at least" stmt "loan(s)"
             "num_of_mercenaries"        -> numeric Plain "Has at least" stmt "mercenary regiment(s)"
+            "num_of_ports"              -> numeric Plain "Has at least" stmt "port(s)"
             "num_of_rebel_armies"       -> numeric Plain "At least" stmt "rebel army/armies are present in the country"
+            "num_of_trade_embargos"     -> numeric Plain "Is embargoing at least" stmt "other nation(s)"
+            "total_development"         -> numeric Plain "Total development is at least" stmt mempty
             "total_number_of_cardinals" -> numeric Plain "There are at least" stmt "cardinals"
             "unrest"                    -> numeric Plain "Unrest is at least" stmt mempty
+            "units_in_province"         -> numeric Plain "Province contains at least" stmt "regiment(s)"
             -- Numeric statements, but the RHS is the number divided by 100
             "republican_tradition"      -> numeric Reduced "Has at least" stmt "republican tradition"
             -- Percentage statements
+            "inflation"                 -> numeric Percent "Has at least" stmt "inflation"
             "local_autonomy"            -> numeric Percent "Has at least" stmt "local autonomy"
             -- Percentage statements, but the RHS is the number divided by 100
             "manpower_percentage"       -> numeric ReducedPercent "Manpower is at least" stmt "of maximum"
@@ -390,24 +432,35 @@ pp_statement' stmt@(Statement lhs rhs) =
             "mil" -> numeric_icon "Has at least" (Just "mil") "military skill" stmt
             "mil_tech" -> numeric_icon "Has at least" Nothing "military technology" stmt
             "legitimacy" -> numeric_icon "Has at least" Nothing "legitimacy" stmt
+            "unrest" -> numeric_icon "Has at least" Nothing "unrest" stmt
             "war_exhaustion" -> numeric_icon "Has at least" Nothing "war exhaustion" stmt
             -- Complex statements
             "add_casus_belli"         -> add_casus_belli False stmt
             "add_faction_influence"   -> faction_influence stmt
+            "add_estate_loyalty"      -> estate_loyalty True stmt
+            "add_estate_influence_modifier"
+                                      -> estate_influence_modifier stmt
             "add_opinion"             -> opinion "Add" stmt
             "add_years_of_income"     -> add_years_of_income stmt
+            "define_heir"             -> define_heir stmt
             "build_to_forcelimit"     -> build_to_forcelimit stmt
             "country_event"           -> trigger_event "country" stmt
             "declare_war_with_cb"     -> declare_war_with_cb stmt
             "define_advisor"          -> define_advisor stmt
             "define_ruler"            -> define_ruler stmt
+            "estate_influence"        -> estate_influence stmt
+            "estate_loyalty"          -> estate_loyalty False stmt
             "had_country_flag"        -> had_flag "country" stmt
             "had_province_flag"       -> had_flag "province" stmt
             "had_ruler_flag"          -> had_flag "ruler" stmt
+            "has_estate_influence_modifier"
+                                      -> has_estate_influence_modifier stmt
             "has_opinion_modifier"    -> opinion "Has" stmt
             "province_event"          -> trigger_event "province" stmt
             "reverse_add_casus_belli" -> add_casus_belli False stmt
+            "trigger_switch"          -> trigger_switch stmt
             -- Rebels
+            "can_spawn_rebels"  -> can_spawn_rebels stmt
             "create_revolt" -> spawn_rebels Nothing stmt
             "has_spawned_rebels" -> has_spawned_rebels stmt
             "likely_rebels" -> can_spawn_rebels stmt
@@ -461,13 +514,18 @@ data MTTH = MTTH
         {   years :: Maybe Int
         ,   months :: Maybe Int
         ,   days :: Maybe Int
---        ,   factors :: [GenericStatement] -- TODO
+        ,   modifiers :: [MTTHModifier] -- TODO
         } deriving Show
-newMTTH = MTTH Nothing Nothing Nothing --[]
+data MTTHModifier = MTTHModifier
+        {   mtthmod_factor :: Maybe Double
+        ,   mtthmod_conditions :: GenericScript
+        } deriving Show
+newMTTH = MTTH Nothing Nothing Nothing []
+newMTTHMod = MTTHModifier Nothing []
 addField mtth _ = mtth -- unrecognized
 pp_mtth :: GenericScript -> PP Doc
 pp_mtth scr
-    = return . pp_mtth' $ foldl' addField newMTTH scr
+    = pp_mtth' $ foldl' addField newMTTH scr
     where
         addField mtth (Statement (GenericLhs "years") (IntRhs n))
             = mtth { years = Just n }
@@ -483,14 +541,23 @@ pp_mtth scr
             = mtth { days = Just (floor n) }
         addField mtth (Statement (GenericLhs "modifier") (CompoundRhs rhs))
         --            = addFactor mtth rhs
-            = mtth -- TODO
-        pp_mtth' mtth@(MTTH years months days) =
+            = addMTTHMod mtth rhs -- TODO
+        addMTTHMod mtth scr = mtth { modifiers = modifiers mtth ++ [foldl' addMTTHModField newMTTHMod scr] } where
+            addMTTHModField mtthmod (Statement (GenericLhs "factor") rhs)
+                = mtthmod { mtthmod_factor = floatRhs rhs }
+            addMTTHModField mtthmod stmt -- anything else is a condition
+                = mtthmod { mtthmod_conditions = mtthmod_conditions mtthmod ++ [stmt] }
+        pp_mtth' mtth@(MTTH years months days modifiers) = do
+            modifiers_pp'd <- indentUp (intersperse line <$> mapM pp_mtthmod modifiers)
             let hasYears = isJust years
                 hasMonths = isJust months
                 hasDays = isJust days
-            in mconcat $
+                hasModifiers = not (null modifiers)
+            return . mconcat $
+                ["*"]
+                ++
                 ((if hasYears then
-                    [PP.int (fromJust years), space, "years"]
+                    [PP.int (fromJust years), space, "year(s)"]
                     ++
                     if hasMonths && hasDays then [",", space]
                     else if hasMonths || hasDays then ["and", space]
@@ -498,15 +565,30 @@ pp_mtth scr
                  else [])
                 ++
                 (if hasMonths then
-                    [PP.int (fromJust months), space, "months"]
+                    [PP.int (fromJust months), space, "month(s)"]
                  else [])
                 ++
                 (if hasDays then
                     (if hasYears && hasMonths then ["and", space]
                      else []) -- if years but no months, already added "and"
                     ++
-                    [PP.int (fromJust days), space, "days"]
+                    [PP.int (fromJust days), space, "day(s)"]
                  else []))
+                ++
+                (if hasModifiers then
+                    [line, "''Modifiers''", line]
+                    ++ modifiers_pp'd
+                 else [])
+        pp_mtthmod mtthmod@(MTTHModifier (Just factor) conditions) = do
+            conditions_pp'd <- indentUp (pp_script conditions)
+            return . mconcat $
+                ["*"
+                ,enclose "'''×" "''':" (pp_float factor)
+                ,line
+                ,conditions_pp'd
+                ]
+        pp_mtthmod mtthmod@(MTTHModifier Nothing conditions)
+            = return "(invalid modifier! Bug in extractor?)"
 
 --------------------------------
 -- General statement handlers --
@@ -528,7 +610,7 @@ generic_compound defaultdoc header stmt
         = generic_compound_doc defaultdoc (strictText header) stmt
 
 -- Statement with generic on both sides translating to the form
---  <string> <l10n value>
+--  <string> <l10n value> <string>
 simple_generic :: Text -> GenericStatement -> Text -> PP Doc
 simple_generic premsg (Statement _ (GenericRhs name)) postmsg
     = (\name_loc -> hsep
@@ -539,6 +621,18 @@ simple_generic premsg (Statement _ (GenericRhs name)) postmsg
       <$> getGameL10n name
 simple_generic _ stmt _ = return $ pre_statement stmt
 
+-- Statement with generic on both sides translating to the form
+--  <string>  ‘<l10n value>’ <string>
+generic_squot :: Text -> GenericStatement -> Text -> PP Doc
+generic_squot premsg (Statement _ (GenericRhs name)) postmsg
+    = (\name_loc -> hsep
+        [strictText premsg
+        ,enclose "‘" "’" (strictText name_loc)
+        ,strictText postmsg
+        ])
+      <$> getGameL10n name
+generic_squot _ stmt _ = return $ pre_statement stmt
+
 simple_province :: Text -> GenericStatement -> Text -> PP Doc
 simple_province premsg (Statement lhs rhs) postmsg
     = let loc_key = "PROV" <> case rhs of
@@ -548,10 +642,15 @@ simple_province premsg (Statement lhs rhs) postmsg
             FloatRhs id -> show (round id)
       in simple_generic premsg (Statement lhs (GenericRhs (T.pack loc_key))) postmsg
 
+-- Enclose a doc in an HTML element. Only simple tags are supported.
+pp_elem :: Text -> Doc -> Doc
+pp_elem tag = enclose (hcat ["<", dtag, ">"]) (hcat ["</", dtag, ">"])
+    where dtag = strictText tag
+
 -- As simple_generic but definitely no l10n. Set the RHS in typewriter face
 simple_generic_tt :: Text -> GenericStatement -> PP Doc
 simple_generic_tt premsg (Statement _ (GenericRhs name))
-    = return $ mconcat [strictText $ premsg, space, "<tt>", strictText name, "</tt>"]
+    = return $ mconcat [strictText $ premsg, space, pp_elem "tt" (strictText name)]
 simple_generic_tt _ stmt = return $ pre_statement stmt
 
 -- Table of script atom -> icon key. Only ones that are different are listed.
@@ -568,6 +667,12 @@ scriptIconTable = HM.fromList
     ,("master_recruiter", "master recruiter")
     ,("military_engineer", "military engineer")
     ,("spy_ideas", "espionage")
+    ,("estate_church", "church")
+    ,("estate_nobles", "nobles")
+    ,("estate_burghers", "burghers")
+    ,("estate_cossacks", "cossacks")
+    ,("estate_tribes", "tribes")
+    ,("estate_dhimmi", "dhimmi")
     ]
 
 -- As simple_generic but also add an appropriate icon before the value.
@@ -831,39 +936,59 @@ gain numtype mwho good iconkey what stmt@(Statement _ rhs) = return $
                 then if howmuch < 0 then "loses" else "gains"
                 else if howmuch < 0 then "Lose" else "Gain"
 
-data AddModifier = AddModifier {
-        name :: Maybe Text
-    ,   duration :: Maybe Double
+data Modifier = Modifier {
+        mod_name :: Maybe Text
+    ,   mod_key :: Maybe Text
+    ,   mod_who :: Maybe Text
+    ,   mod_duration :: Maybe Double
+    ,   mod_power :: Maybe Double
     } deriving Show
-newAddModifier = AddModifier Nothing Nothing
+newModifier = Modifier Nothing Nothing Nothing Nothing Nothing
+
+addModifierLine :: Modifier -> GenericStatement -> Modifier 
+addModifierLine apm (Statement (GenericLhs "name") (GenericRhs name)) = apm { mod_name = Just name }
+addModifierLine apm (Statement (GenericLhs "name") (StringRhs name)) = apm { mod_name = Just name }
+addModifierLine apm (Statement (GenericLhs "key") (GenericRhs key)) = apm { mod_key = Just key }
+addModifierLine apm (Statement (GenericLhs "key") (StringRhs key)) = apm { mod_key = Just key }
+addModifierLine apm (Statement (GenericLhs "who") (GenericRhs tag)) = apm { mod_who = Just tag }
+addModifierLine apm (Statement (GenericLhs "who") (StringRhs tag)) = apm { mod_who = Just tag }
+addModifierLine apm (Statement (GenericLhs "duration") (FloatRhs duration)) = apm { mod_duration = Just duration }
+addModifierLine apm (Statement (GenericLhs "power") (FloatRhs power)) = apm { mod_power = Just power }
+addModifierLine apm _ = apm -- e.g. hidden = yes
+
+maybeM :: Monad m => (a -> m b) -> Maybe a -> m (Maybe b)
+maybeM f x = maybe (return Nothing) (liftM Just . f) x
 
 add_modifier :: Text -> GenericStatement -> PP Doc
 add_modifier kind stmt@(Statement _ (CompoundRhs scr))
-    = pp_add_modifier $ foldl' addLine newAddModifier scr
-    where
-        addLine :: AddModifier -> GenericStatement -> AddModifier 
-        addLine apm (Statement (GenericLhs "name") (GenericRhs name)) = apm { name = Just name }
-        addLine apm (Statement (GenericLhs "name") (StringRhs name)) = apm { name = Just name }
-        addLine apm (Statement (GenericLhs "duration") (FloatRhs duration)) = apm { duration = Just duration }
-        addLine apm _ = apm -- e.g. hidden = yes
-        pp_add_modifier :: AddModifier -> PP Doc
-        pp_add_modifier apm
-            = if isJust (name apm) then do
-                let dur = fromJust (duration apm)
-                    key = fromJust (name apm)
-                name_loc <- getGameL10n key
-                return . hsep $
-                    ["Add", strictText kind, "modifier"
-                    ,dquotes (strictText name_loc)
+    = let mod = foldl' addModifierLine newModifier scr
+      in if isJust (mod_name mod) || isJust (mod_key mod) then do
+            let dur = fromJust (mod_duration mod)
+                power = fromJust (mod_power mod)
+            key_loc <- maybeM getGameL10n (mod_key mod)
+            name_loc <- maybeM getGameL10n (mod_name mod)
+            mwho <- maybe (return Nothing) (fmap Just . flag) (mod_who mod)
+            return . hsep $
+                [if isJust mwho
+                    then hsep [fromJust mwho, "gains"]
+                    else "Add"
+                ,strictText kind, "modifier"
+                ,dquotes (strictText
+                    (if isJust name_loc then fromJust name_loc
+                     else if isJust key_loc then fromJust key_loc
+                     else "<unspecified>"))
+                ]
+                ++ (if isJust (mod_power mod)
+                    then [parens (hsep [pp_hl_num True pp_float power, "Power"])]
+                    else [])
+                ++ if isJust (mod_duration mod) then
+                    if dur < 0 then ["indefinitely"] else
+                    ["for"
+                    ,pp_float dur
+                    ,"days"
                     ]
-                    ++ if isJust (duration apm) then
-                        if dur < 0 then ["indefinitely"] else
-                        ["for"
-                        ,pp_float dur
-                        ,"days"
-                        ]
-                    else []
-              else return $ pre_statement stmt
+                else []
+         else return $ pre_statement stmt
 add_modifier _ stmt = return $ pre_statement stmt
 
 has_modifier :: Text -> GenericStatement -> PP Doc
@@ -873,6 +998,21 @@ has_modifier kind (Statement _ (GenericRhs label))
         ,dquotes (strictText label_loc)
         ])
       <$> getGameL10n label
+has_modifier kind stmt@(Statement _ (CompoundRhs scr))
+    = let mod = foldl' addModifierLine newModifier scr
+      in case mod_key mod of
+            Just key -> do
+                label_loc <- getGameL10n key
+                whoflag <- maybe (return Nothing) (fmap Just . flag) (mod_who mod)
+                return . hsep $
+                    (if isJust whoflag
+                        then [fromJust whoflag, "has"]
+                        else ["Has"])
+                    ++
+                    [strictText kind, "modifier"
+                    ,dquotes (strictText label_loc)
+                    ]
+            _ -> return $ pre_statement stmt
 has_modifier _ stmt = return $ pre_statement stmt
 
 remove_modifier :: Text -> GenericStatement -> PP Doc
@@ -997,8 +1137,9 @@ data SpawnRebels = SpawnRebels {
     ,   friend :: Maybe Text
     ,   win :: Maybe Bool
     ,   unrest :: Maybe Double -- rebel faction progress
+    ,   leader :: Maybe Text
     } deriving Show
-newSpawnRebels = SpawnRebels Nothing Nothing Nothing Nothing Nothing
+newSpawnRebels = SpawnRebels Nothing Nothing Nothing Nothing Nothing Nothing
 
 spawn_rebels :: Maybe Text -> GenericStatement  -> PP Doc
 spawn_rebels mtype stmt = spawn_rebels' mtype stmt where
@@ -1020,6 +1161,8 @@ spawn_rebels mtype stmt = spawn_rebels' mtype stmt where
         = op { win = Just True }
     addLine op (Statement (GenericLhs "unrest") (FloatRhs n))
         = op { unrest = Just n }
+    addLine op (Statement (GenericLhs "leader") (StringRhs name))
+        = op { leader = Just name }
     addLine op _ = op
 
     pp_spawn_rebels :: SpawnRebels -> PP Doc
@@ -1034,18 +1177,21 @@ spawn_rebels mtype stmt = spawn_rebels' mtype stmt where
             friendlyFlag <- flag friendlyTo
             return ((hsep $
                    (if hasType
-                        then [icon rtype_icon, strictText rtype_loc]
+                        then [icon rtype_icon, strictText rtype_loc, "rebels"]
                         else ["Rebels"])
                    ++
                    [PP.parens $ hsep ["size", pp_float (fromJust (rebelSize reb))]]
                    ++ (if isJust (friend reb) then
-                   [PP.parens $ hsep ["friendly", "to", friendlyFlag]
-                   ] else [])
+                           [PP.parens $ hsep ["friendly", "to", friendlyFlag]]
+                       else [])
+                   ++ (if isJust (leader reb) then
+                           [hsep ["led", "by", strictText (fromJust (leader reb))]]
+                       else [])
                    ++
-                   ["rise in revolt"
-                   ] ++ if isJust (win reb) && fromJust (win reb) then
-                   [hsep ["and", "occupy", "the", "province"]
-                   ] else []
+                   ["rise in revolt"]
+                   ++ (if isJust (win reb) && fromJust (win reb) then
+                           [hsep ["and", "occupy", "the", "province"]]
+                       else [])
                 ) <> if isJust (unrest reb) then
                 hsep
                    [","
@@ -1072,6 +1218,7 @@ can_spawn_rebels (Statement _ (GenericRhs rtype))
             ["Province has"
             ,icon rtype_iconkey
             ,strictText rtype_loc
+            ,"rebels"
             ]
 
 data TriggerEvent = TriggerEvent
@@ -1104,6 +1251,7 @@ trigger_event category stmt@(Statement _ (CompoundRhs scr))
                     ,strictText category
                     ,"event"
                     ,dquotes (strictText (if have_loc then fromJust loc else fromJust mid))
+                    ,"<!--", strictText (fromJust mid), "-->"
                     ] ++ if have_days then
                         ["in"
                         ,PP.int (fromJust days)
@@ -1118,12 +1266,20 @@ gain_manpower (Statement _ rhs) =
             IntRhs n -> fromIntegral n
             FloatRhs n -> n
         gain_or_lose = if amt < 0 then "Lose" else "Gain"
-    in return $ hsep
-        [gain_or_lose
-        ,icon "manpower"
-        ,pp_hl_num True pp_float amt
-        ,"months worth of manpower"
-        ]
+    in if abs amt < 1
+        --  if abs amt < 1, interpret amt as a fraction of max
+        --  if abs amt >= 1, interpret amt as a multiple of 1,000
+        then return $ hsep
+                [gain_or_lose
+                ,icon "manpower equal to"
+                ,pp_hl_num True pp_float amt <> "%"
+                ,"of maximum"
+                ]
+        else return $ hsep
+                [gain_or_lose
+                ,pp_hl_num True pp_float amt
+                ,"manpower"
+                ]
 
 
 data AddCB = AddCB
@@ -1202,6 +1358,9 @@ random stmt@(Statement _ (CompoundRhs scr))
                 (pre_statement stmt)
                 (hsep [pp_float chance <> "%","chance of"])
                 (Statement undefined (CompoundRhs (front ++ tail back)))
+    | otherwise = do
+        scr_pp'd <- indentUp (pp_script scr)
+        return $ hcat ["At random:", line, scr_pp'd]
 random stmt = return $ pre_statement stmt
 
 data DefineAdvisor = DefineAdvisor
@@ -1343,11 +1502,11 @@ define_ruler stmt@(Statement _ (CompoundRhs scr))
                         _ -> Nothing
                 in dr { dr_name = mthe_name }
             "dynasty" ->
-                let mthe_name = case rhs of
-                        GenericRhs a_name -> Just a_name
-                        StringRhs a_name -> Just a_name
+                let mthe_dynasty = case rhs of
+                        GenericRhs a_dynasty -> Just a_dynasty
+                        StringRhs a_dynasty -> Just a_dynasty
                         _ -> Nothing
-                in dr { dr_name = mthe_name }
+                in dr { dr_dynasty = mthe_dynasty }
             "age" ->
                 let mage = floatRhs rhs
                 in  dr { dr_age = mage }
@@ -1580,7 +1739,9 @@ has_dlc :: GenericStatement -> PP Doc
 has_dlc (Statement _ (StringRhs dlc))
     = return . hsep $
        dlc_icon ++
-       [strictText dlc
+       ["DLC"
+       ,icon dlc
+       ,strictText dlc
        ,"is active"]
     where
         mdlc_key = HM.lookup dlc . HM.fromList $
@@ -1592,3 +1753,185 @@ has_dlc (Statement _ (StringRhs dlc))
             ,("Common Sense", "cs")
             ]
         dlc_icon = if isNothing mdlc_key then [] else [icon (fromJust mdlc_key)]
+
+data EstateInfluenceModifier = EstateInfluenceModifier {
+        eim_estate :: Maybe Text
+    ,   eim_modifier :: Maybe Text
+    }
+newEIM = EstateInfluenceModifier Nothing Nothing
+has_estate_influence_modifier :: GenericStatement -> PP Doc
+has_estate_influence_modifier stmt@(Statement _ (CompoundRhs scr))
+    = pp_eim $ foldl' addField newEIM scr
+    where
+        pp_eim inf = case (eim_estate inf, eim_modifier inf) of
+            (Just est, Just mod) -> do
+                loc_mod <- getGameL10n mod
+                return $ hsep
+                    [icon est
+                    ,"estate has influence modifier"
+                    ,dquotes (strictText loc_mod)
+                    ]
+            _ -> return (pre_statement stmt)
+        addField :: EstateInfluenceModifier -> GenericStatement -> EstateInfluenceModifier
+        addField inf (Statement (GenericLhs "estate") (GenericRhs est)) = inf { eim_estate = Just est }
+        addField inf (Statement (GenericLhs "modifier") (GenericRhs mod)) = inf { eim_modifier = Just mod }
+        addField inf _ = inf -- unknown statement
+has_estate_influence_modifier stmt = return $ pre_statement stmt
+
+trigger_switch :: GenericStatement -> PP Doc
+-- A trigger switch must be of the form
+-- trigger_switch = {
+--  on_trigger = <statement lhs>
+--  <statement rhs> = {
+--      <actions>
+--  }
+-- }
+-- where the <statement rhs> block may be repeated several times.
+trigger_switch stmt@(Statement _ (CompoundRhs
+                        (Statement (GenericLhs "on_trigger") (GenericRhs condlhs)
+                        :clauses))) = do
+            clauses_pp'd <- forM clauses $ \clause -> case clause of
+                Statement (GenericLhs condrhs) (CompoundRhs action) -> do
+                    let guard = Statement (GenericLhs condlhs) (GenericRhs condrhs)
+                    guard_pp'd <- pp_statement' guard
+                    statement_pp'd <- indentUp (pp_script action)
+                    return $ hcat
+                        ["If", space
+                        ,guard_pp'd
+                        ,":"
+                        ,line
+                        ,statement_pp'd
+                        ]
+                _ -> trace ("Unrecognized statement: " ++ show clause) (return mempty)
+            line_prefix <- withCurrentIndent $ \i -> return $ strictText (T.replicate i "*") <> space
+            return . hcat . PP.punctuate (line <> line_prefix) $ clauses_pp'd
+trigger_switch stmt = return $ pre_statement stmt
+
+data AddEstateInfluenceModifier = AddEstateInfluenceModifier {
+        aeim_estate :: Maybe Text
+    ,   aeim_desc :: Maybe Text
+    ,   aeim_influence :: Maybe Double
+    ,   aeim_duration :: Maybe Double
+    } deriving Show
+newAddEstateInfluenceModifier = AddEstateInfluenceModifier Nothing Nothing Nothing Nothing
+
+estate_influence_modifier :: GenericStatement -> PP Doc
+estate_influence_modifier stmt@(Statement _ (CompoundRhs scr))
+    = pp_eim $ foldl' addLine newAddEstateInfluenceModifier scr
+    where
+        addLine :: AddEstateInfluenceModifier -> GenericStatement -> AddEstateInfluenceModifier 
+        addLine aeim (Statement (GenericLhs "estate") (GenericRhs estate)) = aeim { aeim_estate = Just estate }
+        addLine aeim (Statement (GenericLhs "desc") (GenericRhs desc)) = aeim { aeim_desc = Just desc }
+        addLine aeim (Statement (GenericLhs "influence") (FloatRhs influence)) = aeim { aeim_influence = Just influence }
+        addLine aeim (Statement (GenericLhs "duration") (FloatRhs duration)) = aeim { aeim_duration = Just duration }
+        addLine aeim _ = aeim
+        pp_eim :: AddEstateInfluenceModifier -> PP Doc
+        pp_eim aeim
+            = case (aeim_estate aeim, aeim_desc aeim, aeim_influence aeim, aeim_duration aeim) of
+                (Just estate, Just desc, Just influence, Just duration) -> do
+                    estate_loc <- getGameL10n estate
+                    desc_loc <- getGameL10n desc
+                    return . hsep $
+                        [strictText estate_loc
+                        ,"estate gains influence modifier"
+                        ,dquotes (strictText desc_loc)
+                        ,parens $ hsep [enclose "'''" "'''" (pp_signed pp_float influence), "influence"]
+                        ]
+                        ++ if duration < 0 then ["indefinitely"] else
+                            ["for"
+                            ,pp_float duration
+                            ,"days"
+                            ]
+                _ -> return $ pre_statement stmt
+estate_influence_modifier stmt = return $ pre_statement stmt
+
+data EstateInfluence = EstateInfluence {
+        ei_estate :: Maybe Text
+    ,   ei_influence :: Maybe Double
+    } deriving Show
+newEstateInfluence = EstateInfluence Nothing Nothing
+
+estate_influence :: GenericStatement -> PP Doc
+estate_influence stmt@(Statement _ (CompoundRhs scr))
+    = pp_eim $ foldl' addLine newEstateInfluence scr
+    where
+        addLine :: EstateInfluence -> GenericStatement -> EstateInfluence 
+        addLine ei (Statement (GenericLhs "estate") (GenericRhs estate)) = ei { ei_estate = Just estate }
+        addLine ei (Statement (GenericLhs "influence") (FloatRhs influence)) = ei { ei_influence = Just influence }
+        addLine ei _ = ei
+        pp_eim :: EstateInfluence -> PP Doc
+        pp_eim ei
+            = case (ei_estate ei, ei_influence ei) of
+                (Just estate, Just influence) -> do
+                    estate_loc <- getGameL10n estate
+                    return . hsep $
+                        [strictText estate_loc
+                        ,"estate has at least"
+                        ,enclose "'''" "'''" (pp_float influence)
+                        ,"influence"]
+                _ -> return $ pre_statement stmt
+estate_influence stmt = return $ pre_statement stmt
+
+data EstateLoyalty = EstateLoyalty {
+        el_estate :: Maybe Text
+    ,   el_loyalty :: Maybe Double
+    } deriving Show
+newEstateLoyalty = EstateLoyalty Nothing Nothing
+
+-- True: adding; False: querying
+estate_loyalty :: Bool -> GenericStatement -> PP Doc
+estate_loyalty alter stmt@(Statement _ (CompoundRhs scr))
+    = pp_elm $ foldl' addLine newEstateLoyalty scr
+    where
+        addLine :: EstateLoyalty -> GenericStatement -> EstateLoyalty 
+        addLine el (Statement (GenericLhs "estate") (GenericRhs estate)) = el { el_estate = Just estate }
+        addLine el (Statement (GenericLhs "loyalty") (FloatRhs loyalty)) = el { el_loyalty = Just loyalty }
+        addLine el _ = el
+        pp_elm :: EstateLoyalty -> PP Doc
+        pp_elm el
+            = case (el_estate el, el_loyalty el) of
+                (Just estate, Just loyalty) -> do
+                    estate_loc <- getGameL10n estate
+                    return . hsep $
+                        [strictText estate_loc
+                        ,"estate"
+                        ,if alter then
+                            if loyalty < 0 then "loses" else "gains"
+                         else "has at least"
+                        ,(if alter then pp_hl_num True else (enclose "'''" "'''" .)) pp_float loyalty
+                        ,"loyalty"]
+                _ -> return $ pre_statement stmt
+estate_loyalty _ stmt = return $ pre_statement stmt
+
+data Heir = Heir
+        {   heir_dynasty :: Maybe Text
+        ,   heir_claim :: Maybe Double
+        ,   heir_age :: Maybe Double
+        }
+newHeir = Heir Nothing Nothing Nothing
+define_heir :: GenericStatement -> PP Doc
+define_heir stmt@(Statement _ (CompoundRhs scr))
+    = pp_heir $ foldl' addLine newHeir scr
+    where
+        addLine :: Heir -> GenericStatement -> Heir 
+        addLine heir (Statement (GenericLhs "dynasty") (GenericRhs dynasty)) = heir { heir_dynasty = Just dynasty }
+        addLine heir (Statement (GenericLhs "claim") (FloatRhs claim)) = heir { heir_claim = Just claim }
+        addLine heir (Statement (GenericLhs "age") (FloatRhs age)) = heir { heir_age = Just age }
+        addLine heir _ = heir
+        pp_heir :: Heir -> PP Doc
+        pp_heir heir = do
+            dynasty_flag <- maybeM flag (heir_dynasty heir)
+            return . hsep $
+                ["Gain a new"]
+                ++ (if isJust (heir_age heir)
+                    then [pp_float (fromJust (heir_age heir))
+                         ,"year old"]
+                    else [])
+                ++ ["heir"]
+                ++ (if isJust dynasty_flag
+                    then [parens (hsep ["with the same dynasty as", fromJust dynasty_flag])]
+                    else [])
+                ++ if isJust (heir_claim heir)
+                    then ["with claim strength"
+                         ,pp_float (fromJust (heir_claim heir))]
+                    else []
