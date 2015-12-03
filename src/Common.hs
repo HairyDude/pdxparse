@@ -47,6 +47,7 @@ isPronoun s = T.map toLower s `S.member` pronouns where
         ]
 
 pp_script :: GenericScript -> PP Doc
+pp_script [] = return "(Nothing)"
 pp_script script = withCurrentIndent $ \indent -> do
     statements_pp'd <- mapM pp_statement' script
     return . hcat . punctuate line
@@ -146,7 +147,7 @@ flag name =
 
 -- Emit icon template.
 icon :: Text -> Doc
-icon what = template "icon" (strictText what)
+icon what = template "icon" (strictText $ HM.lookupDefault what what scriptIconTable)
 
 -- Set doc in italics.
 italic :: Doc -> Doc
@@ -184,21 +185,21 @@ pp_statement' stmt@(Statement lhs rhs) =
             "kill_heir"             -> return "Heir dies"
             "kill_ruler"            -> return "Ruler dies"
             "remove_cardinal"       -> return "Lose a cardinal"
-            -- Gain/lose
+            -- Gain/lose, with optional icon
             -- Plain numbers
             "add_adm_power"         -> gain Plain Nothing True (Just "adm") "administrative power" stmt
             "add_army_tradition"    -> gain Plain Nothing True (Just "army tradition") "army tradition" stmt
-            "add_authority"         -> gain Plain Nothing True (Just "authority") "authority" stmt
+            "add_authority"         -> gain Plain Nothing True Nothing "authority" stmt
             "add_base_tax"          -> gain Plain Nothing True (Just "base tax") "base tax" stmt
             "add_base_production"   -> gain Plain Nothing True (Just "base production") "base production" stmt
             "add_base_manpower"     -> gain Plain Nothing True (Just "manpower") "base manpower" stmt
             "add_dip_power"         -> gain Plain Nothing True (Just "dip") "diplomatic power" stmt
-            "add_doom"              -> gain Plain Nothing False (Just "doom") "doom" stmt
+            "add_doom"              -> gain Plain Nothing False Nothing "doom" stmt
             "add_heir_claim"        -> gain Plain (Just "Heir") True Nothing "claim strength" stmt
             "add_devotion"          -> gain Plain Nothing True (Just "devotion") "devotion" stmt
             "add_horde_unity"       -> gain Plain Nothing True (Just "horde unity") "horde unity" stmt
             "add_imperial_influence" -> gain Plain Nothing False (Just "imperial authority") "imperial authority" stmt
-            "add_karma"             -> gain Plain Nothing True (Just "karma") "karma" stmt
+            "add_karma"             -> gain Plain Nothing True (Just "high karma") "karma (Check this icon! low karma/high karma)" stmt
             "add_legitimacy"        -> gain Plain Nothing True (Just "legitimacy") "legitimacy" stmt
             "add_mil_power"         -> gain Plain Nothing True (Just "mil") "military power" stmt
             "add_navy_tradition"    -> gain Plain Nothing True (Just "navy tradition") "navy tradition" stmt
@@ -206,14 +207,14 @@ pp_statement' stmt@(Statement lhs rhs) =
             "add_prestige"          -> gain Plain Nothing True (Just "prestige") "prestige" stmt
             "add_stability"         -> gain Plain Nothing True (Just "stability") "stability" stmt
             "add_war_exhaustion"    -> gain Plain Nothing False (Just "war exhaustion") "war exhaustion" stmt
-            "add_yearly_manpower"   -> gain Plain Nothing True (Just "yearly_manpower") "years' worth of manpower" stmt
+            "add_yearly_manpower"   -> gain Plain Nothing True (Just "manpower") "years' worth of manpower" stmt
             "change_adm"            -> gain Plain (Just "Ruler") True (Just "adm") "administrative skill" stmt
             "change_dip"            -> gain Plain (Just "Ruler") True (Just "dip") "diplomatic skill" stmt
             "change_mil"            -> gain Plain (Just "Ruler") True (Just "mil") "military skill" stmt
             "change_siege"          -> gain Plain Nothing True Nothing "siege progress" stmt
             -- Reduced numbers
             "add_patriarch_authority"  -> gain Reduced Nothing True (Just "patriarch authority") "patriarch authority" stmt
-            "add_piety"                -> gain Reduced Nothing True (Just "piety") "piety" stmt
+            "add_piety"                -> gain Reduced Nothing True (Just "piety") "piety (Check this icon! pious/impious)" stmt
             "add_republican_tradition" -> gain Reduced Nothing True (Just "republican tradition") "republican tradition" stmt
             -- Percentages
             "add_inflation"      -> gain Percent Nothing False (Just "inflation") "inflation" stmt
@@ -329,6 +330,7 @@ pp_statement' stmt@(Statement lhs rhs) =
             "trade_goods"       -> generic_icon "Produces" stmt
             "has_estate"        -> generic_icon "Has estate" stmt
             "set_estate"        -> generic_icon "Give to estate" stmt
+            "is_monarch_leader" -> generic_icon "Ruler is" stmt
             -- Simple generic statements with flag
             "alliance_with"     -> generic_tag (Just "Allied with") stmt Nothing
             "cede_province"     -> generic_tag (Just "Cede province to") stmt Nothing
@@ -353,9 +355,10 @@ pp_statement' stmt@(Statement lhs rhs) =
             -- Simple generic statements with flag or "yes"/"no"
             "exists"            -> generic_tag_bool "Exists" "Does NOT exist" Nothing stmt (Just "exists")
             -- Statements that may be an icon, a flag, or a pronoun (such as ROOT)
-            "religion"          -> generic_icon_or_country "Religion is" stmt
-            "religion_group"    -> generic_icon_or_country "Religion group is" stmt
-            "change_religion"   -> generic_icon_or_country "Change religion to" stmt
+            -- Boolean argument is whether to emit an icon.
+            "religion"          -> generic_icon_or_country True "Religion is" stmt
+            "religion_group"    -> generic_icon_or_country False "Religion group is" stmt
+            "change_religion"   -> generic_icon_or_country True "Change religion to" stmt
             -- Statements that may be either a tag or a province
             "is_core"  -> generic_tag_or_province (Just "Is core of") (Just "Has core on") stmt Nothing Nothing
             "is_claim" -> generic_tag_or_province Nothing (Just "Has claim on") stmt (Just "has a claim") Nothing
@@ -375,7 +378,6 @@ pp_statement' stmt@(Statement lhs rhs) =
             "is_female"             -> is_female stmt
             "is_lesser_in_union"    -> is Nothing "the junior partner in a personal union" stmt
             "is_looted"             -> is Nothing "looted" stmt
-            "is_monarch_leader"     -> is (Just "Monarch") "a military leader" stmt
             "is_overseas"           -> is Nothing "overseas" stmt
             "is_part_of_hre"        -> is Nothing "part of the Holy Roman Empire" stmt
             "is_reformation_center" -> is Nothing "a center of reformation" stmt
@@ -384,58 +386,54 @@ pp_statement' stmt@(Statement lhs rhs) =
             "unit_in_siege"         -> is Nothing "under siege" stmt -- duplicate?
             "was_player"            -> has_been Nothing "player-controlled" stmt
             -- Numeric statements
-            "army_tradition"            -> numeric Plain "Army tradition is at least" stmt mempty
-            "base_manpower"             -> numeric Plain "Base manpower is at least" stmt mempty
-            "base_production"           -> numeric Plain "Base production is at least" stmt mempty
-            "base_tax"                  -> numeric Plain "Base tax is at least" stmt mempty
             "colonysize"                -> numeric Plain "Colony has at least" stmt "settlers"
-            "create_admiral"            -> numeric Plain "Gain admiral with" stmt "navy tradition"
-            "create_general"            -> numeric Plain "Gain leader with" stmt "army tradition"
-            "development"               -> numeric Plain "Has at least" stmt "development"
             "had_recent_war"            -> numeric Plain "Was at war within the last" stmt "months(?)"
             "heir_age"                  -> numeric Plain "Heir is at least" stmt "years old"
-            "horde_unity"               -> numeric Plain "Horde unity is at least" stmt mempty
             "is_year"                   -> numeric Plain "Year is" stmt "or later"
             "monthly_income"            -> numeric Plain "Monthly income is at least {{icon|ducats}}" stmt "ducats"
-            "num_of_allies"             -> numeric Plain "Has at least" stmt "allies"
-            "num_of_cardinals"          -> numeric Plain "Controls at least" stmt "cardinals"
-            "num_of_colonists"          -> numeric Plain "Has at least" stmt "colonist(s)"
             "num_of_loans"              -> numeric Plain "Has at least" stmt "loan(s)"
             "num_of_mercenaries"        -> numeric Plain "Has at least" stmt "mercenary regiment(s)"
             "num_of_ports"              -> numeric Plain "Has at least" stmt "port(s)"
             "num_of_rebel_armies"       -> numeric Plain "At least" stmt "rebel army/armies are present in the country"
             "num_of_trade_embargos"     -> numeric Plain "Is embargoing at least" stmt "other nation(s)"
-            "total_development"         -> numeric Plain "Total development is at least" stmt mempty
-            "total_number_of_cardinals" -> numeric Plain "There are at least" stmt "cardinals"
-            "unrest"                    -> numeric Plain "Unrest is at least" stmt mempty
             "units_in_province"         -> numeric Plain "Province contains at least" stmt "regiment(s)"
-            -- Numeric statements, but the RHS is the number divided by 100
-            "republican_tradition"      -> numeric Reduced "Has at least" stmt "republican tradition"
-            -- Percentage statements
-            "inflation"                 -> numeric Percent "Has at least" stmt "inflation"
-            "local_autonomy"            -> numeric Percent "Has at least" stmt "local autonomy"
-            -- Percentage statements, but the RHS is the number divided by 100
-            "manpower_percentage"       -> numeric ReducedPercent "Manpower is at least" stmt "of maximum"
-            "mercantilism"              -> numeric ReducedPercent "Mercantilism is at least" stmt mempty
             -- Statements that may be numeric or a tag
             "num_of_cities"             -> numeric_or_tag "Owns" "many" stmt "cities"
             -- Signed numeric statements
-            "karma"             -> numeric_signed Plain "Karma is at least" stmt mempty
-            "stability"         -> numeric_signed Plain "Stability is at least" stmt mempty
             "tolerance_to_this" -> numeric_signed Plain "Tolerance to this religion is at least" stmt mempty
-            "war_score"         -> numeric_signed Plain "Warscore is at least" stmt mempty
             -- Statements of numeric quantities with icons
-            "adm" -> numeric_icon "Has at least" (Just "adm") "administrative skill" stmt
-            "adm_tech" -> numeric_icon "Has at least" Nothing "administrative technology" stmt
-            "dip" -> numeric_icon "Has at least" (Just "dip") "diplomatic skill" stmt
-            "dip_tech" -> numeric_icon "Has at least" Nothing "diplomatic technology" stmt
-            "mil" -> numeric_icon "Has at least" (Just "mil") "military skill" stmt
-            "mil_tech" -> numeric_icon "Has at least" Nothing "military technology" stmt
-            "legitimacy" -> numeric_icon "Has at least" Nothing "legitimacy" stmt
-            "unrest" -> numeric_icon "Has at least" Nothing "unrest" stmt
-            "war_exhaustion" -> numeric_icon "Has at least" Nothing "war exhaustion" stmt
+            "adm"               -> numeric_icon Plain "adm" (Just "Ruler has") (Just "administrative skill of at least") Nothing stmt
+            "adm_tech"          -> numeric_icon Plain "adm tech" Nothing (Just "Administrative technology is at least") Nothing stmt
+            "army_tradition"    -> numeric_icon Plain "army tradition" Nothing (Just "Army tradition is at least") mempty stmt
+            "base_manpower"     -> numeric_icon Plain "navy tradition" Nothing (Just "Base manpower is at least") mempty stmt
+            "base_production"   -> numeric_icon Plain "base production" Nothing (Just "Base production is at least") mempty stmt
+            "base_tax"          -> numeric_icon Plain "base tax" Nothing (Just "Base tax is at least") mempty stmt
+            "create_admiral"    -> numeric_icon Plain "admiral" (Just "Gain") (Just "admiral with") (Just "tradition") stmt
+            "create_general"    -> numeric_icon Plain "general" (Just "Gain") (Just "leader with") (Just "tradition") stmt
+            "development"       -> numeric_icon Plain "development" (Just "Has at least") Nothing (Just "development") stmt
+            "dip"               -> numeric_icon Plain "dip" (Just "Ruler has") (Just "diplomatic skill of at least") Nothing stmt
+            "dip_tech"          -> numeric_icon Plain "dip tech" Nothing (Just "Diplomatic technology is at least") Nothing stmt
+            "horde_unity"       -> numeric_icon Plain "horde unity" Nothing (Just "Horde unity is at least") mempty stmt
+            "karma"             -> numeric_icon Plain "high karma" Nothing (Just "Karma is at least") Nothing stmt
+            "legitimacy"        -> numeric_icon Plain "legitimacy" Nothing (Just "Legitimacy is at least") Nothing stmt
+            "mil"               -> numeric_icon Plain "mil" (Just "Ruler has") (Just "military skill of at least") Nothing stmt
+            "mil_tech"          -> numeric_icon Plain "mil tech" Nothing (Just "Military technology is at least") Nothing stmt
+            "num_of_allies"     -> numeric_icon Plain "allies" (Just "Has at least") Nothing (Just "allies") stmt
+            "num_of_cardinals"  -> numeric_icon Plain "cardinals" (Just "Controls at least") Nothing (Just "cardinals") stmt
+            "num_of_colonists"  -> numeric_icon Plain "colonists" (Just "Has at least") Nothing (Just "colonist(s)") stmt
+            "stability"         -> numeric_icon Plain "stability" Nothing (Just "Stability is at least") Nothing stmt
+            "total_development" -> numeric_icon Plain "development" (Just "Total") (Just "development is at least") Nothing stmt
+            "total_number_of_cardinals" -> numeric_icon Plain "cardinals" (Just "There are at least") Nothing (Just "cardinals") stmt
+            "unrest"            -> numeric_icon Plain "unrest" Nothing (Just "Unrest is at least") Nothing stmt
+            "war_exhaustion"    -> numeric_icon Plain "war exhaustion" Nothing (Just "War exhaustion is at least") Nothing stmt
+            "war_score"         -> numeric_icon Plain "war score" Nothing (Just "Warscore is at least") Nothing stmt
+            "republican_tradition" -> numeric_icon Reduced "republican tradition" Nothing (Just "Republican tradition is at least") Nothing stmt
+            "inflation"         -> numeric_icon Percent "inflation" Nothing (Just "Inflation is at least") Nothing stmt
+            "local_autonomy"    -> numeric_icon Percent "local autonomy" Nothing (Just "Local autonomy is at least") Nothing stmt
+            "manpower_percentage" -> numeric_icon ReducedPercent "manpower" Nothing (Just "Manpower is at least") (Just "of maximum") stmt
+            "mercantilism"      -> numeric_icon ReducedPercent "mercantilism" Nothing (Just "Mercantilism is at least") Nothing stmt
             -- Complex statements
-            "add_casus_belli"         -> add_casus_belli False stmt
+            "add_casus_belli"         -> add_casus_belli True stmt
             "add_faction_influence"   -> faction_influence stmt
             "add_estate_loyalty"      -> estate_loyalty True stmt
             "add_estate_influence_modifier"
@@ -494,7 +492,7 @@ pp_statement' stmt@(Statement lhs rhs) =
             prov_loc <- getGameL10nDefault ("Province " <> provN) ("PROV" <> provN)
             case rhs of
                 CompoundRhs scr -> do
-                    script_pp'd <- pp_script scr
+                    script_pp'd <- indentUp (pp_script scr)
                     return $ hcat
                         ["Province"
                         ,space
@@ -667,12 +665,15 @@ scriptIconTable = HM.fromList
     ,("master_recruiter", "master recruiter")
     ,("military_engineer", "military engineer")
     ,("spy_ideas", "espionage")
-    ,("estate_church", "church")
+    ,("estate_church", "clergy")
     ,("estate_nobles", "nobles")
     ,("estate_burghers", "burghers")
     ,("estate_cossacks", "cossacks")
-    ,("estate_tribes", "tribes")
+    ,("estate_nomadic_tribes", "tribes")
     ,("estate_dhimmi", "dhimmi")
+    ,("base production", "production")
+    ,("particularist", "particularists")
+    ,("is_monarch_leader", "ruler general")
     ]
 
 -- As simple_generic but also add an appropriate icon before the value.
@@ -690,16 +691,18 @@ generic_icon _ stmt = return $ pre_statement stmt
 
 -- As generic_icon but say "same as <foo>" if foo refers to a country
 -- (in which case, add a flag if it's a specific country).
-generic_icon_or_country :: Text -> GenericStatement -> PP Doc
-generic_icon_or_country premsg (Statement (GenericLhs category) (GenericRhs name)) = do
+generic_icon_or_country :: Bool -> Text -> GenericStatement -> PP Doc
+generic_icon_or_country doicon premsg (Statement (GenericLhs category) (GenericRhs name)) = do
     nflag <- flag name -- laziness means this might not get evaluated
     name_loc <- getGameL10n name
     return . hsep $ strictText premsg :
           if isTag name || isPronoun name
             then ["same", "as", nflag]
-            else [icon (HM.lookupDefault name name scriptIconTable)
-                 ,strictText name_loc]
-generic_icon_or_country _ stmt = return $ pre_statement stmt
+            else (if doicon
+                    then [icon (HM.lookupDefault name name scriptIconTable)]
+                    else [])
+                ++ [strictText name_loc]
+generic_icon_or_country _ _ stmt = return $ pre_statement stmt
 
 generic_tag_or_province :: Maybe Text -> Maybe Text -> GenericStatement -> Maybe Text -> Maybe Text -> PP Doc
 generic_tag_or_province pre_tag pre_prov (Statement _ rhs) post_tag post_prov
@@ -736,13 +739,15 @@ numeric ntype premsg (Statement _ rhs) postmsg
     | Just n <- floatRhs rhs = numeric' False ntype premsg n postmsg
 numeric _ _ stmt _ = return $ pre_statement stmt
 
+adjustNumber :: NumType -> Double -> Double
+adjustNumber Plain          n = n
+adjustNumber Reduced        n = n * 100
+adjustNumber Percent        n = n
+adjustNumber ReducedPercent n = n * 100
+
 numeric' :: Bool -> NumType -> Text -> Double -> Text -> PP Doc
 numeric' signed ntype premsg n postmsg
-    = let num = case ntype of
-            Plain -> n
-            Reduced -> n * 100
-            Percent -> n
-            ReducedPercent -> n * 100
+    = let num = adjustNumber ntype n
       in return . hsep $
             [strictText premsg
             ,(if signed -- assume negative will already get a "-"
@@ -833,18 +838,18 @@ generic_tag_bool y_text n_text _ (Statement _ (GenericRhs "yes")) _ = return $ s
 generic_tag_bool y_text n_text _ (Statement _ (GenericRhs "no"))  _ = return $ strictText n_text
 generic_tag_bool _ _ prefix stmt suffix = generic_tag prefix stmt suffix
 
-numeric_icon :: Text -> Maybe Text -> Text -> GenericStatement -> PP Doc
-numeric_icon premsg micon what (Statement _ rhs)
-    = let amt = case rhs of
+numeric_icon :: NumType -> Text -> Maybe Text -> Maybe Text -> Maybe Text -> GenericStatement -> PP Doc
+numeric_icon numtype the_icon premesg what posttext (Statement _ rhs)
+    = let amt = adjustNumber numtype $ case rhs of
             IntRhs n -> fromIntegral n
             FloatRhs n -> n
-          the_icon = maybe what id micon
-      in return $ hsep
-            [strictText premsg
-            ,icon the_icon
-            ,pp_float amt
-            ,strictText what
-            ]
+      in return . hsep $
+               maybe [] ((:[]) . strictText) premesg
+            ++ [icon the_icon]
+            ++ maybe [] ((:[]) . strictText) what
+            ++ [enclose "'''" "'''" $ (pp_float amt <>
+                if numtype `elem` [Percent, ReducedPercent] then "%" else mempty)]
+            ++ maybe [] ((:[]) . strictText) posttext
 
 ---------------------------------
 -- Specific statement handlers --
@@ -1271,7 +1276,8 @@ gain_manpower (Statement _ rhs) =
         --  if abs amt >= 1, interpret amt as a multiple of 1,000
         then return $ hsep
                 [gain_or_lose
-                ,icon "manpower equal to"
+                ,icon "manpower"
+                ,"manpower equal to"
                 ,pp_hl_num True pp_float amt <> "%"
                 ,"of maximum"
                 ]
@@ -1738,11 +1744,11 @@ declare_war_with_cb stmt@(Statement _ (CompoundRhs scr))
 has_dlc :: GenericStatement -> PP Doc
 has_dlc (Statement _ (StringRhs dlc))
     = return . hsep $
-       dlc_icon ++
-       ["DLC"
-       ,icon dlc
-       ,strictText dlc
-       ,"is active"]
+           ["DLC"]
+           ++ dlc_icon
+           ++
+           [strictText dlc
+           ,"is active"]
     where
         mdlc_key = HM.lookup dlc . HM.fromList $
             [("Conquest of Paradise", "cop")
@@ -1751,6 +1757,7 @@ has_dlc (Statement _ (StringRhs dlc))
             ,("Art of War", "aow")
             ,("El Dorado", "ed")
             ,("Common Sense", "cs")
+            ,("The Cossacks", "cos")
             ]
         dlc_icon = if isNothing mdlc_key then [] else [icon (fromJust mdlc_key)]
 
@@ -1765,9 +1772,11 @@ has_estate_influence_modifier stmt@(Statement _ (CompoundRhs scr))
     where
         pp_eim inf = case (eim_estate inf, eim_modifier inf) of
             (Just est, Just mod) -> do
+                loc_est <- getGameL10n est
                 loc_mod <- getGameL10n mod
                 return $ hsep
                     [icon est
+                    ,strictText loc_est
                     ,"estate has influence modifier"
                     ,dquotes (strictText loc_mod)
                     ]
