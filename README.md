@@ -10,10 +10,12 @@ First install the [https://www.haskell.org/platform/](Haskell Platform).
 Then open a teminal and type:
 
     $ cabal update
-    $ cabal install --only-dependencies
-    $ runghc Setup.hs configure
-    $ runghc Setup.hs build
-    $ runghc Setup.hs install
+    $ cabal sandbox init #optional
+    $ cabal install --prefix=/path/to/install
+
+On Linux (and presumably other Unixy platforms... possibly not OS X), the
+executable will be placed in `/path/to/install/bin/pdxparse` and the settings
+file in `/path/to/install/share/<platform>/settings.yml`.
 
 ## Usage
 
