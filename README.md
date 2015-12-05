@@ -27,6 +27,6 @@ Currently there is no command line processing; it just processes everything it
 finds and puts the results in the directory `output`. There is, however, a
 clause in Main.hs that restricts the parser to only attempt to process certain
 files. This is to make the program finish sooner while testing. If you want to
-process as much as possible, delete everything between the comment saying
-"DELETE ME" and the line saying "$ scripts".
+process only certain files, uncomment those lines, edit the list to include
+only the files you want, and rebuild.
 
