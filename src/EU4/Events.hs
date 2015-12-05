@@ -23,6 +23,7 @@ import qualified Text.PrettyPrint.Leijen.Text as PP
 
 import Abstract
 import EU4.Common
+import Messages
 import SettingsTypes
 
 -- Object that accumulates info about an event.

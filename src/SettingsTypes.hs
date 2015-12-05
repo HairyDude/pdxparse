@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module SettingsTypes
     ( L10n
     , Settings
@@ -16,10 +17,13 @@ module SettingsTypes
     , PP
     , indentUp
     , withCurrentIndent
+    , alsoIndent, alsoIndent'
     , getGameL10n
     , getGameL10nDefault
     , getGameL10nIfPresent
     , withCurrentFile
+    , getLangs
+    , unfoldM
     ) where
 
 import Debug.Trace
@@ -32,6 +36,8 @@ import Data.Maybe
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
+import Text.Shakespeare.I18N (Lang)
+
 import Data.Text (Text)
 
 type L10n = HashMap Text Text
@@ -42,14 +48,15 @@ data Settings = Settings {
     ,   game        :: String
     ,   language    :: String
     ,   gameVersion :: Text
-    ,   gameL10n   :: L10n
+    ,   gameL10n    :: L10n
     ,   l10n        :: L10n -- this app's messages
+    ,   langs       :: [Lang]
     -- Local state
     ,   currentFile :: Maybe FilePath
     ,   currentIndent :: Maybe Int
     } deriving (Show)
 
--- All undefined settings.
+-- All undefined settings, except langs.
 emptySettings :: Settings
 emptySettings = Settings
     { steamDir = undefined
@@ -61,6 +68,7 @@ emptySettings = Settings
     , l10n = undefined
     , currentFile = undefined
     , currentIndent = undefined
+    , langs = ["en"]
     }
 
 setGameL10n :: Settings -> L10n -> Settings
@@ -90,6 +98,12 @@ withCurrentIndent go = do
             else s)
           (go . fromJust =<< asks currentIndent)
 
+-- Bundle a value with the current indentation level.
+alsoIndent :: PP a -> PP (Int, a)
+alsoIndent mx = withCurrentIndent $ \i -> mx >>= \x -> return (i,x)
+alsoIndent' :: a -> PP (Int, a)
+alsoIndent' x = withCurrentIndent $ \i -> return (i,x)
+
 getGameL10n :: Text -> PP Text
 getGameL10n key = HM.lookupDefault key key <$> asks gameL10n
 
@@ -108,3 +122,20 @@ withCurrentFile go = do
                     then s { currentFile = Just "(unknown)" }
                     else s)
           (go . fromJust =<< asks currentFile)
+
+-- Get the list of output languages.
+getLangs :: PP [Lang]
+getLangs = asks langs
+
+-- Misc. utilities
+
+-- As unfoldr, but argument is monadic
+unfoldM :: Monad m => (a -> m (Maybe (b, a))) -> a -> m [b]
+unfoldM f = go where
+    go x = do
+        res <- f x
+        case res of
+            Nothing -> return []
+            Just (next, x') -> do
+                rest <- go x'
+                return (next:rest)

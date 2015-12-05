@@ -45,6 +45,8 @@ import qualified Data.Attoparsec.Text as Ap
 import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>))
 import qualified Text.PrettyPrint.Leijen.Text as PP
 
+import Messages
+
 -- statement ::= lhs | lhs '=' rhs
 -- Type of statements, parametrized by two custom types, one for left-hand
 -- sides and one for right-hand sides.
@@ -105,6 +107,12 @@ floatRhs :: CoerceNum a => GenericRhs -> Maybe a
 floatRhs (IntRhs n) = Just (fromInt n)
 floatRhs (FloatRhs n) = Just (fromFloat n)
 floatRhs _ = Nothing
+
+-- Get a Text from a RHS.
+textRhs :: GenericRhs -> Maybe Text
+textRhs (GenericRhs s) = Just s
+textRhs (StringRhs s) = Just s
+textRhs _ = Nothing
 
 ------------
 -- Parser --
@@ -216,9 +224,6 @@ genericScript = script parse_generic parse_generic
 -- Pretty-printer --
 --------------------
 
-strictText :: Text -> Doc
-strictText = text . TL.fromStrict
-
 nl2br :: Text -> Text
 nl2br = mconcat . unfoldr replaceNextBreak . Just where
     replaceNextBreak :: Maybe Text -> Maybe (Text, Maybe Text)
@@ -229,23 +234,6 @@ nl2br = mconcat . unfoldr replaceNextBreak . Just where
           in if T.null right -- no newlines found
                 then Just (left, Nothing)
                 else Just (left <> "<br/>", Just right')
-
--- Pretty-print a number, putting a + sign in front if it's not negative.
--- Assumes the passed-in formatting function does add a minus sign.
-pp_signed :: (Ord n, Num n) => (n -> Doc) -> n -> Doc
-pp_signed pp_num n = (if signum n >= 0 then "+" else mempty) <> pp_num n
-
--- Pretty-print a Double. If it's a whole number, display it without a decimal.
-pp_float :: Double -> Doc
-pp_float n =
-    let trunc = floor n
-    in if fromIntegral trunc == n
-        then PP.int (fromIntegral trunc)
-        else text . TL.pack $ showFFloat Nothing n ""
-
--- Pretty-print a Double, as Text.
-pp_float_t :: Double -> Text
-pp_float_t = TL.toStrict . displayT . renderCompact . pp_float
 
 -- Pretty-printer for a script with no custom elements.
 genericScript2doc :: GenericScript -> Doc

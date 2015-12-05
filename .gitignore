@@ -2,3 +2,4 @@
 cabal.sandbox.config
 output/
 dist/
+l10n/.*
