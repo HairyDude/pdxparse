@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Common where
+module EU4.Common where
 
 import Prelude hiding (sequence, mapM)
 

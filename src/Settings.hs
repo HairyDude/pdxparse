@@ -29,8 +29,6 @@ import Localization
 import SettingsTypes
 import Paths_pdxparse
 
-import Debug.Trace
-
 -- intermediate structure. Maybe values don't need to be present in the
 -- settings file.
 data SettingsInput = SettingsInput {
@@ -80,7 +78,7 @@ platform = case System.Info.os of
 readSettings :: IO Settings
 readSettings = do
     settingsFile <- getDataFileName "settings.yml"
-    result <- decodeFileEither (traceId settingsFile)
+    result <- decodeFileEither settingsFile
     case result of
         Right settings -> do
             steamDirCanonicalized <- case steamDirI settings of

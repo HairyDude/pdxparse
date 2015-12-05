@@ -31,10 +31,10 @@ import Abstract
 import Settings
 
 -- Script handlers
-import Decisions
-import Missions
-import Events
-import Policies
+import EU4.Decisions
+import EU4.Missions
+import EU4.Events
+import EU4.Policies
 
 buildPath :: Settings -> FilePath -> FilePath
 buildPath settings path = steamDir settings </> steamApps settings </> game settings </> path

@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Events where
+module EU4.Events where
 
 import Debug.Trace
 
@@ -22,7 +22,7 @@ import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>))
 import qualified Text.PrettyPrint.Leijen.Text as PP
 
 import Abstract
-import Common
+import EU4.Common
 import SettingsTypes
 
 -- Object that accumulates info about an event.

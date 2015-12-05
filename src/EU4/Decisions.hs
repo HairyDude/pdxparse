@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Decisions where
+module EU4.Decisions where
 
 import Control.Monad.Reader
 

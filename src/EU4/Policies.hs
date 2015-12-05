@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Missions where
+module EU4.Policies where
 
 import Control.Monad.Reader
 
@@ -12,5 +12,5 @@ import qualified Text.PrettyPrint.Leijen.Text as PP
 import Abstract
 import SettingsTypes
 
-processMission :: GenericStatement -> Reader Settings (Either Text Doc)
-processMission _ = return $ Left "not implemented"
+processPolicy :: GenericStatement -> PP (Either Text Doc)
+processPolicy _ = return $ Left "not implemented"
