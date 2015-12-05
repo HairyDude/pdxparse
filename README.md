@@ -5,7 +5,7 @@ A parser for scripts used in Paradox Development Studios games, written in Haske
 
 This package uses the standard Cabal build system.
 
-First install the [https://www.haskell.org/platform/](Haskell Platform).
+First install the [Haskell Platform](https://www.haskell.org/platform/).
 
 Then open a teminal and type:
 
