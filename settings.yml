@@ -20,8 +20,10 @@ settings:
     # steam_dir where the game is kept.
     game: "Europa Universalis IV"
 
-    # Language to extract in.
+    # Language to extract in. Note that although the program can extract
+    # non-English localization strings from the game, only English messages
+    # are produced otherwise.
     language: "english"
 
-    # Game version (major patch number).
+    # Game version (major patch number). Only used to add version templates.
     version: "1.14"
