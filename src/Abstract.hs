@@ -123,8 +123,8 @@ restOfLine = (Ap.many1' Ap.endOfLine >> return T.empty)
          <|> (T.cons <$> Ap.anyChar <*> restOfLine)
 
 ident :: Parser Text
-ident = (<>) <$> (T.singleton <$> (Ap.satisfy (\c -> c `elem` "_" || isAlpha c)))
-             <*> Ap.takeWhile (\c -> c `elem` "_." || isAlphaNum c)
+ident = (<>) <$> (T.singleton <$> (Ap.satisfy (\c -> c  == '_' || isAlpha c)))
+             <*> Ap.takeWhile (\c -> c `elem` ['_','.'] || isAlphaNum c)
     <?> "identifier"
 
 -- A string literal.
