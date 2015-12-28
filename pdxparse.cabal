@@ -72,6 +72,7 @@ executable pdxparse
                        directory >=1.2 && <1.3,
                        filepath >=1.3 && <1.5,
                        mtl >=2.1 && <2.3,
+                       shakespeare >=2.0,
                        text >=1.2 && <1.3,
                        unordered-containers >=0.2 && <0.3,
                        wl-pprint-text >=1.1 && <1.2,
