@@ -75,8 +75,11 @@ platform = case System.Info.os of
 {-# INLINE platform #-}
 
 -- | Read the settings and localization files. If we can't, abort.
-readSettings :: IO Settings
-readSettings = do
+--
+-- The argument is an action to run after all other settings have been
+-- initialized, in order to get extra information.
+readSettings :: (Settings a -> IO (Maybe a)) -> IO (Settings a)
+readSettings getExtra = do
     settingsFile <- getDataFileName "settings.yml"
     result <- decodeFileEither settingsFile
     case result of
@@ -108,9 +111,9 @@ readSettings = do
             game_l10n <- readL10n provisionalSettings
             l10n <- -- TODO: internationalize this
                     return HM.empty
-            return $ provisionalSettings
-                    `setGameL10n` game_l10n
-                    `setL10n` l10n
+            let provisionalSettings' = provisionalSettings `setGameL10n` game_l10n
+            extraInfo <- getExtra provisionalSettings'
+            return provisionalSettings' { info = extraInfo }
         Left exc -> do
             hPutStrLn stderr $ "Couldn't parse settings: " ++ show exc
             exitFailure

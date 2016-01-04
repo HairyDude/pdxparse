@@ -12,5 +12,5 @@ import qualified Text.PrettyPrint.Leijen.Text as PP
 import Abstract
 import SettingsTypes
 
-processPolicy :: GenericStatement -> PP (Either Text Doc)
+processPolicy :: GenericStatement -> PP extra (Either Text Doc)
 processPolicy _ = return $ Left "not implemented"

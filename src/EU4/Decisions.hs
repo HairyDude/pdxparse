@@ -12,9 +12,9 @@ import qualified Text.PrettyPrint.Leijen.Text as PP
 import Abstract
 import SettingsTypes
 
-processDecisionGroup :: GenericStatement -> Reader Settings (Either Text Doc)
+processDecisionGroup :: GenericStatement -> PP extra (Either Text Doc)
 processDecisionGroup (Statement (GenericLhs head) _) = return $ Left "not implemented"
 processDecisionGroup _ = return $ Left "invalid statement LHS"
 
-processDecision :: GenericStatement -> Reader Settings (Either Text Doc)
+processDecision :: GenericStatement -> PP extra (Either Text Doc)
 processDecision _ = return $ Left "not implemented"

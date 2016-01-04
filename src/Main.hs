@@ -1,21 +1,20 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import Debug.Trace
+
 import Control.Applicative
 import Control.Arrow
-import Control.Exception
 import Control.Monad
+--import Data.Either
 import Data.List
 import Data.Monoid
 import Control.Monad.Reader
 
-import Data.ByteString (ByteString)
-import qualified Data.ByteString as B
+import Data.HashMap.Strict (HashMap)
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as TE
-import Data.Text.Encoding.Error (UnicodeException)
 import qualified Data.Text.IO as TIO
 
 import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>), (</>))
@@ -28,45 +27,23 @@ import System.IO
 import qualified Data.Attoparsec.Text as Ap
 
 import Abstract
+import FileIO
 import Settings
 
 -- Script handlers
 import EU4.Decisions
 import EU4.Missions
 import EU4.Events
+import EU4.IdeaGroups
 import EU4.Policies
 
-buildPath :: Settings -> FilePath -> FilePath
-buildPath settings path = steamDir settings </> steamApps settings </> game settings </> path
-
--- Read a file as Text. Unfortunately EU4 script files use several incompatible
--- encodings. Try the following encodings in order:
--- 1. UTF-8
--- 2. ISO 8859-1
--- (Decoding as 8859-1 can't fail, but I don't know if it will always be correct.)
-readFileRetry :: FilePath -> IO Text
-readFileRetry path = do
-    raw <- B.readFile path
-    -- Catching exceptions in pure code is a rather convoluted process...
-    e <- try (let e = TE.decodeUtf8 raw in e `seq` return e)
-    case (e::Either UnicodeException Text) of
-        Right result -> return result
-        Left _ -> return $ TE.decodeLatin1 raw
-
-readScript :: Settings -> FilePath -> IO GenericScript
-readScript settings file = do
-    let filepath = buildPath settings file
-    contents <- readFileRetry filepath
-    case Ap.parseOnly (skipSpace >> genericScript) contents of
-        Right result -> return result
-        Left error -> do
-            putStrLn $ "Couldn't parse " ++ file ++ ": " ++ error
-            return []
+-- Extra info for PP: idea group table
+type Extra = HashMap Text IdeaGroup
 
 -- Read all scripts in a directory.
 -- Return: for each file, its path relative to the game root and the parsed
 --         script.
-readScripts :: Settings -> FilePath -> IO [(FilePath, GenericScript)]
+readScripts :: Settings a -> FilePath -> IO [(FilePath, GenericScript)]
 readScripts settings category =
     let sourceSubdir = case category of
             "policies" -> "common" </> "policies"
@@ -83,34 +60,29 @@ readScripts settings category =
 
 main :: IO ()
 main = do
-    settings <- readSettings
+    settings <- readSettings ((Just <$>) . readIdeaGroupTable)
 
     createDirectoryIfMissing False "output"
 
     forM_ ["decisions","missions","events","policies"] $ \category -> do
         scripts <- readScripts settings category -- :: [(FilePath, GenericScript)]
 
-        let handler :: GenericStatement -> PP (Either Text Doc)
+        let handler :: GenericStatement -> PP Extra (Either Text Doc)
             handler = case category of
                 "decisions" -> processDecisionGroup
                 "missions" -> processMission
                 "events" -> processEvent
                 "policies" -> processPolicy
 
-            results :: PP [(FilePath, [Either Text Doc])]
+            results :: PP Extra [(FilePath, [Either Text Doc])]
             results = mapM (\(file, script) ->
                             (,) file <$>
                                 local (\s -> s { currentFile = Just file })
                                       (mapM handler script))
                 -- for testing -- comment out for release
---                . filter (\(file, _) -> file `elem`
---                    ["events/estate_burghers.txt"
---                    ,"events/estate_church.txt"
---                    ,"events/estate_cossacks.txt"
---                    ,"events/estate_dhimmi.txt"
---                    ,"events/estate_nobles.txt"
---                    ,"events/estate_tribes.txt"
---                    ])
+                . filter (\(file, _) -> file `elem`
+                    ["events/Religious.txt"
+                    ])
                 $ scripts
 
         forM_ (runReader results settings) $ \(path, mesgs) -> do

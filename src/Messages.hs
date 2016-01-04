@@ -180,10 +180,10 @@ data Script = Script
 -- instance for it.
 mkMessage "Script" "l10n" "en"
 
-messageText :: ScriptMessage -> PP Text
+messageText :: ScriptMessage -> PP extra Text
 messageText msg = do
     langs <- getLangs
     return $ renderMessage Script langs msg
 
-message :: ScriptMessage -> PP Doc
+message :: ScriptMessage -> PP extra Doc
 message msg = strictText <$> messageText msg

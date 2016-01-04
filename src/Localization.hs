@@ -23,7 +23,7 @@ import System.IO (hPutStrLn, stderr)
 
 import SettingsTypes
 
-readL10n :: Settings -> IO L10n
+readL10n :: Settings a -> IO L10n
 readL10n settings = do
     let dir = steamDir settings
               </> steamApps settings

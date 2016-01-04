@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-module EU4.Events where
+module EU4.Events (
+        processEvent
+    ) where
 
 import Debug.Trace
 
@@ -51,7 +53,7 @@ data Option = Option
 newEvent = Event Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 newOption = Option Nothing Nothing Nothing Nothing Nothing
 
-processEvent :: GenericStatement -> PP (Either Text Doc)
+processEvent :: GenericStatement -> PP IdeaTable (Either Text Doc)
 processEvent (StatementBare _) = return $ Left "bare statement at top level"
 processEvent (Statement left right) = case right of
     CompoundRhs parts -> case left of
@@ -67,8 +69,8 @@ processEvent (Statement left right) = case right of
     _ -> return $ Right PP.empty -- assume this is one of the administrivia statements at the top
 
 -- Do not call this with a state in which currentFile is Nothing.
-eventAddSection :: Event -> GenericStatement -> PP Event
-eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file -> do
+eventAddSection :: Event -> GenericStatement -> PP extra Event
+eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file ->
     case label of
         "id" -> case rhs of
             StringRhs id -> return evt { evt_id = Just id }
@@ -124,13 +126,13 @@ eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file
         "is_mtth_scaled_to_size" -> return evt -- do nothing (XXX)
         _ -> error $ "unrecognized event section in " ++ file ++ ": " ++ T.unpack label
 
-addOption :: Maybe [Option] -> GenericScript -> PP (Maybe [Option])
+addOption :: Maybe [Option] -> GenericScript -> PP extra (Maybe [Option])
 addOption Nothing opt = addOption (Just []) opt
 addOption (Just opts) opt = do
     opt <- foldM optionAddStatement newOption opt
     return $ Just (opts ++ [opt])
 
-optionAddStatement :: Option -> GenericStatement -> PP Option
+optionAddStatement :: Option -> GenericStatement -> PP extra Option
 optionAddStatement opt stmt@(Statement (GenericLhs label) rhs) = do
     case label of
         "name" -> case rhs of
@@ -158,12 +160,12 @@ optionAddStatement opt stmt = do
     effects_pp'd <- optionAddEffect (opt_effects opt) stmt
     return $ opt { opt_effects = effects_pp'd }
 
-optionAddEffect :: Maybe GenericScript -> GenericStatement -> PP (Maybe GenericScript)
+optionAddEffect :: Maybe GenericScript -> GenericStatement -> PP extra (Maybe GenericScript)
 optionAddEffect Nothing stmt = optionAddEffect (Just []) stmt
 optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 
 -- Pretty-print an event, or fail.
-pp_event :: Event -> PP (Either Text Doc)
+pp_event :: Event -> PP IdeaTable (Either Text Doc)
 pp_event evt = do
     version <- asks gameVersion
     if isJust (evt_title_loc evt) && isJust (evt_options evt)
@@ -174,7 +176,7 @@ pp_event evt = do
         case eoptions_pp'd of
             Left err -> return . Left $ "failed to pprint event options: " <> err
             Right (conditional, options_pp'd) -> do
-                let evtArg :: Text -> (Event -> Maybe a) -> (a -> PP Doc) -> PP [Doc]
+                let evtArg :: Text -> (Event -> Maybe a) -> (a -> PP extra Doc) -> PP extra [Doc]
                     evtArg fieldname field fmt
                         = maybe (return [])
                             (\field_content -> do
@@ -218,7 +220,7 @@ pp_event evt = do
 
     else return $ Left "some required event sections missing"
 
-pp_options :: [Option] -> PP (Either Text (Bool, Doc))
+pp_options :: [Option] -> PP IdeaTable (Either Text (Bool, Doc))
 pp_options opts = do
     options_pp'd <- mapM pp_option opts
     return $ case partitionEithers options_pp'd of
@@ -228,7 +230,7 @@ pp_options opts = do
             in Right (conditional, mconcat . (line:) . intersperse line $ opts_pp'd)
         (err:_, _) -> Left err
 
-pp_option :: Option -> PP (Either Text (Bool, Doc))
+pp_option :: Option -> PP IdeaTable (Either Text (Bool, Doc))
 pp_option opt = do
     if isJust (opt_name_loc opt)
         -- NB: some options have no effect, e.g. start of Peasants' War.

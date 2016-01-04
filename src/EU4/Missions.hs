@@ -12,5 +12,5 @@ import qualified Text.PrettyPrint.Leijen.Text as PP
 import Abstract
 import SettingsTypes
 
-processMission :: GenericStatement -> Reader Settings (Either Text Doc)
+processMission :: GenericStatement -> PP extra (Either Text Doc)
 processMission _ = return $ Left "not implemented"

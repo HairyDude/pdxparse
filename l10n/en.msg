@@ -239,7 +239,9 @@ AddEstateInfluence icon@Text who@Text amt@Double: #{icon} #{who} #{gainsOrLoses 
 EstateLoyaltyModifier icon@Text who@Text what@Text amt@Double dur@Text: #{icon} #{who} gains loyalty modifier ''"#{what}"'' (#{colorNum True amt} loyalty) #{dur}
 EstateInfluenceModifier icon@Text who@Text what@Text amt@Double dur@Text: #{icon} #{who} gains influence modifier ''"#{what}"'' (#{colorNum True amt} influence) #{dur}
 AddOpinion what@Text who@Text: Gain opinion modifier ''"#{what}"'' towards #{who}
+ReverseAddOpinion what@Text who@Text: #{who} gains opinion modifier ''"#{what}"'' towards this country
 AddOpinionDur what@Text who@Text years@Double: Gain opinion modifier ''"#{what}"'' towards #{who} for #{plainNum years} years
+ReverseAddOpinionDur what@Text who@Text years@Double: #{who} gains opinion modifier ''"#{what}"'' towards this country for #{plainNum years} years
 HasOpinion what@Text who@Text: Has opinion modifier ''"#{what}"'' towards #{who}
 RemoveOpinion what@Text who@Text: Lose opinion modifier ''"#{what}"'' towards #{who}
 AddYearsOfIncome icon@Text amt@Double: Add #{icon} ducats equal to #{plainNum amt} #{plural amt "year" "years"} of income
@@ -316,3 +318,26 @@ TagGainsCore who@Text: #{who} gains a core on this province
 GainCoreOnProvince prov@Text: Gain core on #{prov}
 HasDLC icon@Text dlc@Text: DLC #{icon} #{dlc} is active
 Province where@Text: Province #{where}:
+TechGroup icon@Text name@Text: Technology group is #{icon} #{name}
+NumOfReligion icon@Text name@Text amt@Double: Has at least #{roundNum amt} #{plural (round amt) "province" "provinces"} of #{icon} #{name} religion
+StrongestTradePower who@Text: Strongest trade power in this node is #{who}
+AreaIs what@Text: Is in #{what} area
+DominantReligion icon@Text what@Text: The country's dominant religion is #{icon} #{what}
+HREReligion icon@Text what@Text: The Holy Roman Empire's official religion is #{icon} #{what}
+SetHREReligionLocked yn@Bool: The Holy Roman Empire's religion #{ifThenElseT yn "becomes fixed" "is no longer fixed"}
+SetHREReligion icon@Text what@Text: The Holy Roman Empire's official religion becomes #{icon} #{what}
+SetHREHereticReligion icon@Text what@Text: The #{icon} #{what} religion is considered heretical within the Holy Roman Empire
+SignWestphalia: From now on, the Emperor, Electors and Princes of the {{icon|hre}} Holy Roman Empire may be of any Christian religion without being considered heretics.
+HRELeaguesEnabled yn@Bool: Leagues for the religion of the Holy Roman Empire #{ifThenElseT yn "have" "have ''not''"} begun to form
+HREReligionLocked yn@Bool: The religion of the Holy Roman Empire #{ifThenElseT yn "is" "is ''not''"} fixed
+HREWestphalia yn@Bool: The Peace of Westphalia #{ifThenElseT yn "has" "has ''not''"} been signed
+IsElector yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} an Elector of the Holy Roman Empire
+NoHREReforms: No reforms have been passed in the Holy Roman Empire
+HREPassedReform what@Text: The imperial reform ''#{what}'' has been passed
+EnableHRELeagues: Leagues for the religion of the Holy Roman Empire begin to form.
+IsInLeagueWar yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} involved in a religious league war
+IsLeagueEnemy who@Text: Is in the opposite religious league to #{who}
+ReligionYears icon@Text name@Text years@Double: The #{icon} #{name} religion has existed for at least #{plainNum years} years
+HasIdea what@Text: Has idea ''#{what}''
+HasReligionProvinces icon@Text name@Text amt@Double: Country has at least #{roundNum amt} #{plural (round amt) "province" "provinces"} of #{icon} #{name} religion
+HasInnovativenessIdea name@Text num@Int: Has {{icon|innovative ideas}} Innovative idea #{show num} ''#{name}''

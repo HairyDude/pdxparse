@@ -2,6 +2,8 @@
 module EU4.Common (
         pp_script
     ,   pp_mtth
+    ,   IdeaTable
+    ,   module EU4.SuperCommon
     ) where
 
 import Prelude hiding (sequence, mapM)
@@ -35,8 +37,12 @@ import qualified Text.PrettyPrint.Leijen.Text as PP
 import Abstract
 import Localization
 import Messages
+import EU4.SuperCommon
+import {-# SOURCE #-} EU4.IdeaGroups
 
-msgToPP :: ScriptMessage -> PP [(Int, ScriptMessage)]
+-- no particular order from here... TODO: organize this!
+
+msgToPP :: ScriptMessage -> PP extra [(Int, ScriptMessage)]
 msgToPP msg = (:[]) <$> alsoIndent' msg
 
 isTag :: Text -> Bool
@@ -51,7 +57,7 @@ isPronoun s = T.map toLower s `S.member` pronouns where
         ,"controller"
         ]
 
-pp_script :: GenericScript -> PP Doc
+pp_script :: GenericScript -> PP IdeaTable Doc
 pp_script [] = return "(Nothing)"
 pp_script script = withCurrentIndent $ \indent -> do
     statements_pp'd <- mapM pp_statement script
@@ -59,14 +65,14 @@ pp_script script = withCurrentIndent $ \indent -> do
         $ statements_pp'd
 
 -- Get the localization for a province ID, if available.
-getProvLoc :: Int -> PP Text
+getProvLoc :: Int -> PP extra Text
 getProvLoc n =
     let provid_t = T.pack (show n)
     in getGameL10nDefault provid_t ("PROV" <> provid_t)
 
 
 -- Emit flag template if the argument is a tag.
-flag :: Text -> PP Doc
+flag :: Text -> PP extra Doc
 flag name =
     if isTag name
         then template "flag" . (:[]) <$> getGameL10n name
@@ -76,7 +82,7 @@ flag name =
                 -- Suggestions of a description for FROM are welcome.
                 _ -> strictText name
 
-flagText :: Text -> PP Text
+flagText :: Text -> PP extra Text
 flagText = fmap doc2text . flag
 
 -- Emit icon template.
@@ -85,7 +91,7 @@ icon what = template "icon" [HM.lookupDefault what what scriptIconTable, "28px"]
 iconText :: Text -> Text
 iconText = doc2text . icon
 
-plainMsg :: Text -> PP [(Int, ScriptMessage)]
+plainMsg :: Text -> PP extra [(Int, ScriptMessage)]
 plainMsg msg = (:[]) <$> (alsoIndent' . MsgUnprocessed $ msg)
 
 -- Surround a doc in a <pre> element.
@@ -95,7 +101,7 @@ pre_statement stmt = "<pre>" <> genericStatement2doc stmt <> "</pre>"
 preMessage :: GenericStatement -> ScriptMessage
 preMessage = MsgUnprocessed . doc2text . pre_statement
 
-preStatement :: GenericStatement -> PP [(Int, ScriptMessage)]
+preStatement :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
 
 -- Text version
@@ -103,27 +109,29 @@ pre_statement' :: GenericStatement -> Text
 pre_statement' = doc2text . pre_statement
 
 -- Pretty-print a statement, putting bullets in front of each line as appropiate.
-pp_statement :: GenericStatement -> PP Doc
-pp_statement stmt@(Statement lhs rhs) = post =<< pp_one stmt where 
-    post :: [(Int, ScriptMessage)] -> PP Doc
+pp_statement :: GenericStatement -> PP IdeaTable Doc
+pp_statement stmt@(Statement lhs rhs) = post =<< ppOne stmt where 
+    post :: [(Int, ScriptMessage)] -> PP extra Doc
     post msgs = vsep <$>
                     mapM (\(i,rm) -> do
                             m <- post' rm
                             return (hsep [strictText (T.replicate i "*"),  m]))
                          msgs
-    post' :: ScriptMessage -> PP Doc
+    post' :: ScriptMessage -> PP extra Doc
     post' msg = strictText <$> messageText msg
 
-ppMany :: GenericScript -> PP [(Int, ScriptMessage)]
-ppMany scr = concat <$> mapM pp_one scr
+ppMany :: GenericScript -> PP IdeaTable [(Int, ScriptMessage)]
+ppMany scr = concat <$> mapM ppOne scr
 
-pp_one :: GenericStatement -> PP [(Int, ScriptMessage)]
-pp_one stmt@(Statement lhs rhs) = case lhs of
-    GenericLhs label -> case label of
+ppOne :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
+ppOne stmt@(Statement lhs rhs) = case lhs of
+    GenericLhs label -> case T.map toLower label of
         -- Statements where RHS is irrelevant (usually "yes")
         "add_cardinal"          -> msgToPP MsgAddCardinal
+        "enable_hre_leagues"    -> msgToPP MsgEnableHRELeagues
         "kill_heir"             -> msgToPP MsgHeirDies
         "kill_ruler"            -> msgToPP MsgRulerDies
+        "set_hre_religion_treaty" -> msgToPP MsgSignWestphalia
         "remove_cardinal"       -> msgToPP MsgLoseCardinal
         -- Gain/lose, with optional icon
         --  numbers
@@ -172,25 +180,25 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
         "add_trade_modifier"        -> addModifier MsgTradeMod stmt
         "has_country_modifier"      -> withLocAtom2 MsgCountryMod MsgHasModifier stmt
         "has_province_modifier"     -> withLocAtom2 MsgProvMod MsgHasModifier stmt
+        "has_ruler_modifier"        -> withLocAtom2 MsgRulerMod MsgHasModifier stmt
         "has_trade_modifier"        -> withLocAtom2 MsgTradeMod MsgHasModifier stmt
         "remove_country_modifier"   -> withLocAtom2 MsgCountryMod MsgRemoveModifier stmt
         "remove_province_modifier"  -> withLocAtom2 MsgProvMod MsgRemoveModifier stmt
         -- Simple compound statements
         -- Note that "any" can mean "all" or "one or more" depending on context.
-        "AND"  -> compoundMessage MsgAllOf stmt
-        "ROOT" -> compoundMessage MsgOurCountry stmt
+        "and"  -> compoundMessage MsgAllOf stmt
+        "root" -> compoundMessage MsgOurCountry stmt
         -- These two are ugly, but without further analysis we can't know
         -- what it means.
-        "FROM" -> compoundMessage MsgFROM stmt
-        "PREV" -> compoundMessage MsgPREV stmt
-        "NOT"  -> compoundMessage MsgNoneOf stmt
-        "OR"   -> compoundMessage MsgAtLeastOneOf stmt
+        "from" -> compoundMessage MsgFROM stmt
+        "prev" -> compoundMessage MsgPREV stmt
+        "not"  -> compoundMessage MsgNoneOf stmt
+        "or"   -> compoundMessage MsgAtLeastOneOf stmt
         -- There is a semantic distinction between "all" and "every",
         -- namely that the former means "this is true for all <type>" while
         -- the latter means "do this for every <type>." But their contexts
         -- are disjoint, so they can be presented the same way.
         "all_owned_province"        -> compoundMessage MsgEveryOwnedProvince stmt
-        "area"                      -> compoundMessage MsgArea stmt
         "any_active_trade_node"     -> compoundMessage MsgAnyActiveTradeNode stmt
         "any_ally"                  -> compoundMessage MsgAnyAlly stmt
         "any_core_country"          -> compoundMessage MsgAnyCoreCountry stmt
@@ -234,15 +242,14 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
         "end_disaster"      -> withLocAtom MsgDisasterEnds stmt
         "government"        -> withLocAtom MsgGovernmentIs stmt
         "has_advisor"       -> withLocAtom MsgHasAdvisor stmt
+        "has_disaster"      -> withLocAtom MsgDisasterOngoing stmt
+        "has_idea"          -> withLocAtom MsgHasIdea stmt
         "has_terrain"       -> withLocAtom MsgHasTerrain stmt 
         "infantry"          -> withLocAtom MsgInfantrySpawns stmt
         "kill_advisor"      -> withLocAtom MsgAdvisorDies stmt
         "primary_culture"   -> withLocAtom MsgPrimaryCultureIs stmt
         "region"            -> withLocAtom MsgRegionIs stmt
         "remove_advisor"    -> withLocAtom MsgLoseAdvisor stmt
-        -- Simple generic statements (RHS is a localizable atom that should
-        -- be enclosed in single quotation marks)
-        "has_disaster"      -> withLocAtom MsgDisasterOngoing stmt
         -- RHS is a province ID
         "province_id"   -> withProvince MsgProvinceIs stmt
         "owns"          -> withProvince MsgOwns stmt
@@ -265,12 +272,16 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
         "advisor"            -> withLocAtomIcon MsgHasAdvisorType stmt
         "change_trade_goods" -> withLocAtomIcon MsgChangeGoods stmt
         "create_advisor"     -> withLocAtomIcon MsgCreateAdvisor stmt
+        "dominant_religion"  -> withLocAtomIcon MsgDominantReligion stmt
         "has_building"       -> withLocAtomIcon MsgHasBuilding stmt
         "has_idea_group"     -> withLocAtomIcon MsgHasIdeaGroup stmt
+        "hre_religion"       -> withLocAtomIcon MsgHREReligion stmt
         "remove_estate"      -> withLocAtomIcon MsgRemoveFromEstate stmt 
+        "set_hre_heretic_religion" -> withLocAtomIcon MsgSetHREHereticReligion stmt
+        "set_hre_religion"   -> withLocAtomIcon MsgSetHREReligion stmt
+        "technology_group"   -> withLocAtomIcon MsgTechGroup stmt
         "trade_goods"        -> withLocAtomIcon MsgProducesGoods stmt
-        -- Country scope "estate exists", province "assigned to estate"
-        "has_estate"         -> withLocAtomIcon MsgHasEstate stmt
+        "has_estate"         -> withLocAtomIcon MsgHasEstate stmt -- Country scope "estate exists", province "assigned to estate"
         "set_estate"         -> withLocAtomIcon MsgAssignToEstate stmt
         "is_monarch_leader"  -> withLocAtomAndIcon "ruler general" MsgRulerIsGeneral stmt
         -- Simple generic statements with flag
@@ -283,6 +294,7 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
         "has_discovered"     -> withFlag MsgHasDiscovered stmt
         "inherit"            -> withFlag MsgInherit stmt
         "is_neighbor_of"     -> withFlag MsgNeighbors stmt
+        "is_league_enemy"    -> withFlag MsgIsLeagueEnemy stmt
         "is_subject_of"      -> withFlag MsgIsSubjectOf stmt
         "remove_core"        -> withFlag MsgLoseCore stmt
         "marriage_with"      -> withFlag MsgRoyalMarriageWith stmt
@@ -290,6 +302,7 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
         "owned_by"           -> withFlag MsgOwnedBy stmt
         "release"            -> withFlag MsgReleaseVassal stmt
         "sieged_by"          -> withFlag MsgUnderSiegeBy stmt
+        "is_strongest_trade_power" -> withFlag MsgStrongestTradePower stmt
         "tag"                -> withFlag MsgCountryIs stmt
         "truce_with"         -> withFlag MsgTruceWith stmt
         "war_with"           -> withFlag MsgAtWarWith stmt
@@ -313,11 +326,16 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
         "has_seat_in_parliament" -> withBool MsgHasSeatInParliament stmt
         "has_regency"            -> withBool MsgIsInRegency stmt
         "has_siege"              -> withBool MsgUnderSiege stmt
+        "hre_leagues_enabled"    -> withBool MsgHRELeaguesEnabled stmt
+        "hre_religion_locked"    -> withBool MsgHREReligionLocked stmt
+        "hre_religion_treaty"    -> withBool MsgHREWestphalia stmt
         "is_at_war"              -> withBool MsgAtWar stmt
         "is_capital"             -> withBool MsgIsCapital stmt
         "is_city"                -> withBool MsgIsCity stmt
+        "is_elector"             -> withBool MsgIsElector stmt
         "is_emperor"             -> withBool MsgIsEmperor stmt
         "is_female"              -> withBool MsgIsFemale stmt
+        "is_in_league_war"       -> withBool MsgIsInLeagueWar stmt
         "is_lesser_in_union"     -> withBool MsgIsLesserInUnion stmt
         "is_looted"              -> withBool MsgIsLooted stmt
         "is_overseas"            -> withBool MsgIsOverseas stmt
@@ -325,6 +343,7 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
         "is_reformation_center"  -> withBool MsgIsCenterOfReformation stmt
         "is_subject"             -> withBool MsgIsSubject stmt
         "papacy_active"          -> withBool MsgPapacyIsActive stmt
+        "set_hre_religion_locked" -> withBool MsgSetHREReligionLocked stmt
         "unit_in_siege"          -> withBool MsgUnderSiege stmt -- duplicate?
         "was_player"             -> withBool MsgHasBeenPlayer stmt
         -- Numeric statements
@@ -381,6 +400,10 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
         "add_estate_loyalty"                -> estateLoyalty MsgAddEstateLoyalty stmt
         "add_estate_influence_modifier"     -> estateInfluenceModifier MsgEstateInfluenceModifier stmt
         "add_opinion"                       -> opinion MsgAddOpinion MsgAddOpinionDur stmt
+        "reverse_add_opinion"               -> opinion MsgReverseAddOpinion MsgReverseAddOpinionDur stmt
+        "area"                              -> case rhs of
+            CompoundRhs _ -> compoundMessage MsgArea stmt
+            _             -> withLocAtom MsgAreaIs stmt
         "define_heir"                       -> defineHeir stmt
         "build_to_forcelimit"               -> buildToForcelimit stmt
         "country_event"                     -> triggerEvent MsgCountryEvent stmt
@@ -389,15 +412,18 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
         "define_ruler"                      -> defineRuler stmt
         "estate_influence"                  -> estateInfluence MsgEstateInfluence stmt
         "estate_loyalty"                    -> estateLoyalty MsgEstateLoyalty stmt
-        "had_country_flag"                  -> hadFlag "country" stmt
-        "had_province_flag"                 -> hadFlag "province" stmt
-        "had_ruler_flag"                    -> hadFlag "ruler" stmt
+        "had_country_flag"                  -> hadFlag MsgCountryFlag stmt
+        "had_global_flag"                   -> hadFlag MsgGlobalFlag stmt
+        "had_province_flag"                 -> hadFlag MsgProvinceFlag stmt
+        "had_ruler_flag"                    -> hadFlag MsgRulerFlag stmt
         "has_estate_influence_modifier"     -> hasEstateInfluenceModifier stmt
         "has_opinion_modifier"              -> opinion MsgHasOpinion (\what who _years -> MsgHasOpinion what who) stmt
         "province_event"                    -> triggerEvent MsgProvinceEvent stmt
         "remove_opinion"                    -> opinion MsgRemoveOpinion (\what who _years -> MsgRemoveOpinion what who) stmt
+        "religion_years"                    -> religionYears stmt
         "reverse_add_casus_belli"           -> addCB False stmt
         "trigger_switch"                    -> triggerSwitch stmt
+        "num_of_religion"                   -> numOfReligion stmt
         -- Rebels
         "can_spawn_rebels"   -> canSpawnRebels stmt
         "create_revolt"      -> spawnRebels Nothing stmt
@@ -405,9 +431,12 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
         "likely_rebels"      -> canSpawnRebels stmt
         "nationalist_rebels" -> spawnRebels (Just "nationalist_rebels") stmt
         "spawn_rebels"       -> spawnRebels Nothing stmt
+        -- Idea groups
+        "innovativeness_ideas" -> hasIdea MsgHasInnovativenessIdea stmt
         -- Special
         "add_core"  -> addCore stmt
         "has_dlc"   -> hasDlc stmt
+        "hre_reform_level" -> hreReformLevel stmt
         -- Ignored
         "custom_tooltip" -> plainMsg "(custom tooltip - delete this line)"
         "tooltip" -> plainMsg "(explanatory tooltip - delete this line)"
@@ -419,12 +448,15 @@ pp_one stmt@(Statement lhs rhs) = case lhs of
                     scriptMsgs <- indentUp (ppMany scr)
                     return (lflag : scriptMsgs)
                 _ -> preStatement stmt
-             else do
-                mloc <- getGameL10nIfPresent label
-                case mloc of
-                    -- Check for localizable atoms, e.g. regions
-                    Just loc -> compound loc stmt
-                    Nothing -> preStatement stmt
+             -- foo = N where foo is localizable and has an icon
+             else case (numLhsMsg label, floatRhs rhs::Maybe Double) of
+                (Just msg, Just _) -> numericIcon2 msg stmt
+                _ -> do
+                    mloc <- getGameL10nIfPresent label
+                    case mloc of
+                        -- Check for localizable atoms, e.g. regions
+                        Just loc -> compound loc stmt
+                        Nothing -> preStatement stmt
     IntLhs n -> do -- Treat as a province tag
         let provN = T.pack (show n)
         prov_loc <- getGameL10nDefault ("Province " <> provN) ("PROV" <> provN)
@@ -452,7 +484,7 @@ data MTTHModifier = MTTHModifier
         } deriving Show
 newMTTH = MTTH Nothing Nothing Nothing []
 newMTTHMod = MTTHModifier Nothing []
-pp_mtth :: GenericScript -> PP Doc
+pp_mtth :: GenericScript -> PP IdeaTable Doc
 pp_mtth scr
     = pp_mtth' $ foldl' addField newMTTH scr
     where
@@ -523,14 +555,14 @@ pp_mtth scr
 -- General statement handlers --
 --------------------------------
 
-compound :: Text -> GenericStatement -> PP [(Int, ScriptMessage)]
+compound :: Text -> GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
 compound header (Statement _ (CompoundRhs scr)) = do
     headerMsg <- plainMsg (header <> ":")
     scriptMsgs <- indentUp (ppMany scr)
     return $ headerMsg ++ scriptMsgs
 compound defaultdoc stmt = preStatement stmt
 
-compoundMessage :: ScriptMessage -> GenericStatement -> PP [(Int, ScriptMessage)]
+compoundMessage :: ScriptMessage -> GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
 compoundMessage header (Statement _ (CompoundRhs scr)) = do
         script_pp'd <- indentUp (ppMany scr)
         withCurrentIndent $ \i ->
@@ -538,27 +570,27 @@ compoundMessage header (Statement _ (CompoundRhs scr)) = do
 compoundMessage _ stmt = preStatement $ stmt
 
 -- RHS is a localizable atom.
-withLocAtom :: (Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+withLocAtom :: (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 withLocAtom msg (Statement _ rhs) | Just key <- textRhs rhs
     = msgToPP =<< msg <$> getGameL10n key
 
 -- RHS is a localizable atom and we need a second one (passed to message as
 -- first arg).
-withLocAtom2 :: ScriptMessage -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+withLocAtom2 :: ScriptMessage -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 withLocAtom2 inMsg msg (Statement _ rhs) | Just key <- textRhs rhs
     = msgToPP =<< msg <$> messageText inMsg <*> getGameL10n key
 withLocAtom2 inMsg msg stmt@(Statement _ rhs) = plainMsg $ pre_statement' stmt
 
-withLocAtomAndIcon :: Text -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+withLocAtomAndIcon :: Text -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 withLocAtomAndIcon iconkey msg (Statement _ rhs) | Just key <- textRhs rhs
     = do what <- getGameL10n key
          msgToPP $ msg (iconText iconkey) what
 
-withLocAtomIcon :: (Text -> Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+withLocAtomIcon :: (Text -> Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 withLocAtomIcon msg stmt@(Statement _ rhs) | Just key <- textRhs rhs
     = withLocAtomAndIcon key msg stmt
 
-withProvince :: (Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+withProvince :: (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 withProvince msg (Statement lhs rhs) =
     let loc_key = "PROV" <> case rhs of
             IntRhs id -> show id
@@ -570,13 +602,13 @@ withProvince msg (Statement lhs rhs) =
 
 -- As withLocAtom but no l10n.
 -- Currently unused
---withNonlocAtom :: (Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+--withNonlocAtom :: (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 --withNonlocAtom msg (Statement _ rhs) | Just text <- textRhs rhs
 --    = msgToPP $ msg text
 --withNonlocAtom _ stmt = preStatement stmt
 
 -- As withNonlocAtom but with an additional bit of text.
-withNonlocAtom2 :: ScriptMessage -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+withNonlocAtom2 :: ScriptMessage -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 withNonlocAtom2 submsg msg (Statement _ rhs) | Just text <- textRhs rhs = do
     extratext <- messageText submsg
     msgToPP $ msg extratext text
@@ -610,7 +642,7 @@ scriptIconTable = HM.fromList
 -- As generic_icon except
 -- * say "same as <foo>" if foo refers to a country (in which case, add a flag)
 -- * may not actually have an icon (localization file will know if it doesn't)
-iconOrFlag :: (Text -> Text -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+iconOrFlag :: (Text -> Text -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 iconOrFlag iconmsg flagmsg (Statement (GenericLhs category) (GenericRhs name)) = msgToPP =<< do
     nflag <- flag name -- laziness means this might not get evaluated
     if isTag name || isPronoun name
@@ -619,7 +651,7 @@ iconOrFlag iconmsg flagmsg (Statement (GenericLhs category) (GenericRhs name)) =
                      <*> getGameL10n name
 iconOrFlag _ _ stmt = plainMsg $ pre_statement' stmt
 
-tagOrProvince :: (Text -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+tagOrProvince :: (Text -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 tagOrProvince tagmsg provmsg (Statement _ rhs)
     = let eobject = case rhs of
             GenericRhs tag -> Left tag
@@ -634,12 +666,12 @@ tagOrProvince tagmsg provmsg (Statement _ rhs)
                 return . provmsg $ prov_loc
 
 -- Numeric statement.
-numeric :: (Double -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+numeric :: (Double -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 numeric msg (Statement _ rhs) 
     | Just n <- floatRhs rhs = msgToPP $ msg n
 numeric _ stmt = plainMsg $ pre_statement' stmt
 
-numericOrTag :: (Double -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+numericOrTag :: (Double -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 numericOrTag numMsg tagMsg (Statement _ rhs) = msgToPP =<<
     case rhs of
         IntRhs n -> return $ numMsg (fromIntegral n)
@@ -649,20 +681,20 @@ numericOrTag numMsg tagMsg (Statement _ rhs) = msgToPP =<<
             return $ tagMsg (doc2text tflag)
 
 -- Generic statement referring to a country. Use a flag.
-withFlag :: (Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+withFlag :: (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 withFlag msg (Statement _ (GenericRhs who)) = msgToPP =<< do
     whoflag <- flag who
     return . msg . doc2text $ whoflag
 withFlag _ stmt = plainMsg $ pre_statement' stmt
 
-withBool :: (Bool -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+withBool :: (Bool -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 withBool msg stmt = do
     fullmsg <- withBool' msg stmt
     maybe (plainMsg $ pre_statement' stmt)
           return
           fullmsg
 
-withBool' :: (Bool -> ScriptMessage) -> GenericStatement -> PP (Maybe [(Int, ScriptMessage)])
+withBool' :: (Bool -> ScriptMessage) -> GenericStatement -> PP extra (Maybe [(Int, ScriptMessage)])
 withBool' msg (Statement _ rhs) | Just yn <- textRhs rhs, T.map toLower yn `elem` ["yes","no"]
     = fmap Just . msgToPP $ case T.toCaseFold yn of
         "yes" -> msg True
@@ -671,15 +703,25 @@ withBool' msg (Statement _ rhs) | Just yn <- textRhs rhs, T.map toLower yn `elem
 withBool' _ stmt = return Nothing
 
 -- Statement may have "yes"/"no" or a tag.
-withFlagOrBool :: (Bool -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+withFlagOrBool :: (Bool -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 withFlagOrBool bmsg _ (Statement _ (GenericRhs "yes")) = msgToPP (bmsg True)
 withFlagOrBool bmsg _ (Statement _ (GenericRhs "no"))  = msgToPP (bmsg False)
 withFlagOrBool _ tmsg stmt = withFlag tmsg stmt
 
-numericIcon :: Text -> (Text -> Double -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+numericIcon :: Text -> (Text -> Double -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 numericIcon the_icon msg (Statement _ rhs) | Just amt <- floatRhs rhs
     = msgToPP $ msg (iconText the_icon) amt
 numericIcon _ _ stmt = plainMsg $ pre_statement' stmt
+
+-- LHS is a localizable atom and has an icon.
+numericIcon2 :: (Text -> Text -> Double -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
+numericIcon2 msg (Statement (GenericLhs lhs) rhs) | Just amt <- floatRhs rhs = do
+    lhs_loc <- getGameL10n lhs
+    msgToPP $ msg (iconText lhs) lhs_loc amt
+
+numLhsMsg :: Text -> Maybe (Text -> Text -> Double -> ScriptMessage)
+numLhsMsg "orthodox" = Just MsgHasReligionProvinces
+numLhsMsg _ = Nothing
 
 ---------------------------------
 -- Specific statement handlers --
@@ -690,7 +732,7 @@ data FactionInfluence = FactionInfluence {
     ,   influence :: Maybe Double
     }
 newInfluence = FactionInfluence Nothing Nothing
-factionInfluence :: GenericStatement -> PP [(Int, ScriptMessage)]
+factionInfluence :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 factionInfluence stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< (pp_influence $ foldl' addField newInfluence scr)
     where
@@ -722,14 +764,14 @@ factionInfluence stmt@(Statement _ (CompoundRhs scr))
 gainIcon :: Bool -> Text
             -> (Text -> Double -> ScriptMessage)
             -> GenericStatement
-            -> PP [(Int, ScriptMessage)]
+            -> PP extra [(Int, ScriptMessage)]
 gainIcon good iconkey msg
     (Statement _ rhs) | Just n <- floatRhs rhs
     = msgToPP $ msg (iconText iconkey) n
 
 gain' :: Bool -> (Double -> ScriptMessage)
               -> GenericStatement
-              -> PP [(Int, ScriptMessage)]
+              -> PP extra [(Int, ScriptMessage)]
 gain' good msg
     (Statement _ rhs) | Just n <- floatRhs rhs
     = msgToPP $ msg n
@@ -757,7 +799,7 @@ addModifierLine apm _ = apm -- e.g. hidden = yes
 maybeM :: Monad m => (a -> m b) -> Maybe a -> m (Maybe b)
 maybeM f x = maybe (return Nothing) (liftM Just . f) x
 
-addModifier :: ScriptMessage -> GenericStatement -> PP [(Int, ScriptMessage)]
+addModifier :: ScriptMessage -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 addModifier kind stmt@(Statement _ (CompoundRhs scr)) = msgToPP =<<
     let mod = foldl' addModifierLine newModifier scr
     in if isJust (mod_name mod) || isJust (mod_key mod) then do
@@ -790,7 +832,7 @@ addModifier _ stmt = preStatement stmt
 
 -- "add_core = <n>" in country scope means "Gain core on <localize PROVn>"
 -- "add_core = <tag>" in province scope means "<localize tag> gains core"
-addCore :: GenericStatement -> PP [(Int, ScriptMessage)]
+addCore :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 addCore (Statement _ (GenericRhs tag)) = msgToPP =<< do -- tag
     tagflag <- flagText tag
     return $ MsgTagGainsCore tagflag
@@ -809,7 +851,7 @@ newAddOpinion = AddOpinion Nothing Nothing Nothing
 
 opinion :: (Text -> Text -> ScriptMessage)
         -> (Text -> Text -> Double -> ScriptMessage)
-        -> GenericStatement -> PP [(Int, ScriptMessage)]
+        -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 opinion msgIndef msgDur stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< (pp_add_opinion $ foldl' addLine newAddOpinion scr)
     where
@@ -892,7 +934,7 @@ data SpawnRebels = SpawnRebels {
     } deriving Show
 newSpawnRebels = SpawnRebels Nothing Nothing Nothing False Nothing Nothing
 
-spawnRebels :: Maybe Text -> GenericStatement -> PP [(Int, ScriptMessage)]
+spawnRebels :: Maybe Text -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
     spawnRebels' Nothing stmt@(Statement _ (CompoundRhs scr))
         = pp_spawnRebels $ foldl' addLine newSpawnRebels scr
@@ -914,7 +956,7 @@ spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
         = op { sr_leader = Just name }
     addLine op _ = op
 
-    pp_spawnRebels :: SpawnRebels -> PP ScriptMessage
+    pp_spawnRebels :: SpawnRebels -> PP extra ScriptMessage
     pp_spawnRebels reb
         = if isJust (rebelSize reb) then do
             let rtype_loc_icon = flip HM.lookup rebel_loc =<< rebelType reb
@@ -943,13 +985,13 @@ spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
                         progressText
         else return $ preMessage stmt
 
-hasSpawnedRebels :: GenericStatement -> PP [(Int, ScriptMessage)]
+hasSpawnedRebels :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 hasSpawnedRebels (Statement _ (GenericRhs rtype))
     | Just (rtype_loc, rtype_iconkey) <- HM.lookup rtype rebel_loc
       = msgToPP $ MsgRebelsHaveRisen (iconText rtype_iconkey) rtype_loc
 hasSpawnedRebels stmt = preStatement stmt
 
-canSpawnRebels :: GenericStatement -> PP [(Int, ScriptMessage)]
+canSpawnRebels :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 canSpawnRebels (Statement _ (GenericRhs rtype))
     | Just (rtype_loc, rtype_iconkey) <- HM.lookup rtype rebel_loc
       = msgToPP (MsgProvinceHasRebels (iconText rtype_iconkey) rtype_loc)
@@ -961,11 +1003,11 @@ data TriggerEvent = TriggerEvent
         , e_days :: Maybe Double
         }
 newTriggerEvent = TriggerEvent Nothing Nothing Nothing
-triggerEvent :: ScriptMessage -> GenericStatement -> PP [(Int, ScriptMessage)]
+triggerEvent :: ScriptMessage -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 triggerEvent evtType stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< pp_trigger_event =<< foldM addLine newTriggerEvent scr
     where
-        addLine :: TriggerEvent -> GenericStatement -> PP TriggerEvent
+        addLine :: TriggerEvent -> GenericStatement -> PP extra TriggerEvent
         addLine evt (Statement (GenericLhs "id") (GenericRhs id))
             = (\t_loc -> evt { e_id = Just id, e_title_loc = t_loc })
               <$> getGameL10nIfPresent (id <> ".t")
@@ -973,7 +1015,7 @@ triggerEvent evtType stmt@(Statement _ (CompoundRhs scr))
             IntRhs n -> evt { e_days = Just (fromIntegral n) }
             FloatRhs n -> evt { e_days = Just n }
         addLine evt _ = return evt
-        pp_trigger_event :: TriggerEvent -> PP ScriptMessage
+        pp_trigger_event :: TriggerEvent -> PP extra ScriptMessage
         pp_trigger_event evt = do
             let mloc = e_title_loc evt
                 mid = e_id evt
@@ -989,7 +1031,7 @@ triggerEvent evtType stmt@(Statement _ (CompoundRhs scr))
                     return $ MsgTriggerEvent evtType_t msgid loc
             else return $ preMessage stmt
 
-gainManpower :: GenericStatement -> PP [(Int, ScriptMessage)]
+gainManpower :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 gainManpower (Statement _ rhs) | Just amt <- floatRhs rhs = msgToPP =<<
     let mpicon = iconText "manpower"
     in if abs (amt::Double) < 1
@@ -1008,10 +1050,10 @@ data AddCB = AddCB
     }
 newAddCB = AddCB Nothing Nothing Nothing Nothing Nothing
 -- "direct" is False for reverse_add_casus_belli
-addCB :: Bool -> GenericStatement -> PP [(Int, ScriptMessage)]
+addCB :: Bool -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 addCB direct stmt@(Statement _ (CompoundRhs scr))
     = msgToPP . pp_add_cb =<< foldM addLine newAddCB scr where
-        addLine :: AddCB -> GenericStatement -> PP AddCB
+        addLine :: AddCB -> GenericStatement -> PP extra AddCB
         addLine acb (Statement (GenericLhs "target") (GenericRhs target))
             = (\target_loc -> acb
                   { acb_target = Just target
@@ -1039,7 +1081,7 @@ addCB direct stmt@(Statement _ (CompoundRhs scr))
                 (_, Just cbtype_loc, Just target_flag, Nothing) -> MsgGainCB cbtype_loc target_flag
                 (Just cbtype, Nothing, Just target_flag, Nothing) -> MsgGainCB cbtype target_flag
 
-random :: GenericStatement -> PP [(Int, ScriptMessage)]
+random :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
 random stmt@(Statement _ (CompoundRhs scr))
     | (front, back) <- break
                         (\stmt -> case stmt of 
@@ -1068,10 +1110,10 @@ data DefineAdvisor = DefineAdvisor
     }
 newDefineAdvisor = DefineAdvisor Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
-defineAdvisor :: GenericStatement -> PP [(Int, ScriptMessage)]
+defineAdvisor :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 defineAdvisor stmt@(Statement _ (CompoundRhs scr))
     = msgToPP . pp_define_advisor =<< foldM addLine newDefineAdvisor scr where
-        addLine :: DefineAdvisor -> GenericStatement -> PP DefineAdvisor
+        addLine :: DefineAdvisor -> GenericStatement -> PP extra DefineAdvisor
         addLine da stmt@(Statement (GenericLhs lhs) rhs) = case T.map toLower lhs of
             "type" ->
                 let mthe_type = case rhs of
@@ -1188,7 +1230,7 @@ data DefineRuler = DefineRuler
     }
 newDefineRuler = DefineRuler False Nothing Nothing Nothing Nothing Nothing False Nothing Nothing Nothing False Nothing
 
-defineRuler :: GenericStatement -> PP [(Int, ScriptMessage)]
+defineRuler :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 defineRuler stmt@(Statement _ (CompoundRhs scr))
     = pp_define_ruler $ foldl' addLine newDefineRuler scr where
         addLine :: DefineRuler -> GenericStatement -> DefineRuler
@@ -1238,7 +1280,7 @@ defineRuler stmt@(Statement _ (CompoundRhs scr))
                 GenericRhs "yes" -> dr { dr_fixed = True }
                 _ -> dr
             "attach_leader" -> dr { dr_attach_leader = textRhs rhs }
-        pp_define_ruler :: DefineRuler -> PP [(Int, ScriptMessage)]
+        pp_define_ruler :: DefineRuler -> PP extra [(Int, ScriptMessage)]
         pp_define_ruler dr@DefineRuler { dr_rebel = True } = msgToPP MsgRebelLeaderRuler
         pp_define_ruler dr@DefineRuler { dr_regency = regency, dr_attach_leader = mleader } = do
             body <- indentUp (unfoldM pp_define_ruler_attrib dr)
@@ -1247,7 +1289,7 @@ defineRuler stmt@(Statement _ (CompoundRhs scr))
                 else do
                     heading <- msgToPP (MsgNewRulerAttribs regency)
                     return (heading ++ body)
-        pp_define_ruler_attrib :: DefineRuler -> PP (Maybe ((Int, ScriptMessage), DefineRuler))
+        pp_define_ruler_attrib :: DefineRuler -> PP extra (Maybe ((Int, ScriptMessage), DefineRuler))
         -- "Named <foo>"
         pp_define_ruler_attrib dr@DefineRuler { dr_name = Just name } = do
             [msg] <- msgToPP (MsgNewRulerName name)
@@ -1282,9 +1324,9 @@ data HadFlag = HadFlag
     }
 newHadFlag = HadFlag Nothing Nothing
 
-hadFlag :: Text -> GenericStatement -> PP [(Int, ScriptMessage)]
+hadFlag :: ScriptMessage -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 hadFlag category stmt@(Statement _ (CompoundRhs scr))
-    = msgToPP . pp_had_flag $ foldl' addLine newHadFlag scr where
+    = msgToPP =<< (pp_had_flag $ foldl' addLine newHadFlag scr) where
         addLine :: HadFlag -> GenericStatement -> HadFlag
         addLine dr stmt@(Statement (GenericLhs lhs) rhs) = case T.map toLower lhs of
             "flag" -> case rhs of
@@ -1293,11 +1335,13 @@ hadFlag category stmt@(Statement _ (CompoundRhs scr))
                 _ -> dr
             "days" -> dr { hf_days = floatRhs rhs }
             _ -> dr
-        pp_had_flag :: HadFlag -> ScriptMessage
+        pp_had_flag :: HadFlag -> PP extra ScriptMessage
         pp_had_flag dr
             = if isJust (hf_flag dr) && isJust (hf_days dr)
-              then MsgHadFlag category (fromJust (hf_flag dr)) (fromIntegral (fromJust (hf_days dr)))
-              else preMessage stmt
+              then do
+                cat <- messageText category
+                return (MsgHadFlag cat (fromJust (hf_flag dr)) (fromIntegral (fromJust (hf_days dr))))
+              else return (preMessage stmt)
 
 data BuildToForcelimit = BuildToForcelimit
     {   btf_infantry :: Maybe Double
@@ -1310,7 +1354,7 @@ data BuildToForcelimit = BuildToForcelimit
     }
 newBuildToForcelimit = BuildToForcelimit Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
-buildToForcelimit :: GenericStatement -> PP [(Int, ScriptMessage)]
+buildToForcelimit :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 buildToForcelimit stmt@(Statement _ (CompoundRhs scr))
     = msgToPP . pp_build_to_forcelimit $ foldl' addLine newBuildToForcelimit scr where
         addLine :: BuildToForcelimit -> GenericStatement -> BuildToForcelimit
@@ -1373,7 +1417,7 @@ data DeclareWarWithCB = DeclareWarWithCB
     }
 newDeclareWarWithCB = DeclareWarWithCB Nothing Nothing
 
-declareWarWithCB :: GenericStatement -> PP [(Int, ScriptMessage)]
+declareWarWithCB :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 declareWarWithCB stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< (pp_declare_war_with_cb $ foldl' addLine newDeclareWarWithCB scr) where
         addLine :: DeclareWarWithCB -> GenericStatement -> DeclareWarWithCB
@@ -1382,7 +1426,7 @@ declareWarWithCB stmt@(Statement _ (CompoundRhs scr))
                 "who"         -> dwcb { dwcb_who = Just rhs }
                 "casus_belli" -> dwcb { dwcb_cb  = Just rhs }
                 _ -> dwcb
-        pp_declare_war_with_cb :: DeclareWarWithCB -> PP ScriptMessage
+        pp_declare_war_with_cb :: DeclareWarWithCB -> PP extra ScriptMessage
         pp_declare_war_with_cb dwcb
             = let has_who = isJust (dwcb_who dwcb)
                   who = fromJust (dwcb_who dwcb)
@@ -1396,7 +1440,7 @@ declareWarWithCB stmt@(Statement _ (CompoundRhs scr))
                  else return $ preMessage stmt
 declareWarWithCB stmt = preStatement stmt
 
-hasDlc :: GenericStatement -> PP [(Int, ScriptMessage)]
+hasDlc :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 hasDlc (Statement _ (StringRhs dlc))
     = msgToPP $ MsgHasDLC dlc_icon dlc
     where
@@ -1417,7 +1461,7 @@ data EstateInfluenceModifier = EstateInfluenceModifier {
     ,   eim_modifier :: Maybe Text
     }
 newEIM = EstateInfluenceModifier Nothing Nothing
-hasEstateInfluenceModifier :: GenericStatement -> PP [(Int, ScriptMessage)]
+hasEstateInfluenceModifier :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 hasEstateInfluenceModifier stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< pp_eim (foldl' addField newEIM scr)
     where
@@ -1433,7 +1477,7 @@ hasEstateInfluenceModifier stmt@(Statement _ (CompoundRhs scr))
             _ -> return (preMessage stmt)
 hasEstateInfluenceModifier stmt = preStatement stmt
 
-triggerSwitch :: GenericStatement -> PP [(Int, ScriptMessage)]
+triggerSwitch :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
 -- A trigger switch must be of the form
 -- trigger_switch = {
 --  on_trigger = <statement lhs>
@@ -1451,7 +1495,7 @@ triggerSwitch stmt@(Statement _ (CompoundRhs
                 Statement (GenericLhs condrhs) (CompoundRhs action) -> do
                     -- construct a fake condition to pp
                     let guard = Statement (GenericLhs condlhs) (GenericRhs condrhs)
-                    ((_, guardMsg):_) <- pp_one guard -- XXX: match may fail (but shouldn't)
+                    ((_, guardMsg):_) <- ppOne guard -- XXX: match may fail (but shouldn't)
                     guardText <- messageText guardMsg
                     -- pp the rest of the block, at the next level
                     statementMsgs <- indentUp (ppMany action)
@@ -1468,11 +1512,11 @@ data AddEstateInfluenceModifier = AddEstateInfluenceModifier {
     } deriving Show
 newAddEstateInfluenceModifier = AddEstateInfluenceModifier Nothing Nothing Nothing Nothing
 
-timeOrIndef :: Double -> PP Text
+timeOrIndef :: Double -> PP extra Text
 timeOrIndef n = if n < 0 then messageText MsgIndefinitely else messageText (MsgForDays n)
 
 estateInfluenceModifier :: (Text -> Text -> Text -> Double -> Text -> ScriptMessage)
-                        -> GenericStatement -> PP [(Int, ScriptMessage)]
+                        -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 estateInfluenceModifier msg stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< (pp_eim $ foldl' addLine newAddEstateInfluenceModifier scr)
     where
@@ -1482,7 +1526,7 @@ estateInfluenceModifier msg stmt@(Statement _ (CompoundRhs scr))
         addLine aeim (Statement (GenericLhs "influence") (FloatRhs influence)) = aeim { aeim_influence = Just influence }
         addLine aeim (Statement (GenericLhs "duration") (FloatRhs duration)) = aeim { aeim_duration = Just duration }
         addLine aeim _ = aeim
-        pp_eim :: AddEstateInfluenceModifier -> PP ScriptMessage
+        pp_eim :: AddEstateInfluenceModifier -> PP extra ScriptMessage
         pp_eim aeim
             = case (aeim_estate aeim, aeim_desc aeim, aeim_influence aeim, aeim_duration aeim) of
                 (Just estate, Just desc, Just influence, Just duration) -> do
@@ -1500,7 +1544,7 @@ data EstateInfluence = EstateInfluence {
     } deriving Show
 newEstateInfluence = EstateInfluence Nothing Nothing
 
-estateInfluence :: (Text -> Text -> Double -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+estateInfluence :: (Text -> Text -> Double -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 estateInfluence msg stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< (pp_eim $ foldl' addLine newEstateInfluence scr)
     where
@@ -1508,7 +1552,7 @@ estateInfluence msg stmt@(Statement _ (CompoundRhs scr))
         addLine ei (Statement (GenericLhs "estate") (GenericRhs estate)) = ei { ei_estate = Just estate }
         addLine ei (Statement (GenericLhs "influence") (FloatRhs influence)) = ei { ei_influence = Just influence }
         addLine ei _ = ei
-        pp_eim :: EstateInfluence -> PP ScriptMessage
+        pp_eim :: EstateInfluence -> PP extra ScriptMessage
         pp_eim ei
             = case (ei_estate ei, ei_influence ei) of
                 (Just estate, Just influence) -> do
@@ -1524,7 +1568,7 @@ data EstateLoyalty = EstateLoyalty {
     } deriving Show
 newEstateLoyalty = EstateLoyalty Nothing Nothing
 
-estateLoyalty :: (Text -> Text -> Double -> ScriptMessage) -> GenericStatement -> PP [(Int, ScriptMessage)]
+estateLoyalty :: (Text -> Text -> Double -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 estateLoyalty msg stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< (pp_elm $ foldl' addLine newEstateLoyalty scr)
     where
@@ -1532,7 +1576,7 @@ estateLoyalty msg stmt@(Statement _ (CompoundRhs scr))
         addLine el (Statement (GenericLhs "estate") (GenericRhs estate)) = el { el_estate = Just estate }
         addLine el (Statement (GenericLhs "loyalty") (FloatRhs loyalty)) = el { el_loyalty = Just loyalty }
         addLine el _ = el
-        pp_elm :: EstateLoyalty -> PP ScriptMessage
+        pp_elm :: EstateLoyalty -> PP extra ScriptMessage
         pp_elm el
             = case (el_estate el, el_loyalty el) of
                 (Just estate, Just loyalty) -> do
@@ -1548,7 +1592,7 @@ data Heir = Heir
         ,   heir_age :: Maybe Double
         }
 newHeir = Heir Nothing Nothing Nothing
-defineHeir :: GenericStatement -> PP [(Int, ScriptMessage)]
+defineHeir :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 defineHeir stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< (pp_heir $ foldl' addLine newHeir scr)
     where
@@ -1557,7 +1601,7 @@ defineHeir stmt@(Statement _ (CompoundRhs scr))
         addLine heir (Statement (GenericLhs "claim") (FloatRhs claim)) = heir { heir_claim = Just claim }
         addLine heir (Statement (GenericLhs "age") (FloatRhs age)) = heir { heir_age = Just age }
         addLine heir _ = heir
-        pp_heir :: Heir -> PP ScriptMessage
+        pp_heir :: Heir -> PP extra ScriptMessage
         pp_heir heir = do
             dynasty_flag <- fmap doc2text <$> maybeM flag (heir_dynasty heir)
             case (heir_age heir, dynasty_flag, heir_claim heir) of
@@ -1570,3 +1614,73 @@ defineHeir stmt@(Statement _ (CompoundRhs scr))
                 (Just age, Just flag, Nothing)    -> return $ MsgNewHeirAgeFlag age flag
                 (Just age, Just flag, Just claim) -> return $ MsgNewHeirAgeFlagClaim age flag claim
 defineHeir stmt = preStatement stmt
+
+data NumOfReligion = NumOfReligion 
+        {   nor_religion :: Maybe Text
+        ,   nor_value :: Maybe Double
+        }
+newNOR = NumOfReligion Nothing Nothing
+numOfReligion :: GenericStatement -> PP extra [(Int, ScriptMessage)]
+numOfReligion stmt@(Statement _ (CompoundRhs scr))
+    = msgToPP =<< (pp_heir $ foldl' addLine newNOR scr)
+    where
+        addLine :: NumOfReligion -> GenericStatement -> NumOfReligion
+        addLine nor (Statement (GenericLhs "religion") rhs) | Just religion <- textRhs rhs = nor { nor_religion = Just religion }
+        addLine nor (Statement (GenericLhs "value") rhs) | Just val <- floatRhs rhs = nor { nor_value = Just val }
+        addLine heir _ = heir
+        pp_heir :: NumOfReligion -> PP extra ScriptMessage
+        pp_heir nor = case (nor_religion nor, nor_value nor) of
+            (Just religion, Just value) -> do
+                rel_loc <- getGameL10n religion
+                let rel_icon = iconText religion
+                return (MsgNumOfReligion rel_icon rel_loc value)
+            _ -> return (preMessage stmt)
+
+-- Assume 1 <= n <= 8
+hreReformLoc :: Int -> PP extra Text
+hreReformLoc n = getGameL10n $ case n of
+    1 -> "reichsreform_title"
+    2 -> "reichsregiment_title"
+    3 -> "gemeinerpfennig_title"
+    4 -> "hofgericht_title"
+    5 -> "landfriede_title"
+    6 -> "privilegia_de_non_appelando_title"
+    7 -> "erbkaisertum_title"
+    8 -> "renovatio_title"
+
+hreReformLevel :: GenericStatement -> PP extra [(Int, ScriptMessage)]
+hreReformLevel (Statement _ rhs) | Just level <- floatRhs rhs, level >= 0, level <= 8
+    = if level == 0
+        then msgToPP MsgNoHREReforms
+        else msgToPP . MsgHREPassedReform =<< hreReformLoc level
+hreReformLevel stmt = preStatement stmt
+
+religionYears :: GenericStatement -> PP extra [(Int, ScriptMessage)]
+religionYears (Statement _ (CompoundRhs [Statement (GenericLhs rel) rhs]))
+    | Just years <- floatRhs rhs = do
+        let rel_icon = iconText rel
+        rel_loc <- getGameL10n rel
+        msgToPP $ MsgReligionYears rel_icon rel_loc years
+religionYears stmt = preStatement stmt
+
+----------------------
+-- Idea group ideas --
+----------------------
+
+hasIdea :: (Text -> Int -> ScriptMessage) -> GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
+hasIdea msg stmt@(Statement (GenericLhs lhs) rhs) | Just n <- floatRhs rhs, n >= 1, n <= 7 = do
+    mgroupTable <- asks info
+    case mgroupTable of
+        Nothing -> do -- can't lookup ideas!
+            err <- plainMsg "(warning: couldn't look up idea groups)"
+            premsg <- preStatement stmt
+            return (err ++ premsg)
+        Just groupTable ->
+            let mideagroup = HM.lookup lhs groupTable
+            in case mideagroup of
+                Nothing -> preStatement stmt -- unknown idea group
+                Just group -> do
+                    let idea = ig_ideas group !! (n - 1)
+                        ideaKey = idea_name idea
+                    idea_loc <- getGameL10n ideaKey
+                    msgToPP (msg idea_loc n)

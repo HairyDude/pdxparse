@@ -5,11 +5,16 @@ module Doc (
     ,   pp_signed
     ,   pp_float
     ,   pp_float_t
+    ,   nl2br
     ) where
 
+import Data.List
 import Data.Monoid
+
 import Data.Text (Text)
+import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
+
 import Text.PrettyPrint.Leijen.Text (Doc)
 import qualified Text.PrettyPrint.Leijen.Text as PP
 
@@ -37,3 +42,15 @@ pp_float n =
 -- Pretty-print a Double, as Text.
 pp_float_t :: Double -> Text
 pp_float_t = TL.toStrict . PP.displayT . PP.renderCompact . pp_float
+
+-- Convert newlines to <br/> tags.
+nl2br :: Text -> Text
+nl2br = mconcat . unfoldr replaceNextBreak . Just where
+    replaceNextBreak :: Maybe Text -> Maybe (Text, Maybe Text)
+    replaceNextBreak Nothing = Nothing
+    replaceNextBreak (Just t)
+        = let (left, right) = T.breakOn "\n" t
+              right' = T.drop 1 right
+          in if T.null right -- no newlines found
+                then Just (left, Nothing)
+                else Just (left <> "<br/>", Just right')

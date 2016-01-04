@@ -1,5 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Abstract where
+module Abstract (
+        Statement (..)
+    ,   GenericStatement
+    ,   GenericScript
+    ,   Lhs (..)
+    ,   GenericLhs
+    ,   Rhs (..)
+    ,   GenericRhs
+    ,   textRhs, floatRhs
+    ,   genericStatement2doc
+    ,   readScript
+    ) where
 
 {-
     A scripting language as used by Paradox Interactive in games such
@@ -45,7 +56,9 @@ import qualified Data.Attoparsec.Text as Ap
 import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>))
 import qualified Text.PrettyPrint.Leijen.Text as PP
 
+import FileIO
 import Messages
+import SettingsTypes
 
 -- statement ::= lhs | lhs '=' rhs
 -- Type of statements, parametrized by two custom types, one for left-hand
@@ -224,17 +237,6 @@ genericScript = script parse_generic parse_generic
 -- Pretty-printer --
 --------------------
 
-nl2br :: Text -> Text
-nl2br = mconcat . unfoldr replaceNextBreak . Just where
-    replaceNextBreak :: Maybe Text -> Maybe (Text, Maybe Text)
-    replaceNextBreak Nothing = Nothing
-    replaceNextBreak (Just t)
-        = let (left, right) = T.breakOn "\n" t
-              right' = T.drop 1 right
-          in if T.null right -- no newlines found
-                then Just (left, Nothing)
-                else Just (left <> "<br/>", Just right')
-
 -- Pretty-printer for a script with no custom elements.
 genericScript2doc :: GenericScript -> Doc
 genericScript2doc = F.fold . intersperse line . map genericStatement2doc
@@ -269,3 +271,17 @@ rhs2doc _ _ (DateRhs (Date year month day)) =
 
 displayGenericScript :: GenericScript -> Text
 displayGenericScript script = TL.toStrict . displayT . renderPretty 0.8 80 $ genericScript2doc script
+
+-------------------------------
+-- Reading scripts from file --
+-------------------------------
+
+readScript :: Settings a -> FilePath -> IO GenericScript
+readScript settings file = do
+    let filepath = buildPath settings file
+    contents <- readFileRetry filepath
+    case Ap.parseOnly (skipSpace >> genericScript) contents of
+        Right result -> return result
+        Left error -> do
+            putStrLn $ "Couldn't parse " ++ file ++ ": " ++ error
+            return []
