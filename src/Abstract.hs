@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Abstract (
+    -- Types
         Statement (..)
     ,   GenericStatement
     ,   GenericScript
@@ -7,9 +8,18 @@ module Abstract (
     ,   GenericLhs
     ,   Rhs (..)
     ,   GenericRhs
-    ,   textRhs, floatRhs
+    ,   Date (..)
+    -- Constructors
+    ,   s_yes
+    -- Views
+    ,   textRhs, floatRhs, floatOrTextRhs
+    -- Presentation
     ,   genericStatement2doc
+    ,   genericScript2doc
+    ,   displayGenericScript
+    -- Parsing
     ,   readScript
+    ,   genericStatement
     ) where
 
 {-
@@ -38,13 +48,12 @@ module Abstract (
         PREVPREV = PREV of the next scope up, etc.
 -}
 
-import Control.Applicative hiding ((<$$>))
+import Control.Applicative hiding ((<$>))
 import qualified Data.Foldable as F
 import Data.Monoid
 
 import Data.Char
 import Data.List
-import Numeric (showFFloat)
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -53,11 +62,8 @@ import qualified Data.Text.Lazy as TL
 import Data.Attoparsec.Text (Parser, (<?>))
 import qualified Data.Attoparsec.Text as Ap
 
-import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>))
-import qualified Text.PrettyPrint.Leijen.Text as PP
-
+import Doc
 import FileIO
-import Messages
 import SettingsTypes
 
 -- statement ::= lhs | lhs '=' rhs
@@ -104,8 +110,12 @@ data Date = Date { year :: Int, month :: Int, day :: Int }
 s_yes :: Text -> Statement lhs rhs
 s_yes tok = Statement (GenericLhs tok) (GenericRhs "yes")
 
+-- | Class for painlessly getting the type of number we want out of a value
+-- that might have parsed as something else.
 class CoerceNum a where
     fromInt :: Int -> a
+    -- | If there is an instance @Real a@, the implementation should be
+    -- 'round', because 'floor' might cause an off-by-one error.
     fromFloat :: Double -> a
 instance CoerceNum Int where
     fromInt = id
@@ -126,6 +136,11 @@ textRhs :: GenericRhs -> Maybe Text
 textRhs (GenericRhs s) = Just s
 textRhs (StringRhs s) = Just s
 textRhs _ = Nothing
+
+floatOrTextRhs :: CoerceNum a => GenericRhs -> Maybe (Either a Text)
+floatOrTextRhs rhs = case floatRhs rhs of
+    Just n -> Just (Left n)
+    Nothing -> Right <$> textRhs rhs
 
 ------------
 -- Parser --
@@ -245,10 +260,13 @@ genericStatement2doc :: GenericStatement -> Doc
 genericStatement2doc = statement2doc (const "") (const "")
 
 script2doc :: (lhs -> Doc) -> (rhs -> Doc) -> [Statement lhs rhs] -> Doc
-script2doc customLhs customRhs = foldr (PP.<$>) PP.empty . intersperse line . map (statement2doc customLhs customRhs)
+script2doc customLhs customRhs
+    = foldr (\x y -> mconcat [x, line, y]) mempty
+            . intersperse line
+            . map (statement2doc customLhs customRhs)
 
 statement2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Statement lhs rhs -> Doc
-statement2doc customLhs customRhs (StatementBare lhs)
+statement2doc customLhs _ (StatementBare lhs)
     = lhs2doc customLhs lhs
 statement2doc customLhs customRhs (Statement lhs rhs)
     = lhs2doc customLhs lhs <++> text "=" <++> rhs2doc customLhs customRhs rhs

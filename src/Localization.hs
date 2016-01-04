@@ -8,8 +8,6 @@ import Control.Monad
 import Data.List
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
-import Data.Text (Text)
-import qualified Data.Text as T
 
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as B

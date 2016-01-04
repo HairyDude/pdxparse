@@ -3,14 +3,11 @@ module EU4.Events (
         processEvent
     ) where
 
-import Debug.Trace
-
 import Prelude hiding (mapM)
 
-import Control.Applicative
 import Control.Monad.Reader hiding (mapM)
 
-import Data.List (foldl', unfoldr, intersperse)
+import Data.List (intersperse)
 import Data.Either
 import Data.Maybe
 import Data.Monoid
@@ -59,12 +56,7 @@ processEvent (Statement left right) = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> return $ Left "internal error: custom lhs"
         IntLhs _ -> return $ Left "int lhs at top level"
-        GenericLhs _ -> do
-            mfile <- asks currentFile
-            maybe (return $ Left "no current file")
-                  (\file ->
-                      pp_event =<< foldM eventAddSection newEvent parts)
-                  mfile
+        GenericLhs _ -> pp_event =<< foldM eventAddSection newEvent parts
 
     _ -> return $ Right PP.empty -- assume this is one of the administrivia statements at the top
 
@@ -125,6 +117,7 @@ eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file
         "major" -> return evt -- do nothing
         "is_mtth_scaled_to_size" -> return evt -- do nothing (XXX)
         _ -> error $ "unrecognized event section in " ++ file ++ ": " ++ T.unpack label
+eventAddSection evt _ = return evt
 
 addOption :: Maybe [Option] -> GenericScript -> PP extra (Maybe [Option])
 addOption Nothing opt = addOption (Just []) opt
@@ -166,12 +159,12 @@ optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 
 -- Pretty-print an event, or fail.
 pp_event :: Event -> PP IdeaTable (Either Text Doc)
-pp_event evt = do
-    version <- asks gameVersion
+pp_event evt =
     if isJust (evt_title_loc evt) && isJust (evt_options evt)
         && (isJust (evt_is_triggered_only evt) ||
             isJust (evt_mean_time_to_happen evt))
     then do -- Valid event, carry on
+        version <- asks gameVersion
         eoptions_pp'd <- pp_options (fromJust (evt_options evt))
         case eoptions_pp'd of
             Left err -> return . Left $ "failed to pprint event options: " <> err
@@ -191,7 +184,7 @@ pp_event evt = do
                 mtth_pp'd <- evtArg "mean_time_to_happen" evt_mean_time_to_happen pp_mtth
                 immediate_pp'd <- evtArg "immediate" evt_immediate pp_script
                 return . Right . mconcat $
-                    ["{{Event", "<!-- ", strictText . fromJust . evt_id $ evt, " -->", line
+                    ["{{Event<!-- ", strictText . fromJust . evt_id $ evt, " -->", line
                     ,"| version = ", strictText version, line
                     ,"| event_name = ", text (TL.fromStrict . fromJust $ evt_title_loc evt), line
                     ] ++

@@ -7,14 +7,8 @@ module Settings (
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
-
-import Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HM
 
 import Data.Yaml
-
-import Control.Applicative ((<$>), Applicative (..))
 
 import System.Directory
 import System.Exit
@@ -24,7 +18,7 @@ import System.FilePath
 
 import Control.Monad
 
-import Abstract
+--import Abstract
 import Localization
 import SettingsTypes
 import Paths_pdxparse
@@ -53,6 +47,7 @@ instance FromJSON SettingsInput where
                             <*> liftM T.unpack (o' .: "language")
                             <*> liftM T.unpack (o' .: "version")
             _ -> fail "bad settings file"
+    parseJSON _ = fail "bad settings file"
 
 data Platform
     = Linux
@@ -109,8 +104,6 @@ readSettings getExtra = do
                             , currentFile = Nothing
                             , currentIndent = Nothing }
             game_l10n <- readL10n provisionalSettings
-            l10n <- -- TODO: internationalize this
-                    return HM.empty
             let provisionalSettings' = provisionalSettings `setGameL10n` game_l10n
             extraInfo <- getExtra provisionalSettings'
             return provisionalSettings' { info = extraInfo }

@@ -14,7 +14,7 @@ module SettingsTypes
         )
     , emptySettings
     , setGameL10n
-    , PP
+    , PP, PPT
     , indentUp
     , withCurrentIndent
     , alsoIndent, alsoIndent'
@@ -24,11 +24,12 @@ module SettingsTypes
     , withCurrentFile
     , getLangs
     , unfoldM
+    , fromReaderT, toReaderT
     ) where
 
 import Debug.Trace
 
-import Control.Applicative
+import Control.Monad.Identity (runIdentity)
 import Control.Monad.Reader
 
 import Data.Maybe
@@ -74,7 +75,9 @@ emptySettings = Settings
 setGameL10n :: Settings a -> L10n -> Settings a
 setGameL10n settings l10n = settings { gameL10n = l10n }
 
-type PP extra a = Reader (Settings extra) a
+-- Pretty-printing monad, and its transformer version
+type PP extra a = Reader (Settings extra) a -- equal to PPT extra Identity a
+type PPT extra m a = ReaderT (Settings extra) m a
 
 -- Increase current indentation by 1 for the given action.
 -- If there is no current indentation, set it to 1.
@@ -136,3 +139,9 @@ unfoldM f = go where
             Just (next, x') -> do
                 rest <- go x'
                 return (next:rest)
+
+fromReaderT :: ReaderT r m a -> Reader r (m a)
+fromReaderT mx = runReaderT mx <$> ask
+
+toReaderT :: Reader r (m a) -> ReaderT r m a
+toReaderT mx = ReaderT (runIdentity . runReaderT mx)
