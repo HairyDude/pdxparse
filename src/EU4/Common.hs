@@ -1641,11 +1641,11 @@ hreReformLoc :: Int -> PP extra Text
 hreReformLoc n = getGameL10n $ case n of
     1 -> "reichsreform_title"
     2 -> "reichsregiment_title"
-    3 -> "gemeinerpfennig_title"
-    4 -> "hofgericht_title"
+    3 -> "hofgericht_title"
+    4 -> "gemeinerpfennig_title"
     5 -> "landfriede_title"
-    6 -> "privilegia_de_non_appelando_title"
-    7 -> "erbkaisertum_title"
+    6 -> "erbkaisertum_title"
+    7 -> "privilegia_de_non_appelando_title"
     8 -> "renovatio_title"
 
 hreReformLevel :: GenericStatement -> PP extra [(Int, ScriptMessage)]
