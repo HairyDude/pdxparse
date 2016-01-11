@@ -126,7 +126,7 @@ GlobalFlag: global
 ColonySettlers amt@Double: Colony has at least #{roundNum amt} settlers
 WasAtWar amt@Double: Was at war within the last #{roundNum amt} months
 HeirAge amt@Double: Heir is at least #{roundNum amt} #{plural amt "year" "years"} old
-YearIs amt@Double: Year is #{roundNum amt} or later
+YearIs amt@Double: Year is #{roundNumNoSpace amt} or later
 NumLoans amt@Double: Has at least #{plainNum amt} loans
 NumMercs amt@Double: Has at least #{roundNum amt} mercenary #{plural amt "regiment" "regiments"}
 NumPorts amt@Double: Has at least #{plainNum amt} #{plural amt "port" "ports"}

@@ -109,6 +109,10 @@ plainNum = doc2text . pp_num_sep
 roundNum :: (RealFrac n, PPSep n) => n -> Text
 roundNum n = doc2text $ pp_num_sep (round n :: Integer)
 
+-- Round number to nearest integer, and don't add spaces.
+roundNumNoSpace :: (RealFrac n, PPSep n) => n -> Text
+roundNumNoSpace n = doc2text $ integer (round n :: Integer)
+
 adjustedNum :: PPSep n => NumType -> (n -> Text) -> n -> Text
 adjustedNum numtype p n = p (adjustNumber numtype n)
 
