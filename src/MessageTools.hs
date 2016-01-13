@@ -4,12 +4,14 @@ module MessageTools (
     ,   roundNum, roundPc
     ,   roundNumNoSpace
     ,   colourNum, colourPc
+    ,   colourNumSign
     ,   reducedNum
     ,   plural
     ,   gainOrLose, gainsOrLoses
     ,   template, templateDoc
     ,   ifThenElse, ifThenElseT
-    ,   iquotes
+    ,   iquotes, bold, boldText
+    ,   PPSep (..)
     ,   module Text.Shakespeare.I18N
     ,   module Doc
     ) where
@@ -106,12 +108,16 @@ roundPc = roundNum' True False
 -- | Colour a number green or red depending on whether it's "good" or "bad".
 --
 -- The first argument is True if positive is good, False if negative is good.
-colourNum :: Bool -> Double -> Doc
-colourNum = ppNum True False True
+colourNumSign :: Bool -> Double -> Doc
+colourNumSign = ppNum True False True
 
 -- | As colourNum, but interpret the number as a percentage.
 colourPc :: Bool -> Double -> Doc
 colourPc good = ppNum True True good False
+
+-- | As colourNum, but don't add a + at the start.
+colourNum :: Bool -> Double -> Doc
+colourNum good = ppNum True False good False
 
 -- | Format a number using the given function, but multiply it by 100 first.
 reducedNum :: PPSep n => (n -> Doc) -> n -> Doc
@@ -125,13 +131,13 @@ ppNum :: (Ord n, PPSep n) => Bool -- ^ Whether to apply a colour template (red
                           -> Bool -- ^ Whether positive is good and negative is
                                   --   bad, or vice versa. Ignored if the first
                                   --   argument is False.
-                          -> Bool -- ^ Whether to add a + to positive numbers.
+                          -> Bool -- ^ Whether to add a + to positive numbers,
+                                  --   or strip the - from negative ones.
                           -> n -> Doc
 ppNum colour is_pc pos pos_plus n =
-    let positivity = compare (if pos then n else negate n) 0
-        n_pp'd = (if pos_plus then pp_signed else id)
+    let n_pp'd = (if pos_plus then pp_signed else pp_nosigned)
                  ppNumSep n <> if is_pc then "%" else ""
-    in case positivity of
+    in case (if pos then n else negate n) `compare` 0 of
         LT -> (if colour
                 then template "red" . (:[]) . doc2text
                 else id)
@@ -200,6 +206,9 @@ iquotes = enclose "''\"" "\"''" . strictText
 -- | Set doc in boldface.
 bold :: Doc -> Doc
 bold = enclose "'''" "'''"
+
+boldText :: Text -> Text
+boldText = doc2text . bold . strictText
 
 -- Produce output based on a boolean (i.e. if-then-else).
 -- Needed because the i18n templates don't understand this syntax, but instead

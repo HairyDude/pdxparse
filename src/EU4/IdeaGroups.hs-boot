@@ -28,13 +28,5 @@ data Idea = Idea
     ,   idea_effects :: GenericScript
     }
 instance Show Idea
-data AIWillDo = AIWillDo
-    {   awd_base :: Maybe Double
-    ,   awd_modifiers :: [AIModifier]
-    }
-data AIModifier = AIModifier
-    {   aim_factor :: Maybe Double
-    ,   aim_triggers :: GenericScript
-    }
 
 type IdeaTable = HashMap Text IdeaGroup

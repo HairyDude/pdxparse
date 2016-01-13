@@ -6,6 +6,8 @@ module EU4.Common (
     ,   ppMany
     ,   IdeaTable
     ,   iconKey, iconFile, iconFileB
+    ,   AIWillDo (..), AIModifier (..)
+    ,   ppAiWillDo, ppAiMod
     ,   module EU4.SuperCommon
     ) where
 
@@ -13,12 +15,14 @@ import Prelude hiding (sequence, mapM)
 
 import Debug.Trace
 
+import Control.Arrow
 import Control.Monad.Reader hiding (sequence, mapM, forM)
 
 import Data.Char
 import Data.List
 import Data.Maybe
 import Data.Monoid
+import Data.Foldable
 import Data.Traversable
 
 import Data.ByteString (ByteString)
@@ -201,6 +205,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "add_mercantilism"   -> gainIcon "mercantilism" MsgGainMercantilism stmt
         -- Special
         "add_manpower" -> gainManpower stmt
+        "is_month" -> isMonth stmt
         -- Modifiers
         "add_country_modifier"      -> addModifier MsgCountryMod stmt
         "add_permanent_province_modifier" -> addModifier MsgPermanentProvMod stmt
@@ -210,7 +215,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "has_country_modifier"      -> withLocAtom2 MsgCountryMod MsgHasModifier stmt
         "has_province_modifier"     -> withLocAtom2 MsgProvMod MsgHasModifier stmt
         "has_ruler_modifier"        -> withLocAtom2 MsgRulerMod MsgHasModifier stmt
-        "has_trade_modifier"        -> withLocAtom2 MsgTradeMod MsgHasModifier stmt
+        "has_trade_modifier"        -> tradeMod stmt
         "remove_country_modifier"   -> withLocAtom2 MsgCountryMod MsgRemoveModifier stmt
         "remove_province_modifier"  -> withLocAtom2 MsgProvMod MsgRemoveModifier stmt
         -- Simple compound statements
@@ -232,6 +237,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "any_ally"                  -> compoundMessage MsgAnyAlly stmt
         "any_core_country"          -> compoundMessage MsgAnyCoreCountry stmt
         "any_country"               -> compoundMessage MsgAnyCountry stmt
+        "any_enemy_country"         -> compoundMessage MsgAnyEnemyCountry stmt
         "any_known_country"         -> compoundMessage MsgAnyKnownCountry stmt
         "any_neighbor_country"      -> compoundMessage MsgAnyNeighborCountry stmt
         "any_neighbor_province"     -> compoundMessage MsgAnyNeighborProvince stmt
@@ -247,30 +253,36 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "every_neighbor_province"   -> compoundMessage MsgEveryNeighborProvince stmt
         "every_owned_province"      -> compoundMessage MsgEveryOwnedProvince stmt
         "every_province"            -> compoundMessage MsgEveryProvince stmt
+        "every_rival_country"       -> compoundMessage MsgEveryRival stmt
         "every_subject_country"     -> compoundMessage MsgEverySubject stmt
         "hidden_effect"             -> compoundMessage MsgHiddenEffect stmt
         "if"                        -> compoundMessage MsgIf stmt
         "limit"                     -> compoundMessage MsgLimit stmt
         "owner"                     -> compoundMessage MsgOwner stmt
+        "random_active_trade_node"  -> compoundMessage MsgRandomActiveTradeNode stmt
         "random_ally"               -> compoundMessage MsgRandomAlly stmt
         "random_core_country"       -> compoundMessage MsgRandomCoreCountry stmt
         "random_country"            -> compoundMessage MsgRandomCountry stmt
+        "random_known_country"      -> compoundMessage MsgRandomKnownCountry stmt
         "random_list"               -> compoundMessage MsgRandom stmt
         "random_neighbor_country"   -> compoundMessage MsgRandomNeighborCountry stmt
         "random_neighbor_province"  -> compoundMessage MsgRandomNeighborProvince stmt
         "random_owned_province"     -> compoundMessage MsgRandomOwnedProvince stmt
         "random_province"           -> compoundMessage MsgRandomProvince stmt
+        "random_rival_country"      -> compoundMessage MsgRandomRival stmt
         -- Random
         "random" -> random stmt
         -- Simple generic statements (RHS is a localizable atom)
         "change_government" -> withLocAtom MsgChangeGovernment stmt
         "continent"         -> withLocAtom MsgContinentIs stmt
+        "change_culture"    -> withLocAtom MsgChangeCulture stmt
         "culture"           -> withLocAtom MsgCultureIs stmt
         "culture_group"     -> withLocAtom MsgCultureIsGroup stmt
         "dynasty"           -> withLocAtom MsgRulerIsDynasty stmt
         "end_disaster"      -> withLocAtom MsgDisasterEnds stmt
         "government"        -> withLocAtom MsgGovernmentIs stmt
         "has_advisor"       -> withLocAtom MsgHasAdvisor stmt
+        "has_active_policy" -> withLocAtom MsgHasActivePolicy stmt
         "has_disaster"      -> withLocAtom MsgDisasterOngoing stmt
         "has_idea"          -> withLocAtom MsgHasIdea stmt
         "has_terrain"       -> withLocAtom MsgHasTerrain stmt 
@@ -284,6 +296,8 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "owns"               -> withProvince MsgOwns stmt
         "owns_core_province" -> withProvince MsgOwnsCore stmt
         "province_id"        -> withProvince MsgProvinceIs stmt
+        -- RHS is a flag OR a province ID
+        "remove_core"      -> withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince stmt
         -- RHS is an advisor ID (TODO: parse advisor files)
         "advisor_exists"      -> numeric MsgAdvisorExists stmt
         "is_advisor_employed" -> numeric MsgAdvisorIsEmployed stmt
@@ -329,12 +343,15 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "discover_country"   -> withFlag MsgDiscoverCountry stmt
         "add_claim"          -> withFlag MsgGainClaim stmt
         "add_permanent_claim" -> withFlag MsgGainPermanentClaim stmt
+        "create_alliance"    -> withFlag MsgCreateAlliance stmt
+        "galley"             -> withFlag MsgGalley stmt
         "has_discovered"     -> withFlag MsgHasDiscovered stmt
+        "heavy_ship"         -> withFlag MsgHeavyShip stmt
         "inherit"            -> withFlag MsgInherit stmt
         "is_neighbor_of"     -> withFlag MsgNeighbors stmt
         "is_league_enemy"    -> withFlag MsgIsLeagueEnemy stmt
         "is_subject_of"      -> withFlag MsgIsSubjectOf stmt
-        "remove_core"        -> withFlag MsgLoseCore stmt
+        "light_ship"         -> withFlag MsgLightShip stmt
         "marriage_with"      -> withFlag MsgRoyalMarriageWith stmt
         "offensive_war_with" -> withFlag MsgOffensiveWarAgainst stmt
         "owned_by"           -> withFlag MsgOwnedBy stmt
@@ -346,7 +363,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "war_with"           -> withFlag MsgAtWarWith stmt
         "white_peace"        -> withFlag MsgMakeWhitePeace stmt
         -- Simple generic statements with flag or "yes"/"no"
-        "exists"            -> withFlag MsgCountryExists stmt
+        "exists"            -> withFlagOrBool MsgExists MsgCountryExists stmt
         -- Statements that may be an icon, a flag, or a pronoun (such as ROOT)
         -- Boolean argument is whether to emit an icon.
         "religion"          -> iconOrFlag MsgReligion MsgSameReligion stmt
@@ -357,20 +374,27 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "is_claim" -> tagOrProvince MsgHasClaim MsgHasClaimOn stmt
         -- Boolean statements
         "ai"                     -> withBool MsgIsAIControlled stmt
+        "has_any_disaster"       -> withBool MsgHasAnyDisaster stmt
         "has_cardinal"           -> withBool MsgHasCardinal stmt
         "has_heir"               -> withBool MsgHasHeir stmt
+        "has_owner_culture"      -> withBool MsgHasOwnerCulture stmt
         "has_owner_religion"     -> withBool MsgHasOwnerReligion stmt
+        "has_parliament"         -> withBool MsgHasParliament stmt
         "has_port"               -> withBool MsgHasPort stmt
         "has_seat_in_parliament" -> withBool MsgHasSeatInParliament stmt
         "has_regency"            -> withBool MsgIsInRegency stmt
         "has_siege"              -> withBool MsgUnderSiege stmt
         "has_secondary_religion" -> withBool MsgHasSecondaryReligion stmt
+        "has_truce"              -> withBool MsgHasTruce stmt
+        "has_wartaxes"           -> withBool MsgHasWarTaxes stmt
         "hre_leagues_enabled"    -> withBool MsgHRELeaguesEnabled stmt
         "hre_religion_locked"    -> withBool MsgHREReligionLocked stmt
         "hre_religion_treaty"    -> withBool MsgHREWestphalia stmt
         "is_at_war"              -> withBool MsgAtWar stmt
+        "is_bankrupt"            -> withBool MsgIsBankrupt stmt
         "is_capital"             -> withBool MsgIsCapital stmt
         "is_city"                -> withBool MsgIsCity stmt
+        "is_colony"              -> withBool MsgIsColony stmt
         "is_colonial_nation"     -> withBool MsgIsColonialNation stmt
         "is_defender_of_faith"   -> withBool MsgIsDefenderOfFaith stmt
         "is_former_colonial_nation" -> withBool MsgIsFormerColonialNation stmt
@@ -387,7 +411,9 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "is_random_new_world"    -> withBool MsgRandomNewWorld stmt
         "is_reformation_center"  -> withBool MsgIsCenterOfReformation stmt
         "is_religion_reformed"   -> withBool MsgReligionReformed stmt
+        "is_sea"                 -> withBool MsgIsSea stmt -- province or trade node
         "is_subject"             -> withBool MsgIsSubject stmt
+        "luck"                   -> withBool MsgLucky stmt
         "normal_or_historical_nations" -> withBool MsgNormalOrHistoricalNations stmt
         "papacy_active"          -> withBool MsgPapacyIsActive stmt
         "primitives"             -> withBool MsgPrimitives stmt
@@ -400,11 +426,15 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "had_recent_war"            -> numeric MsgWasAtWar stmt
         "heir_age"                  -> numeric MsgHeirAge stmt
         "is_year"                   -> numeric MsgYearIs stmt
+        "num_of_colonial_subjects"  -> numeric MsgNumColonialSubjects stmt
+        "num_of_colonies"           -> numeric MsgNumColonies stmt
         "num_of_loans"              -> numeric MsgNumLoans stmt
         "num_of_mercenaries"        -> numeric MsgNumMercs stmt
         "num_of_ports"              -> numeric MsgNumPorts stmt
         "num_of_rebel_armies"       -> numeric MsgNumRebelArmies stmt
+        "num_of_rebel_controlled_provinces" -> numeric MsgNumRebelControlledProvinces stmt
         "num_of_trade_embargos"     -> numeric MsgNumEmbargoes stmt
+        "revolt_percentage"         -> numeric MsgRevoltPercentage stmt
         "trade_income_percentage"   -> numeric MsgTradeIncomePercentage stmt
         "units_in_province"         -> numeric MsgUnitsInProvince stmt
         -- Statements that may be numeric or a tag
@@ -414,47 +444,84 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         -- Special cases
         "legitimacy_or_horde_unity" -> numeric MsgLegitimacyOrHordeUnity stmt
         -- Statements of numeric quantities with icons
-        "add_years_of_income" -> numericIcon "ducats" MsgAddYearsOfIncome stmt
-        "adm"               -> numericIcon "adm" MsgRulerADM stmt
-        "adm_power"         -> numericIcon "adm" MsgHasADM stmt
-        "adm_tech"          -> numericIcon "adm tech" MsgADMTech stmt
-        "army_tradition"    -> numericIcon "army tradition" MsgArmyTradition stmt
-        "base_manpower"     -> numericIcon "navy tradition" MsgBaseManpower stmt
-        "base_production"   -> numericIcon "base production" MsgBaseProduction stmt
-        "base_tax"          -> numericIcon "base tax" MsgBaseTax stmt
-        "create_admiral"    -> numericIcon "admiral" MsgCreateAdmiral stmt
-        "create_general"    -> numericIcon "general" MsgCreateGeneral stmt
-        "development"       -> numericIcon "development" MsgDevelopment stmt
-        "dip"               -> numericIcon "dip" MsgRulerDIP stmt
-        "dip_power"         -> numericIcon "adm" MsgHasDIP stmt
-        "dip_tech"          -> numericIcon "dip tech" MsgDIPTech stmt
-        "horde_unity"       -> numericIcon "horde unity" MsgHordeUnity stmt
-        "karma"             -> numericIcon "high karma" MsgKarma stmt
-        "legitimacy"        -> numericIcon "legitimacy" MsgLegitimacy stmt
-        "mil"               -> numericIcon "mil" MsgRulerMIL stmt
-        "mil_power"         -> numericIcon "adm" MsgHasMIL stmt
-        "mil_tech"          -> numericIcon "mil tech" MsgMILTech stmt
-        "monthly_income"    -> numericIcon "ducats" MsgMonthlyIncome stmt
-        "num_of_allies"     -> numericIcon "alliance" MsgNumAllies stmt
-        "num_of_cardinals"  -> numericIcon "cardinal" MsgNumCardinals stmt
-        "num_of_colonists"  -> numericIcon "colonists" MsgNumColonists stmt
+        "add_treasury"          -> numericIcon "ducats" MsgAddTreasury stmt
+        "add_unrest"            -> numericIcon "local unrest" MsgAddLocalUnrest stmt
+        "add_years_of_income"   -> numericIcon "ducats" MsgAddYearsOfIncome stmt
+        "adm"                   -> numericIcon "adm" MsgRulerADM stmt
+        "adm_power"             -> numericIcon "adm" MsgHasADM stmt
+        "adm_tech"              -> numericIcon "adm tech" MsgADMTech stmt
+        "army_tradition"        -> numericIcon "army tradition" MsgArmyTradition stmt
+        "base_manpower"         -> numericIcon "navy tradition" MsgBaseManpower stmt
+        "base_production"       -> numericIcon "base production" MsgBaseProduction stmt
+        "base_tax"              -> numericIcon "base tax" MsgBaseTax stmt
+        "blockade"              -> numericIcon "blockade" MsgBlockade stmt
+        "create_admiral"        -> numericIcon "admiral" MsgCreateAdmiral stmt
+        "create_conquistador"   -> numericIcon "conquistador" MsgCreateConquistador stmt
+        "create_explorer"       -> numericIcon "explorer" MsgCreateExplorer stmt
+        "create_general"        -> numericIcon "general" MsgCreateGeneral stmt
+        "development"           -> numericIcon "development" MsgDevelopment stmt
+        "dip"                   -> numericIcon "dip" MsgRulerDIP stmt
+        "dip_power"             -> numericIcon "adm" MsgHasDIP stmt
+        "dip_tech"              -> numericIcon "dip tech" MsgDIPTech stmt
+        "fort_level"            -> numericIcon "fort level" MsgFortLevel stmt
+        "gold_income_percentage" -> numericIcon "gold" MsgGoldIncomePercentage stmt
+        "horde_unity"           -> numericIcon "horde unity" MsgHordeUnity stmt
+        "inflation"             -> numericIcon "inflation" MsgInflation stmt
+        "karma"                 -> numericIcon "high karma" MsgKarma stmt
+        "legitimacy"            -> numericIcon "legitimacy" MsgLegitimacy stmt
+        "local_autonomy"        -> numericIcon "local autonomy" MsgLocalAutonomy stmt
+        "manpower_percentage"   -> numericIcon "manpower" MsgManpowerPercentage stmt
+        "mercantilism"          -> numericIcon "mercantilism" MsgMercantilism stmt
+        "mil"                   -> numericIcon "mil" MsgRulerMIL stmt
+        "mil_power"             -> numericIcon "adm" MsgHasMIL stmt
+        "mil_tech"              -> numericIcon "mil tech" MsgMILTech stmt
+        "monthly_income"        -> numericIcon "ducats" MsgMonthlyIncome stmt
+        "naval_forcelimit"      -> numericIcon "naval force limit" MsgNavalForcelimit stmt
+        "num_of_allies"         -> numericIcon "alliance" MsgNumAllies stmt
+        "num_of_cardinals"      -> numericIcon "cardinal" MsgNumCardinals stmt
+        "num_of_colonists"      -> numericIcon "colonists" MsgNumColonists stmt
+        "num_of_heavy_ship"     -> numericIcon "heavy ship" MsgNumHeavyShips stmt
+        "num_of_merchants"      -> numericIcon "merchant" MsgNumMerchants stmt
+        "num_of_royal_marriages" -> numericIcon "royal marriage" MsgNumRoyalMarriages stmt
         "overextension_percentage" -> numericIcon "overextension" MsgOverextension stmt
-        "religious_unity"   -> numericIcon "religious unity" MsgReligiousUnity stmt
-        "reform_desire"     -> numericIcon "reform desire" MsgReformDesire stmt
-        "stability"         -> numericIcon "stability" MsgStability stmt
-        "total_development" -> numericIcon "development" MsgTotalDevelopment stmt
+        "reform_desire"         -> numericIcon "reform desire" MsgReformDesire stmt
+        "religious_unity"       -> numericIcon "religious unity" MsgReligiousUnity stmt
+        "republican_tradition"  -> numericIcon "republican tradition" MsgRepTrad stmt
+        "stability"             -> numericIcon "stability" MsgStability stmt
+        "total_development"     -> numericIcon "development" MsgTotalDevelopment stmt
         "total_number_of_cardinals" -> numericIcon "cardinal" MsgTotalCardinals stmt
+        "trade_efficiency"      -> numericIcon "trade efficiency" MsgTradeEfficiency stmt
+        "treasury"              -> numericIcon "ducats" MsgHasDucats stmt
         "unrest"               -> numericIcon "unrest" MsgUnrest stmt
         "war_exhaustion"       -> numericIcon "war exhaustion" MsgWarExhaustion stmt
         "war_score"            -> numericIcon "war score" MsgWarScore stmt
-        "republican_tradition" -> numericIcon "republican tradition" MsgRepTrad stmt
-        "inflation"            -> numericIcon "inflation" MsgInflation stmt
-        "local_autonomy"       -> numericIcon "local autonomy" MsgLocalAutonomy stmt
-        "manpower_percentage"  -> numericIcon "manpower" MsgManpowerPercentage stmt
-        "mercantilism"         -> numericIcon "mercantilism" MsgMercantilism stmt
+        -- As above - advisors
+        "army_reformer" -> numericIcon "army reformer" MsgHasArmyReformerLevel stmt
+        "artist" -> numericIcon "artist" MsgHasArtistLevel stmt
+        "diplomat" -> numericIcon "diplomat" MsgHasDiplomatLevel stmt
+        "natural_scientist" -> numericIcon "natural scientist" MsgHasNaturalScientistLevel stmt
+        "naval_reformer" -> numericIcon "navy reformer" MsgHasNavyReformerLevel stmt
+        "navy_reformer" -> numericIcon "navy reformer" MsgHasNavyReformerLevel stmt
+        "statesman" -> numericIcon "statesman" MsgHasStatesmanLevel stmt
+        "theologian" -> numericIcon "theologian" MsgHasTheologianLevel stmt
+        "trader" -> numericIcon "trader" MsgHasTraderLevel stmt
         -- Number of provinces of some kind, mostly religions and trade goods
         "orthodox" -> numProvinces "orthodox" MsgReligionProvinces stmt
+        "cloth" -> numProvinces "cloth" MsgGoodsProvinces stmt
+        "chinaware" -> numProvinces "chinaware" MsgGoodsProvinces stmt
+        "copper" -> numProvinces "copper" MsgGoodsProvinces stmt
+        "fish" -> numProvinces "fish" MsgGoodsProvinces stmt
+        "fur" -> numProvinces "fur" MsgGoodsProvinces stmt
+        "gold" -> numProvinces "gold" MsgGoodsProvinces stmt
+        "grain" -> numProvinces "grain" MsgGoodsProvinces stmt
+        "iron" -> numProvinces "iron" MsgGoodsProvinces stmt
+        "ivory" -> numProvinces "ivory" MsgGoodsProvinces stmt
+        "naval_supplies" -> numProvinces "fish" MsgGoodsProvinces stmt
+        "salt" -> numProvinces "salt" MsgGoodsProvinces stmt
         "slaves" -> numProvinces "slaves" MsgGoodsProvinces stmt
+        "spices" -> numProvinces "spices" MsgGoodsProvinces stmt
+        "wine" -> numProvinces "wine" MsgGoodsProvinces stmt
+        "wool" -> numProvinces "wool" MsgGoodsProvinces stmt
         -- Complex statements
         "add_casus_belli"                   -> addCB True stmt
         "add_faction_influence"             -> factionInfluence stmt
@@ -492,10 +559,18 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "create_revolt"      -> spawnRebels Nothing stmt
         "has_spawned_rebels" -> hasSpawnedRebels stmt
         "likely_rebels"      -> canSpawnRebels stmt
-        "nationalist_rebels" -> spawnRebels (Just "nationalist_rebels") stmt
         "spawn_rebels"       -> spawnRebels Nothing stmt
+        -- Specific rebels
+        "anti_tax_rebels"    -> spawnRebels (Just "anti_tax_rebels") stmt
+        "nationalist_rebels" -> spawnRebels (Just "nationalist_rebels") stmt
+        "noble_rebels"       -> spawnRebels (Just "noble_rebels") stmt
         -- Idea groups
-        "innovativeness_ideas" -> hasIdea MsgHasInnovativenessIdea stmt
+        "aristocracy_ideas"    -> hasIdea MsgHasAristocraticIdea stmt
+        "defensive_ideas"      -> hasIdea MsgHasDefensiveIdea stmt
+        "economic_ideas"       -> hasIdea MsgHasEconomicIdea stmt
+        "innovativeness_ideas" -> hasIdea MsgHasInnovativeIdea stmt
+        "maritime_ideas"      -> hasIdea MsgHasMaritimeIdea stmt
+        "offensive_ideas"      -> hasIdea MsgHasOffensiveIdea stmt
         -- Special
         "add_core"  -> addCore stmt
         "government_rank" -> govtRank stmt
@@ -843,9 +918,6 @@ numericIcon _ _ stmt = plainMsg $ pre_statement' stmt
 tryLoc :: Text -> PP extra (Maybe Text)
 tryLoc = getGameL10nIfPresent
 
-mflag :: Text -> PP extra (Maybe Text)
-mflag s = Just <$> flagText s
-
 data TextValue = TextValue
         {   tv_what :: Maybe Text
         ,   tv_value :: Maybe Double
@@ -879,6 +951,44 @@ textValue whatlabel vallabel smallmsg bigmsg loc stmt@(Statement _ (CompoundRhs 
             _ -> return $ preMessage stmt
 textValue _ _ _ _ _ stmt = preStatement stmt
 
+-- | Statements of the form
+--      has_trade_modifier = {
+--          who = ROOT
+--          name = merchant_recalled
+--      }
+data TextAtom = TextAtom
+        {   ta_what :: Maybe Text
+        ,   ta_atom :: Maybe Text
+        }
+newTA = TextAtom Nothing Nothing
+textAtom :: forall extra.
+            Text -- ^ Label for "what"
+         -> Text -- ^ Label for atom
+         -> (Text -> Text -> Text -> ScriptMessage) -- ^ Message constructor
+         -> (Text -> PP extra (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
+         -> GenericStatement -> PP extra [(Int, ScriptMessage)]
+textAtom whatlabel atomlabel msg loc stmt@(Statement _ (CompoundRhs scr))
+    = msgToPP =<< (pp_tv $ foldl' addLine newTA scr)
+    where
+        addLine :: TextAtom -> GenericStatement -> TextAtom
+        addLine ta (Statement (GenericLhs label) rhs)
+            | label == whatlabel, Just what <- textRhs rhs
+            = ta { ta_what = Just what }
+        addLine ta (Statement (GenericLhs label) rhs)
+            | label == atomlabel, Just at <- textRhs rhs
+            = ta { ta_atom = Just at }
+        addLine nor _ = nor
+        pp_tv :: TextAtom -> PP extra ScriptMessage
+        pp_tv ta = case (ta_what ta, ta_atom ta) of
+            (Just what, Just atom) -> do
+                mwhat_loc <- loc what
+                atom_loc <- getGameL10n atom
+                let what_icon = iconText what
+                    what_loc = maybe ("<tt>" <> what <> "</tt>") id mwhat_loc
+                return $ msg what_icon what_loc atom_loc
+            _ -> return $ preMessage stmt
+textAtom _ _ _ _ stmt = preStatement stmt
+
 gainIcon :: Text
             -> (Text -> Double -> ScriptMessage)
             -> GenericStatement
@@ -895,6 +1005,32 @@ gain' msg
     (Statement _ rhs) | Just n <- floatRhs rhs
     = msgToPP $ msg n
 gain' _ stmt = preStatement stmt
+
+-- AI decision factors
+-- Most of the code for this is in EU4.SuperCommon and re-exported here,
+-- because EU4.IdeaGroups needs them. But only EU4.Common needs output
+-- functions.
+ppAiWillDo :: AIWillDo -> PP IdeaTable [(Int, ScriptMessage)]
+ppAiWillDo (AIWillDo mbase mods) = do
+    mods_pp'd <- fold <$> traverse ppAiMod mods
+    let baseWtMsg = case mbase of
+            Nothing -> MsgNoBaseWeight
+            Just base -> MsgAIBaseWeight base
+    iBaseWtMsg <- msgToPP baseWtMsg
+    return $ iBaseWtMsg ++ mods_pp'd
+
+ppAiMod :: AIModifier -> PP IdeaTable [(Int, ScriptMessage)]
+ppAiMod (AIModifier (Just multiplier) triggers) = do
+    triggers_pp'd <- ppMany triggers
+    case triggers_pp'd of
+        [(i, triggerMsg)] -> do
+            triggerText <- messageText triggerMsg
+            return [(i, MsgAIFactorOneline triggerText multiplier)]
+        _ -> withCurrentIndentZero $ \i -> return $
+            (i, MsgAIFactorHeader multiplier)
+            : map (first succ) triggers_pp'd -- indent up
+ppAiMod (AIModifier Nothing _) =
+    plainMsg "(missing multiplier for this factor)"
 
 ---------------------------------
 -- Specific statement handlers --
@@ -984,14 +1120,14 @@ addModifier kind stmt@(Statement _ (CompoundRhs scr)) = msgToPP =<<
             (Nothing,  Nothing,   Just key, Just pow, Nothing)  -> return (MsgGainModPow kind key pow)
             (Nothing,  Just name, _,        Just pow, Just dur) -> return (MsgGainModPowDur kind name pow dur)
             (Nothing,  Nothing,   Just key, Just pow, Just dur) -> return (MsgGainModPowDur kind key pow dur)
-            (Just who, Just name, _,        Nothing,  Nothing)  -> return (MsgActorGainsMod kind who name)
-            (Just who, Nothing,   Just key, Nothing,  Nothing)  -> return (MsgActorGainsMod kind who key)
-            (Just who, Just name, _,        Nothing,  Just dur) -> return (MsgActorGainsModDur kind who name dur)
-            (Just who, Nothing,   Just key, Nothing,  Just dur) -> return (MsgActorGainsModDur kind who key dur)
-            (Just who, Just name, _,        Just pow, Nothing)  -> return (MsgActorGainsModPow kind who name pow)
-            (Just who, Nothing,   Just key, Just pow, Nothing)  -> return (MsgActorGainsModPow kind who key pow)
-            (Just who, Just name, _,        Just pow, Just dur) -> return (MsgActorGainsModPowDur kind who name pow dur)
-            (Just who, Nothing,   Just key, Just pow, Just dur) -> return (MsgActorGainsModPowDur kind who key pow dur)
+            (Just who, Just name, _,        Nothing,  Nothing)  -> return (MsgActorGainsMod who kind name)
+            (Just who, Nothing,   Just key, Nothing,  Nothing)  -> return (MsgActorGainsMod who kind key)
+            (Just who, Just name, _,        Nothing,  Just dur) -> return (MsgActorGainsModDur who kind name dur)
+            (Just who, Nothing,   Just key, Nothing,  Just dur) -> return (MsgActorGainsModDur who kind key dur)
+            (Just who, Just name, _,        Just pow, Nothing)  -> return (MsgActorGainsModPow who kind name pow)
+            (Just who, Nothing,   Just key, Just pow, Nothing)  -> return (MsgActorGainsModPow who kind key pow)
+            (Just who, Just name, _,        Just pow, Just dur) -> return (MsgActorGainsModPowDur who kind name pow dur)
+            (Just who, Nothing,   Just key, Just pow, Just dur) -> return (MsgActorGainsModPowDur who kind key pow dur)
     else return (preMessage stmt)
 addModifier _ stmt = preStatement stmt
 
@@ -1027,7 +1163,7 @@ opinion msgIndef msgDur stmt@(Statement _ (CompoundRhs scr))
         addLine :: AddOpinion -> GenericStatement -> AddOpinion
         addLine op (Statement (GenericLhs "who") (GenericRhs tag))
             = op { who = Just tag }
-        addLine op (Statement (GenericLhs "modifier") (GenericRhs label))
+        addLine op (Statement (GenericLhs "modifier") rhs) | Just label <- textRhs rhs
             = op { modifier = Just label }
         addLine op (Statement (GenericLhs "years") rhs) | Just n <- floatRhs rhs
             = op { op_years = Just n }
@@ -1040,7 +1176,7 @@ opinion msgIndef msgDur stmt@(Statement _ (CompoundRhs scr))
                 if isNothing (op_years op)
                     then return $ msgIndef mod_loc whomflag
                     else return $ msgDur mod_loc whomflag (fromJust (op_years op))
-              else return (preMessage stmt)
+              else trace ("failed! modifier op is " ++ show (modifier op)) $ return (preMessage stmt)
 opinion _ _ stmt = preStatement stmt
 
 data HasOpinion = HasOpinion
@@ -1824,6 +1960,39 @@ numProvinces iconKey msg (Statement (GenericLhs what) rhs)
         what_loc <- getGameL10n what
         msgToPP (msg (iconText iconKey) what_loc amt)
 numProvinces _ _ stmt = preStatement stmt
+
+withFlagOrProvince :: (Text -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
+withFlagOrProvince countryMsg provinceMsg stmt@(Statement _ rhs)
+    | Just _ <- textRhs rhs = withFlag countryMsg stmt
+    | Just _ <- floatRhs rhs :: Maybe Double
+                            = withProvince provinceMsg stmt
+withFlagOrProvince _ _ stmt = preStatement stmt
+
+tradeMod :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
+tradeMod stmt@(Statement _ rhs)
+    | Just _ <- textRhs rhs = withLocAtom2 MsgTradeMod MsgHasModifier stmt
+    | CompoundRhs _ <- rhs  = textAtom "who" "name" MsgHasTradeModifier (fmap Just . flagText) stmt
+tradeMod stmt = preStatement stmt
+
+isMonth :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
+isMonth (Statement _ rhs) | Just num <- floatRhs rhs, (num::Int) >= 1, num <= 12
+    = do
+        month_loc <- getGameL10n $ case num of
+            1 -> "January"
+            2 -> "February"
+            3 -> "March"
+            4 -> "April"
+            5 -> "May"
+            6 -> "June"
+            7 -> "July"
+            8 -> "August"
+            9 -> "September"
+            10 -> "October"
+            11 -> "November"
+            12 -> "December"
+            _ -> error "impossible: tried to localize bad month number"
+        msgToPP $ MsgIsMonth month_loc
+isMonth stmt = preStatement stmt
 
 ----------------------
 -- Idea group ideas --

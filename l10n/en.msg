@@ -66,6 +66,7 @@ AnyActiveTradeNode: Any trade node with a merchant present:
 AnyAlly: Any ally:
 AnyCoreCountry: Any country with a core on this province:
 AnyCountry: Any country in the world:
+AnyEnemyCountry: Any enemy country:
 AnyKnownCountry: Any known country:
 AnyNeighborCountry: Any neighbouring country:
 AnyNeighborProvince: Any neighbouring province:
@@ -81,19 +82,23 @@ EveryNeighborCountry: Every neighbouring country:
 EveryNeighborProvince: Every neighbouring province:
 EveryOwnedProvince: Every owned province:
 EveryProvince: Every province in the world:
+EveryRival: Every rival:
 EverySubject: Every subject country:
 HiddenEffect: Hidden effect:
 If: If:
 Limit: Limited to:
 Owner: Province owner:
+RandomActiveTradeNode: One random active trade node:
 RandomAlly: One random ally:
 RandomCoreCountry: One random country with a core on this province:
 RandomCountry: One random country:
+RandomKnownCountry: One random known country:
 RandomList: One of the following at random:
 RandomNeighborCountry: One random neighbouring country:
 RandomNeighborProvince: One random neighbouring province:
 RandomOwnedProvince: One random owned province:
 RandomProvince: One random province:
+RandomRival: One random rival:
 RandomChance chance@Double: #{plainPc chance} chance of:
 Random: At random:
 ChangeGovernment what@Text: Change government to #{what}
@@ -150,6 +155,8 @@ BaseManpower icon@Text amt@Double: #{icon} Base manpower is at least #{roundNum 
 BaseProduction icon@Text amt@Double: #{icon} Base production is at least #{roundNum amt}
 BaseTax icon@Text amt@Double: #{icon} Base tax is at least #{roundNum amt}
 CreateAdmiral icon@Text amt@Double: Gain #{icon} admiral with #{roundNum amt} navy tradition
+CreateConquistador icon@Text amt@Double: Gain #{icon} conquistador with #{roundNum amt} navy tradition
+CreateExplorer icon@Text amt@Double: Gain #{icon} explorer with #{roundNum amt} navy tradition
 CreateGeneral icon@Text amt@Double: Gain #{icon} general with #{roundNum amt} army tradition
 Development icon@Text development@Double: #{icon} Development is at least #{roundNum development}
 RulerDIP icon@Text amt@Double: Ruler's #{icon} diplomatic skill is at least #{roundNum amt}
@@ -162,6 +169,8 @@ MILTech icon@Text amt@Double: #{icon} Military technology is at least #{roundNum
 NumAllies icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "ally" "allies"}
 NumCardinals icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "cardinal" "cardinals"}
 NumColonists icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "colonist" "colonists"}
+NumHeavyShips icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "heavy ship" "heavy ships"}
+NumMerchants icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "merchant" "merchants"}
 Stability icon@Text amt@Double: Stability is at least #{icon} #{colourNum True amt}
 TotalDevelopment icon@Text amt@Double: Country's total #{icon} development is at least #{roundNum amt}
 TotalCardinals icon@Text amt@Double: At least #{icon} #{roundNum amt} #{plural amt "cardinal" "cardinals"} exist in the world
@@ -192,7 +201,8 @@ HasDiscovered who@Text: Has discovered #{who}
 Inherit who@Text: Inherit #{who}
 Neighbors who@Text: Has a border with #{who}
 IsSubjectOf who@Text: Is a subject of #{who}
-LoseCore who@Text: #{who} loses their core on this province
+LoseCoreCountry who@Text: #{who} loses their core on this province
+LoseCoreProvince where@Text:  Lose core on #{where}
 RoyalMarriageWith who@Text: Has a royal marriage with #{who}
 OffensiveWarAgainst who@Text: Is attacking in a war against #{who}
 OwnedBy who@Text: Province is owned by #{who}
@@ -203,6 +213,7 @@ TruceWith who@Text: Has a truce with #{who}
 AtWarWith who@Text: Is at war with #{who}
 MakeWhitePeace who@Text: Make a white peace with #{who}
 CountryExists who@Text: #{who} exists
+Exists yn@Bool: #{ifThenElseT yn "Exists" "Does ''not'' exist"}
 SameReligion who@Text: Religion is same as #{who}
 Religion icon@Text what@Text: Religion is #{icon} #{what}
 SameReligionGroup who@Text: Religion group is same as #{who}
@@ -216,24 +227,26 @@ HasClaimOn what@Text: Has a claim on #{what}
 IsAIControlled yn@Bool: Is #{ifThenElseT yn "AI" "player"}-controlled
 HasCardinal yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} a cardinal
 HasHeir yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} an heir
+HasOwnerCulture yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} the same culture as its owner
 HasOwnerReligion yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} the same religion as its owner
 HasPort yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} a port
 HasSeatInParliament yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} a seat in Parliament
-IsInRegency yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} in a regency
-UnderSiege yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} under siege
-AtWar yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} at war
-IsCapital yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} the country's capital
-IsCity yn@Bool: #{ifThenElseT yn "Is a city" "Is a colony"}
-IsEmperor yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} the Holy Roman Emperor
+IsInRegency yn@Bool: Is#{ifThenElseT yn "" " ''not''"} in a regency
+UnderSiege yn@Bool: Is#{ifThenElseT yn "" " ''not''"} under siege
+AtWar yn@Bool: Is#{ifThenElseT yn "" " ''not''"} at war
+IsCapital yn@Bool: Is#{ifThenElseT yn "" " ''not''"} the country's capital
+IsCity yn@Bool: Is#{ifThenElseT yn "" " ''not''"} a city
+IsColony yn@Bool: Is#{ifThenElseT yn "" " ''not''"} a colony
+IsEmperor yn@Bool: Is#{ifThenElseT yn "" " ''not''"} the Holy Roman Emperor
 IsFemale yn@Bool: Is #{ifThenElseT yn "female" "male"}
-IsLesserInUnion yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} a lesser partner in a personal union
-IsLooted yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} looted
-IsOverseas yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} overseas
-IsPartOfHRE yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} part of the Holy Roman Empire
-IsCenterOfReformation yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} a Center of Reformation
-IsSubject yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} a subject nation
-PapacyIsActive yn@Bool: Papal interaction #{ifThenElseT yn "is" "is ''not''"} active
-HasBeenPlayer yn@Bool: #{ifThenElseT yn "Has" "Has ''never''"} been player-controlled
+IsLesserInUnion yn@Bool: Is#{ifThenElseT yn "" " ''not''"} a lesser partner in a personal union
+IsLooted yn@Bool: Is#{ifThenElseT yn "" " ''not''"} looted
+IsOverseas yn@Bool: Is#{ifThenElseT yn "" " ''not''"} overseas
+IsPartOfHRE yn@Bool: Is#{ifThenElseT yn "" " ''not''"} part of the Holy Roman Empire
+IsCenterOfReformation yn@Bool: Is#{ifThenElseT yn "" " ''not''"} a Center of Reformation
+IsSubject yn@Bool: Is#{ifThenElseT yn "" " ''not''"} a subject nation
+PapacyIsActive yn@Bool: Papal interaction is#{ifThenElseT yn "" " ''not''"} active
+HasBeenPlayer yn@Bool: Has#{ifThenElseT yn "" " ''never''"} been player-controlled
 GainCB cbtype@Text who@Text: Gain #{cbtype} casus belli against #{who}
 GainCBDuration cbtype@Text who@Text months@Double: Gain #{cbtype} casus belli against #{who} for #{roundNum months} months
 ReverseGainCB cbtype@Text who@Text: #{who} gains #{cbtype} casus belli against this country
@@ -254,7 +267,8 @@ AddOpinionDur what@Text who@Text years@Double: Gain opinion modifier #{iquotes w
 ReverseAddOpinionDur what@Text who@Text years@Double: #{who} gains opinion modifier #{iquotes what} towards this country for #{plainNum years} years
 HasOpinionMod what@Text who@Text: Has opinion modifier #{iquotes what} towards #{who}
 RemoveOpinionMod what@Text who@Text: Lose opinion modifier #{iquotes what} towards #{who}
-AddYearsOfIncome icon@Text amt@Double: Add #{icon} ducats equal to #{plainNum amt} #{plural amt "year" "years"} of income
+AddTreasury icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} ducats
+AddYearsOfIncome icon@Text amt@Double: #{gainOrLose amt} #{icon} ducats equal to #{colourNum True amt} #{plural amt "year" "years"} of income
 NewHeir: Gain a new heir
 NewHeirClaim claim@Double: Gain a new heir with claim strength #{plainNum claim}
 NewHeirDynasty flag@Text: Gain a new heir of the same dynasty as #{flag}
@@ -340,17 +354,22 @@ SignWestphalia: From now on, the Emperor, Electors and Princes of the {{icon|hre
 HRELeaguesEnabled yn@Bool: Leagues for the religion of the Holy Roman Empire #{ifThenElseT yn "have" "have ''not''"} begun to form
 HREReligionLocked yn@Bool: The religion of the Holy Roman Empire #{ifThenElseT yn "is" "is ''not''"} fixed
 HREWestphalia yn@Bool: The Peace of Westphalia #{ifThenElseT yn "has" "has ''not''"} been signed
-IsElector yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} an Elector of the Holy Roman Empire
+IsElector yn@Bool: Is#{ifThenElseT yn "" " ''not''"} an Elector of the Holy Roman Empire
 NoHREReforms: No reforms have been passed in the Holy Roman Empire
 HREPassedReform what@Text: The imperial reform ''#{what}'' has been passed
 EnableHRELeagues: Leagues for the religion of the Holy Roman Empire begin to form.
-IsInLeagueWar yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} involved in a religious league war
+IsInLeagueWar yn@Bool: Is#{ifThenElseT yn "" " ''not''"} involved in a religious league war
 IsLeagueEnemy who@Text: Is in the opposite religious league to #{who}
 ReligionYears icon@Text name@Text years@Double: The #{icon} #{name} religion has existed for at least #{plainNum years} years
 HasIdea what@Text: Has idea ''#{what}''
 ReligionProvinces icon@Text name@Text amt@Double: Country has at least #{roundNum amt} #{plural (round amt) "province" "provinces"} of #{icon} #{name} religion
 GoodsProvinces icon@Text name@Text amt@Double: Country has at least #{roundNum amt} #{plural (round amt) "province" "provinces"} producing #{icon} #{name}
-HasInnovativenessIdea name@Text num@Int: Has {{icon|innovative ideas}} Innovative idea #{show num} ''#{name}''
+HasAristocraticIdea name@Text num@Int: Has {{icon|aristocratic ideas}} Aristocratic idea #{show num} #{iquotes name}
+HasEconomicIdea name@Text num@Int: Has {{icon|economic ideas}} Economic idea #{show num} #{iquotes name}
+HasDefensiveIdea name@Text num@Int: Has {{icon|defensive ideas}} Defensive idea #{show num} #{iquotes name}
+HasInnovativeIdea name@Text num@Int: Has {{icon|innovative ideas}} Innovative idea #{show num} #{iquotes name}
+HasOffensiveIdea name@Text num@Int: Has {{icon|offensive ideas}} Offensive idea #{show num} #{iquotes name}
+HasMaritimeIdea name@Text num@Int: Has {{icon|maritime ideas}} Maritime idea #{show num} #{iquotes name}
 GainColonists icon@Text amt@Double: #{icon} #{colourNum True amt} Colonists
 MayExplore: Can recruit explorers and conquistadors. Explorers may explore ocean provinces.
 GainColonialRange icon@Text amt@Double: #{icon} #{colourNum True amt} Colonial range
@@ -365,7 +384,7 @@ GainGlobalShipCost icon@Text amt@Double: #{icon} #{reducedNum (colourPc False) a
 GainNavalLeaderManeuver icon@Text amt@Double: #{icon} #{colourNum True amt} Naval leader maneuver
 GainBlockadeEfficiency icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Blockade efficiency
 GainSeaRepair: Ships repair while in coastal sea provinces.
-Primitives yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} primitive
+Primitives yn@Bool: Is#{ifThenElseT yn "" " ''not''"} primitive
 GainGlobalTaxModifier icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Global tax modifier
 GainBuildCost icon@Text amt@Double: #{icon} #{reducedNum (colourPc False) amt} Build cost
 GainYearlyInflationReduction icon@Text amt@Double: #{icon} #{colourNum False (negate amt)} Yearly inflation reduction
@@ -388,7 +407,7 @@ GainMissionaryStrengthVsHeretics icon@Text amt@Double: #{icon} #{reducedNum (col
 GainCultureConvCost icon@Text amt@Double: #{icon} #{reducedNum (colourPc False) amt} Culture conversion cost
 HasOpinion amt@Double who@Text: Has at least #{colourNum True amt} opinion of #{who}
 NormalOrHistoricalNations yn@Bool: #{ifThenElseT yn "Playing" "''Not'' playing"} with normal or historical nations
-IsCustomNation yn@Bool: #{ifThenElseT yn "Is" "Is ''not''"} playing a custom nation
+IsCustomNation yn@Bool: Is#{ifThenElseT yn "" " ''not''"} playing a custom nation
 ReligionEnabled icon@Text what@Text: The #{icon} #{what} religion is enabled
 CapitalIs what@Text: Capital is #{what}
 FullIdeaGroup icon@Text what@Text: Has completed #{icon} #{what}
@@ -418,3 +437,42 @@ LegitimacyOrHordeUnity amt@Double: {{icon|legitimacy}} Legitimacy or {{icon|hord
 CheckVariable _icon@Text what@Text amt@Double: Value of variable #{what} is at least #{plainNum amt}
 ChangeTechGroup icon@Text what@Text: Change technology group to #{icon} #{what}
 ChangeUnitType icon@Text what@Text: Change units to #{icon} #{what}
+NoBaseWeight: (no base weight?)
+AIBaseWeight amt@Double: Base weight: #{plainNum amt}
+AIFactorOneline factor@Text multiplier@Double: #{factor}: #{bold (plainNum multiplier)}
+AIFactorHeader multiplier@Double: #{bold (plainNum multiplier)}:
+Lucky yn@Bool: Is#{ifThenElseT yn "" " ''not''"} a lucky nation
+HasArtistLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Statesman advisor
+HasDiplomatLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Statesman advisor
+HasArmyReformerLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Army Reformer advisor
+HasNaturalScientistLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Natural Scientist advisor
+HasNavyReformerLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Navy Reformer advisor
+HasTheologianLevel icon@Text level@Double:
+HasTraderLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Trader advisor
+HasStatesmanLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Statesman advisor
+NumRoyalMarriages icon@Text amt@Double: Has at least #{icon} #{roundNum amt} royal #{plural amt "marriage" "marriages"}
+IsBankrupt yn@Bool: Is#{ifThenElseT yn "" " ''not''"} bankrupt
+NumColonialSubjects amt@Double: Has at least #{roundNum amt} colonial #{plural amt "subject" "subjects"}
+TradeEfficiency icon@Text amt@Double: Has at least #{icon} #{plainNum amt} trade efficiency
+HasWarTaxes yn@Bool: Has#{ifThenElseT yn "" " ''not''"} raised war taxes
+RevoltPercentage amt@Double: At least #{roundPc amt} of provinces are in revolt
+HasAnyDisaster yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} an ongoing disaster
+HasActivePolicy what@Text: Has enacted the policy #{iquotes what}
+HasDucats icon@Text amt@Double: Has at least #{icon} #{plainNum amt} ducats
+HasParliament yn@Bool: The country #{ifThenElseT yn "has" "does ''not'' have"} a parliament
+HasTruce yn@Bool: The country #{ifThenElseT yn "has" "does ''not'' have"} a truce with another country
+NumRebelControlledProvinces amt@Double: At least #{plainNum amt} #{plural amt "province is" "provinces are"} controlled by rebels
+FortLevel icon@Text amt@Double: #{icon} Fort level is at least #{roundNum amt}
+HasTradeModifier _icon@Text who@Text what@Text: #{who} has trade modifier #{iquotes what}
+IsMonth what@Text: Month is #{what}
+IsSea yn@Bool: Is#{ifThenElseT yn "" " ''not''"} sea
+HeavyShip who@Text: Create a {{icon|heavy ship}} heavy ship belonging to #{who}
+LightShip who@Text: Create a {{icon|light ship}} light ship belonging to #{who}
+Galley who@Text: Create a {{icon|galley}} galley belonging to #{who}
+NumColonies amt@Double: Has at least #{roundNum amt} #{plural amt "colony" "colonies"}
+ChangeCulture what@Text: Change culture to #{what}
+NavalForcelimit icon@Text amt@Double: #{icon} Naval forcelimit is at least #{plainNum amt}
+Blockade icon@Text amt@Double: Is at least #{icon} #{plainPc amt} blockaded
+CreateAlliance who@Text: Create alliance with #{who}
+AddLocalUnrest icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum False amt} unrest
+GoldIncomePercentage icon@Text amt@Double: At least #{reducedNum plainPc amt} of the country's income is from #{icon} Gold

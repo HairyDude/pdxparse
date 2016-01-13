@@ -3,7 +3,7 @@ module Doc (
         strictText
     ,   pp_string
     ,   doc2text
-    ,   pp_signed
+    ,   pp_signed, pp_nosigned
     ,   pp_float
     ,   pp_float_t
     ,   nl2br
@@ -34,6 +34,14 @@ doc2text = TL.toStrict . PP.displayT . PP.renderCompact
 -- Assumes the passed-in formatting function does add a minus sign.
 pp_signed :: (Ord n, Num n) => (n -> Doc) -> n -> Doc
 pp_signed pp_num n = (if signum n > 0 then "+" else mempty) <> pp_num n
+
+-- Pretty-print a number, removing the - sign in front if it's negative.
+-- Assumes the passed-in formatting function does add a minus sign.
+pp_nosigned :: (Ord n, Num n) => (n -> Doc) -> n -> Doc
+pp_nosigned pp_num n =
+    (if signum n < 0
+        then strictText . T.drop 1 . doc2text
+        else id) $ pp_num n
 
 -- Pretty-print a Double. If it's a whole number, display it without a decimal.
 pp_float :: Double -> Doc

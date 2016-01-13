@@ -87,13 +87,8 @@ main = do
                                       (mapM handler script))
                 -- for testing -- comment out for release
                 . filter (\(file, _) -> file `elem`
-                    ["decisions/Civic.txt"
-                    ,"decisions/France.txt"
-                    ,"decisions/Governments.txt"
-                    ,"decisions/MayaNation.txt"
-                    ,"decisions/Religion.txt"
-                    ,"decisions/ReligiousConversion.txt"
-                    ,"decisions/Tribal.txt"
+                    ["events/RandomEvents.txt"
+                    ,"events/RandomProvinceEvents.txt"
                     ])
                 $ scripts
 

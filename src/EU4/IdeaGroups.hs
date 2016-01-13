@@ -53,18 +53,9 @@ data Idea = Idea
     ,   idea_name_loc :: Text
     ,   idea_effects :: GenericScript
     } deriving (Show)
-data AIWillDo = AIWillDo
-    {   awd_base :: Maybe Double
-    ,   awd_modifiers :: [AIModifier]
-    } deriving (Show)
-data AIModifier = AIModifier
-    {   aim_factor :: Maybe Double
-    ,   aim_triggers :: GenericScript
-    } deriving (Show)
+
 -- Starts off Nothing everywhere, except name (will get filled in immediately).
 newIdeaGroup = IdeaGroup undefined undefined Nothing Nothing Nothing Nothing False [] Nothing
-newAIWillDo = AIWillDo Nothing []
-newAIModifier = AIModifier Nothing []
 
 type IdeaTable = HashMap Text IdeaGroup
 
@@ -129,29 +120,6 @@ ideaGroupAddSection ig (Statement (GenericLhs label) rhs) =
                 return ig { ig_ideas = ig_ideas ig ++ [Idea label ideaname_loc scr] }
             _               -> return ig
 ideaGroupAddSection ig  _ = return ig
-
-aiWillDo :: GenericScript -> AIWillDo
-aiWillDo scr = foldl' aiWillDoAddSection newAIWillDo scr
-aiWillDoAddSection :: AIWillDo -> GenericStatement -> AIWillDo
-aiWillDoAddSection awd (Statement (GenericLhs left) right) = case T.toLower left of
-    "factor" -> case floatRhs right of
-        Just fac -> awd { awd_base = Just fac }
-        _        -> awd
-    "modifier" -> case right of
-        CompoundRhs scr -> awd { awd_modifiers = awd_modifiers awd ++ [awdModifier scr] }
-        _               -> awd
-    _ -> awd
-aiWillDoAddSection awd _ = awd
-
-awdModifier :: GenericScript -> AIModifier
-awdModifier scr = foldl' awdModifierAddSection newAIModifier scr
-awdModifierAddSection :: AIModifier -> GenericStatement -> AIModifier
-awdModifierAddSection aim stmt@(Statement (GenericLhs left) right) = case T.toLower left of
-    "factor" -> case floatRhs right of
-        Just fac -> aim { aim_factor = Just fac }
-        Nothing  -> aim
-    _ -> aim { aim_triggers = aim_triggers aim ++ [stmt] }
-awdModifierAddSection aim _ = aim
 
 -- Pick an icon for the idea, based on the first of its effects.
 iconForIdea' :: Idea -> Maybe Text

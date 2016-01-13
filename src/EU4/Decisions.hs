@@ -27,9 +27,10 @@ data Decision = Decision
     ,   dec_potential :: GenericScript
     ,   dec_allow :: GenericScript
     ,   dec_effect :: GenericScript
+    ,   dec_ai_will_do :: Maybe AIWillDo
     } deriving (Show)
 -- Starts off Nothing/empty everywhere, except name (will get filled in immediately).
-newDecision = Decision undefined undefined Nothing [] [] []
+newDecision = Decision undefined undefined Nothing [] [] [] Nothing
 
 processDecisionGroup :: GenericStatement -> PP IdeaTable (Either Text Doc)
 processDecisionGroup (Statement (GenericLhs left) rhs)
@@ -61,13 +62,16 @@ decisionAddSection dec (Statement (GenericLhs sectname) (CompoundRhs scr))
         "potential" -> return dec { dec_potential = scr }
         "allow" -> return dec { dec_allow = scr }
         "effect" -> return dec { dec_effect = scr }
-        "ai_will_do" -> trace ("notice: ai_will_do not yet implemented") $
-                        return dec
-        "major" -> return dec -- currently no field in the template for this
+        "ai_will_do" -> return dec { dec_ai_will_do = Just (aiWillDo scr) }
         _ -> trace ("warning: unrecognized decision section: " ++ T.unpack sectname) $
              return dec
-decisionAddSection dec _ = trace "warning: unrecognized decision section" $
-                           return dec
+decisionAddSection dec (Statement (GenericLhs "major") _)
+        = return dec -- currently no field in the template for this
+decisionAddSection dec (Statement (GenericLhs "ai_importance") _)
+        = trace "notice: ai_importance not yet implemented" $
+          return dec
+decisionAddSection dec stmt = trace ("warning: unrecognized decision section: " ++ show stmt) $
+                              return dec
 
 pp_decision :: Decision -> PP IdeaTable Doc
 pp_decision dec = do

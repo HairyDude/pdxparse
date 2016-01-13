@@ -16,7 +16,7 @@ module SettingsTypes
     , setGameL10n
     , PP, PPT
     , indentUp
-    , withCurrentIndent
+    , withCurrentIndent, withCurrentIndentZero
     , alsoIndent, alsoIndent'
     , getGameL10n
     , getGameL10nDefault
@@ -87,14 +87,22 @@ indentUp go = do
     let mindent' = maybe (Just 1) (Just . succ) mindent
     local (\s -> s { currentIndent = mindent' }) go
 
--- Pass the current indent to the action.
+-- | Pass the current indent to the action.
 -- If there is no current indent, set it to 1.
 withCurrentIndent :: (Int -> PP extra a) -> PP extra a
-withCurrentIndent go = do
+withCurrentIndent = withCurrentIndentBaseline 1
+
+-- | Pass the current indent to the action.
+-- If there is no current indent, set it to 0.
+withCurrentIndentZero :: (Int -> PP extra a) -> PP extra a
+withCurrentIndentZero = withCurrentIndentBaseline 0
+
+withCurrentIndentBaseline :: Int -> (Int -> PP extra a) -> PP extra a
+withCurrentIndentBaseline base go = do
     mindent <- asks currentIndent
     local (\s ->
             if isNothing mindent
-            then s { currentIndent = Just 1 }
+            then s { currentIndent = Just base }
             else s)
           (go . fromJust =<< asks currentIndent)
 
