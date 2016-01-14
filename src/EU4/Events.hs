@@ -5,6 +5,8 @@ module EU4.Events (
 
 import Prelude hiding (mapM)
 
+import Debug.Trace
+
 import Control.Monad.Reader hiding (mapM)
 
 import Data.List (intersperse)
@@ -95,7 +97,9 @@ eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file
             GenericRhs pic -> return evt { evt_picture = Just pic }
             _ -> error "bad picture"
         "trigger" -> case rhs of
-            CompoundRhs trigger_script -> return evt { evt_trigger = Just trigger_script }
+            CompoundRhs trigger_script -> case trigger_script of
+                [] -> return evt -- empty, treat as if it wasn't there
+                _ -> return evt { evt_trigger = Just trigger_script }
             _ -> error "bad event trigger"
         "is_triggered_only" -> case rhs of
             GenericRhs "yes" -> return evt { evt_is_triggered_only = Just True }
@@ -181,7 +185,7 @@ pp_event evt =
                                     ,line])
                             (field evt)
                 trigger_pp'd <- evtArg "trigger" evt_trigger pp_script
-                mtth_pp'd <- evtArg "mean_time_to_happen" evt_mean_time_to_happen pp_mtth
+                mtth_pp'd <- evtArg "mtth" evt_mean_time_to_happen pp_mtth
                 immediate_pp'd <- evtArg "immediate" evt_immediate pp_script
                 return . Right . mconcat $
                     ["{{Event<!-- ", strictText . fromJust . evt_id $ evt, " -->", line
@@ -202,7 +206,7 @@ pp_event evt =
                     trigger_pp'd ++
                     mtth_pp'd ++
                     immediate_pp'd ++
-                    (if conditional then ["| option conditions = yes"] else []) ++
+                    (if conditional then ["| option conditions = yes", line] else []) ++
                     -- option_conditions = no (not implemented yet)
                     ["| options = "
                     ,options_pp'd
@@ -215,34 +219,38 @@ pp_event evt =
 
 pp_options :: [Option] -> PP IdeaTable (Either Text (Bool, Doc))
 pp_options opts = do
-    options_pp'd <- mapM pp_option opts
+    let triggered = any (isJust . opt_trigger) opts
+    options_pp'd <- mapM (pp_option triggered) opts
     return $ case partitionEithers options_pp'd of
-        ([], triggered_opts_pp'd) ->
-            let (triggered, opts_pp'd) = unzip triggered_opts_pp'd
-                conditional = or triggered
-            in Right (conditional, mconcat . (line:) . intersperse line $ opts_pp'd)
+        ([], opts_pp'd) ->
+            Right (triggered, mconcat . (line:) . intersperse line $ opts_pp'd)
         (err:_, _) -> Left err
 
-pp_option :: Option -> PP IdeaTable (Either Text (Bool, Doc))
-pp_option opt = do
-    if isJust (opt_name_loc opt)
+pp_option :: Bool -> Option -> PP IdeaTable (Either Text Doc)
+pp_option triggered opt = do
+    case opt_name_loc opt of
         -- NB: some options have no effect, e.g. start of Peasants' War.
-    then -- Valid option, carry on
-        let mtrigger = opt_trigger opt
-            triggered = isJust mtrigger
-            the_trigger = fromJust mtrigger
-        in do
-            effects_pp'd <- pp_script (maybe [] id (opt_effects opt))
-            trigger_pp'd <- pp_script the_trigger
-            return $ Right (triggered, mconcat $
-                ["{{Option\n"
-                ,"| option_text = ", text (TL.fromStrict . fromJust $ opt_name_loc opt), line
-                ,"| effect =", line, effects_pp'd, line]
-                ++ (if triggered then
-                ["| trigger =", line, trigger_pp'd, line]
-                else [])
-                ++
-                -- 1 = no
-                ["}}"
-                ])
-    else return . Left $ "some required option sections missing - dumping: " <> T.pack (show opt)
+        Just name_loc ->
+            let mtrigger = opt_trigger opt
+                has_trigger = isJust mtrigger
+                the_trigger = fromJust mtrigger
+            in do
+                effects_pp'd <- pp_script (maybe [] id (opt_effects opt))
+                trigger_pp'd <- pp_script the_trigger
+                return . Right . mconcat $
+                    ["{{Option\n"
+                    ,"| option_text = ", strictText name_loc, line
+                    ,"| effect =", line, effects_pp'd, line]
+                    ++
+                    (if triggered then
+                        if has_trigger then
+                            ["| trigger = Enabled if:", line
+                            ,trigger_pp'd, line]
+                        else
+                            ["| trigger = Always enabled:", line]
+                    else [])
+                    ++
+                    -- 1 = no
+                    ["}}"
+                    ]
+        Nothing -> return . Left $ "some required option sections missing - dumping: " <> T.pack (show opt)

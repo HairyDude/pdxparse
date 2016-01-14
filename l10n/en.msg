@@ -37,7 +37,7 @@ GainInflation icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum False 
 GainLocalAutonomy icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum False amt} local autonomy
 ReformDesire icon@Text amt@Double: {{icon|catholic}} Catholicism has at least #{icon} #{reducedNum plainPc amt} reform desire
 GainReformDesire icon@Text amt@Double: {{icon|catholic}} Catholicism #{gainsOrLoses amt} #{icon} #{reducedNum (colourPc False) amt} reform desire
-GainMercantilism icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} mercantilism
+GainMercantilism icon@Text amt@Double: #{gainOrLose amt} #{icon} #{reducedNum (colourPc True) amt} mercantilism
 GainMP icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} manpower
 GainMPFrac icon@Text amt@Double: #{gainOrLose amt} #{icon} manpower equal to #{colourPc True amt} of maximum
 CountryMod: country modifier
@@ -131,15 +131,15 @@ CountryFlag: country
 ProvinceFlag: province
 RulerFlag: ruler
 GlobalFlag: global
-HadCountryFlag _icon@Text name@Text days@Double: Has had country flag <tt>#{name}</tt> for at least #{roundNum days} days
-HadProvinceFlag _icon@Text name@Text days@Double: Has had province flag <tt>#{name}</tt> for at least #{roundNum days} days
-HadRulerFlag _icon@Text name@Text days@Double: Has had ruler flag <tt>#{name}</tt> for at least #{roundNum days} days
-HadGlobalFlag _icon@Text name@Text days@Double: Global flag <tt>#{name}</tt> has been set for at least #{roundNum days} days
-ColonySettlers amt@Double: Colony has at least #{roundNum amt} settlers
-WasAtWar amt@Double: Was at war within the last #{roundNum amt} months
+HadCountryFlag _icon@Text name@Text days@Double: Has had country flag <tt>#{name}</tt> for at least #{roundNum days} #{plural days "day" "days"}
+HadProvinceFlag _icon@Text name@Text days@Double: Has had province flag <tt>#{name}</tt> for at least #{roundNum days} #{plural days "day" "days"}
+HadRulerFlag _icon@Text name@Text days@Double: Has had ruler flag <tt>#{name}</tt> for at least #{roundNum days} #{plural days "day" "days"}
+HadGlobalFlag _icon@Text name@Text days@Double: Global flag <tt>#{name}</tt> has been set for at least #{roundNum days} #{plural days "day" "days"}
+ColonySettlers amt@Double: Colony has at least #{roundNum amt} #{plural amt "settler" "settlers"}
+WasAtWar amt@Double: Was at war within the last #{roundNum amt} #{plural amt "month" "months"}
 HeirAge amt@Double: Heir is at least #{roundNum amt} #{plural amt "year" "years"} old
 YearIs amt@Double: Year is #{roundNumNoSpace amt} or later
-NumLoans amt@Double: Has at least #{plainNum amt} loans
+NumLoans amt@Double: Has at least #{plainNum amt} #{plural amt "loan" "loans"}
 NumMercs amt@Double: Has at least #{roundNum amt} mercenary #{plural amt "regiment" "regiments"}
 NumPorts amt@Double: Has at least #{plainNum amt} #{plural amt "port" "ports"}
 NumRebelArmies amt@Double: At least #{roundNum amt} rebel #{plural (round amt) "army is" "armies are"} present in the country
@@ -171,7 +171,7 @@ NumCardinals icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural
 NumColonists icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "colonist" "colonists"}
 NumHeavyShips icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "heavy ship" "heavy ships"}
 NumMerchants icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "merchant" "merchants"}
-Stability icon@Text amt@Double: Stability is at least #{icon} #{colourNum True amt}
+Stability icon@Text amt@Double: #{icon} Stability is at least #{colourNum True amt}
 TotalDevelopment icon@Text amt@Double: Country's total #{icon} development is at least #{roundNum amt}
 TotalCardinals icon@Text amt@Double: At least #{icon} #{roundNum amt} #{plural amt "cardinal" "cardinals"} exist in the world
 Unrest icon@Text amt@Double: Unrest is at least #{icon} #{colourNum False amt}
@@ -361,15 +361,15 @@ EnableHRELeagues: Leagues for the religion of the Holy Roman Empire begin to for
 IsInLeagueWar yn@Bool: Is#{ifThenElseT yn "" " ''not''"} involved in a religious league war
 IsLeagueEnemy who@Text: Is in the opposite religious league to #{who}
 ReligionYears icon@Text name@Text years@Double: The #{icon} #{name} religion has existed for at least #{plainNum years} years
-HasIdea what@Text: Has idea ''#{what}''
+HasIdea what@Text: Has idea #{iquotes what}
 ReligionProvinces icon@Text name@Text amt@Double: Country has at least #{roundNum amt} #{plural (round amt) "province" "provinces"} of #{icon} #{name} religion
 GoodsProvinces icon@Text name@Text amt@Double: Country has at least #{roundNum amt} #{plural (round amt) "province" "provinces"} producing #{icon} #{name}
-HasAristocraticIdea name@Text num@Int: Has {{icon|aristocratic ideas}} Aristocratic idea #{show num} #{iquotes name}
-HasEconomicIdea name@Text num@Int: Has {{icon|economic ideas}} Economic idea #{show num} #{iquotes name}
-HasDefensiveIdea name@Text num@Int: Has {{icon|defensive ideas}} Defensive idea #{show num} #{iquotes name}
-HasInnovativeIdea name@Text num@Int: Has {{icon|innovative ideas}} Innovative idea #{show num} #{iquotes name}
-HasOffensiveIdea name@Text num@Int: Has {{icon|offensive ideas}} Offensive idea #{show num} #{iquotes name}
-HasMaritimeIdea name@Text num@Int: Has {{icon|maritime ideas}} Maritime idea #{show num} #{iquotes name}
+HasAristocraticIdea name@Text num@Int: Has {{icon|aristocratic}} Aristocratic idea #{show num} #{iquotes name}
+HasEconomicIdea name@Text num@Int: Has {{icon|economic}} Economic idea #{show num} #{iquotes name}
+HasDefensiveIdea name@Text num@Int: Has {{icon|defensive}} Defensive idea #{show num} #{iquotes name}
+HasInnovativeIdea name@Text num@Int: Has {{icon|innovative}} Innovative idea #{show num} #{iquotes name}
+HasOffensiveIdea name@Text num@Int: Has {{icon|offensive}} Offensive idea #{show num} #{iquotes name}
+HasMaritimeIdea name@Text num@Int: Has {{icon|maritime}} Maritime idea #{show num} #{iquotes name}
 GainColonists icon@Text amt@Double: #{icon} #{colourNum True amt} Colonists
 MayExplore: Can recruit explorers and conquistadors. Explorers may explore ocean provinces.
 GainColonialRange icon@Text amt@Double: #{icon} #{colourNum True amt} Colonial range

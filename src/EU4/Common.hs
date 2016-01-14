@@ -44,6 +44,7 @@ import qualified Text.PrettyPrint.Leijen.Text as PP
 import Abstract
 import Localization
 import Messages
+import MessageTools (plural)
 import EU4.SuperCommon
 import {-# SOURCE #-} EU4.IdeaGroups
 
@@ -66,10 +67,7 @@ isPronoun s = T.map toLower s `S.member` pronouns where
 
 pp_script :: GenericScript -> PP IdeaTable Doc
 pp_script [] = return "(Nothing)"
-pp_script script = do
-    statements_pp'd <- mapM pp_statement script
-    return . hcat . punctuate line
-        $ statements_pp'd
+pp_script script = imsg2doc =<< ppMany script
 
 -- Get the localization for a province ID, if available.
 getProvLoc :: Int -> PP extra Text
@@ -142,8 +140,8 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "add_army_tradition"    -> gainIcon "army tradition" MsgGainAT stmt
         "add_authority"         -> gain' MsgGainAuth stmt
         "add_base_tax"          -> gainIcon "base tax" MsgGainBT stmt
-        "add_base_production"   -> gainIcon "base production" MsgGainBP stmt
-        "add_base_manpower"     -> gainIcon "base manpower" MsgGainBM stmt
+        "add_base_production"   -> gainIcon "production" MsgGainBP stmt
+        "add_base_manpower"     -> gainIcon "manpower" MsgGainBM stmt
         "add_dip_power"         -> gainIcon "dip" MsgGainDIP stmt
         "add_doom"              -> gain' MsgGainDoom stmt
         "add_heir_claim"        -> gain' MsgHeirGainClaim stmt
@@ -321,7 +319,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "create_advisor"     -> withLocAtomIcon MsgCreateAdvisor stmt
         "dominant_religion"  -> withLocAtomIcon MsgDominantReligion stmt
         "has_building"       -> withLocAtomIcon MsgHasBuilding stmt
-        "has_idea_group"     -> withLocAtomIcon MsgHasIdeaGroup stmt
+        "has_idea_group"     -> withLocAtomIcon MsgHasIdeaGroup stmt -- FIXME: icon fails
         "full_idea_group"    -> withLocAtomIcon MsgFullIdeaGroup stmt
         "hre_religion"       -> withLocAtomIcon MsgHREReligion stmt
         "is_religion_enabled" -> withLocAtomIcon MsgReligionEnabled stmt
@@ -613,10 +611,10 @@ ppOne stmt = preStatement stmt
 ------------------------------------------------------------------------
 
 data MTTH = MTTH
-        {   years :: Maybe Int
-        ,   months :: Maybe Int
-        ,   days :: Maybe Int
-        ,   modifiers :: [MTTHModifier] -- TODO
+        {   mtth_years :: Maybe Int
+        ,   mtth_months :: Maybe Int
+        ,   mtth_days :: Maybe Int
+        ,   mtth_modifiers :: [MTTHModifier] -- TODO
         } deriving Show
 data MTTHModifier = MTTHModifier
         {   mtthmod_factor :: Maybe Double
@@ -628,66 +626,69 @@ pp_mtth :: GenericScript -> PP IdeaTable Doc
 pp_mtth scr
     = pp_mtth' $ foldl' addField newMTTH scr
     where
-        addField mtth (Statement (GenericLhs "years") (IntRhs n))
-            = mtth { years = Just n }
-        addField mtth (Statement (GenericLhs "years") (FloatRhs n))
-            = mtth { years = Just (floor n) }
-        addField mtth (Statement (GenericLhs "months") (IntRhs n))
-            = mtth { months = Just n }
-        addField mtth (Statement (GenericLhs "months") (FloatRhs n))
-            = mtth { months = Just (floor n) }
-        addField mtth (Statement (GenericLhs "days") (IntRhs n))
-            = mtth { days = Just n }
-        addField mtth (Statement (GenericLhs "days") (FloatRhs n))
-            = mtth { days = Just (floor n) }
+        addField mtth (Statement (GenericLhs "years") rhs) | Just n <- floatRhs rhs
+            = mtth { mtth_years = Just n }
+        addField mtth (Statement (GenericLhs "months") rhs) | Just n <- floatRhs rhs
+            = mtth { mtth_months = Just n }
+        addField mtth (Statement (GenericLhs "days") rhs) | Just n <- floatRhs rhs
+            = mtth { mtth_days = Just n }
         addField mtth (Statement (GenericLhs "modifier") (CompoundRhs rhs))
             = addMTTHMod mtth rhs
         addField mtth _ = mtth -- unrecognized
-        addMTTHMod mtth scr = mtth { modifiers = modifiers mtth ++ [foldl' addMTTHModField newMTTHMod scr] } where
+        addMTTHMod mtth scr = mtth { mtth_modifiers = mtth_modifiers mtth ++ [foldl' addMTTHModField newMTTHMod scr] } where
             addMTTHModField mtthmod (Statement (GenericLhs "factor") rhs)
                 = mtthmod { mtthmod_factor = floatRhs rhs }
             addMTTHModField mtthmod stmt -- anything else is a condition
                 = mtthmod { mtthmod_conditions = mtthmod_conditions mtthmod ++ [stmt] }
-        pp_mtth' (MTTH years months days modifiers) = do
-            modifiers_pp'd <- indentUp (intersperse line <$> mapM pp_mtthmod modifiers)
-            let hasYears = isJust years
-                hasMonths = isJust months
-                hasDays = isJust days
+        pp_mtth' (MTTH myears mmonths mdays modifiers) = do
+            modifiers_pp'd <- intersperse line <$> mapM pp_mtthmod modifiers
+            let hasYears = isJust myears
+                hasMonths = isJust mmonths
+                hasDays = isJust mdays
                 hasModifiers = not (null modifiers)
             return . mconcat $
-                ["*"]
+                case myears of
+                    Just years ->
+                        [PP.int years, space, strictText $ plural years "year" "years"]
+                        ++
+                        if hasMonths && hasDays then [",", space]
+                        else if hasMonths || hasDays then ["and", space]
+                        else []
+                    Nothing -> []
                 ++
-                ((if hasYears then
-                    [PP.int (fromJust years), space, "year(s)"]
-                    ++
-                    if hasMonths && hasDays then [",", space]
-                    else if hasMonths || hasDays then ["and", space]
-                    else []
-                 else [])
+                case mmonths of
+                    Just months ->
+                        [PP.int months, space, strictText $ plural months "month" "months"]
+                    _ -> []
                 ++
-                (if hasMonths then
-                    [PP.int (fromJust months), space, "month(s)"]
-                 else [])
-                ++
-                (if hasDays then
-                    (if hasYears && hasMonths then ["and", space]
-                     else []) -- if years but no months, already added "and"
-                    ++
-                    [PP.int (fromJust days), space, "day(s)"]
-                 else []))
+                case mdays of
+                    Just days ->
+                        (if hasYears && hasMonths then ["and", space]
+                         else []) -- if years but no months, already added "and"
+                        ++
+                        [PP.int days, space, strictText $ plural days "day" "days"]
+                    _ -> []
                 ++
                 (if hasModifiers then
-                    [line, "''Modifiers''", line]
+                    [line, "<br/>'''Modifiers'''", line]
                     ++ modifiers_pp'd
                  else [])
-        pp_mtthmod (MTTHModifier (Just factor) conditions) = do
-            conditions_pp'd <- indentUp (pp_script conditions)
-            return . mconcat $
-                ["*"
-                ,enclose "'''×" "''':" (pp_float factor)
-                ,line
-                ,conditions_pp'd
-                ]
+        pp_mtthmod (MTTHModifier (Just factor) conditions) =
+            case conditions of
+                [_] -> do
+                    conditions_pp'd <- pp_script conditions
+                    return . mconcat $
+                        [conditions_pp'd
+                        ,enclose ": '''×" "'''" (pp_float factor)
+                        ]
+                _ -> do
+                    conditions_pp'd <- indentUp (pp_script conditions)
+                    return . mconcat $
+                        ["*"
+                        ,enclose "'''×" "''':" (pp_float factor)
+                        ,line
+                        ,conditions_pp'd
+                        ]
         pp_mtthmod (MTTHModifier Nothing _)
             = return "(invalid modifier! Bug in extractor?)"
 
@@ -761,6 +762,7 @@ scriptIconTable = HM.fromList
     ,("colonial_governor", "colonial governor")
     ,("diplomat", "diplomat_adv")
     ,("naval_reformer", "naval reformer")
+    ,("navy_reformer", "naval reformer") -- these are both used!
     ,("army_organizer", "army organizer")
     ,("army_reformer", "army reformer")
     ,("grand_captain", "grand captain")
@@ -1503,7 +1505,7 @@ defineAdvisor stmt@(Statement _ (CompoundRhs scr))
                     mlocation_loc = da_location_loc da
                     mlocation = maybe (T.pack . show <$> da_location da) Just mlocation_loc
                 in case (da_female da,
-                           da_type da,
+                           da_type_loc da,
                            da_name da,
                            mlocation) of
                     (Nothing, Nothing, Nothing, Nothing)
