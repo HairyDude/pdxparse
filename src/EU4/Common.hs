@@ -498,8 +498,8 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "artist" -> numericIcon "artist" MsgHasArtistLevel stmt
         "diplomat" -> numericIcon "diplomat" MsgHasDiplomatLevel stmt
         "natural_scientist" -> numericIcon "natural scientist" MsgHasNaturalScientistLevel stmt
-        "naval_reformer" -> numericIcon "navy reformer" MsgHasNavyReformerLevel stmt
-        "navy_reformer" -> numericIcon "navy reformer" MsgHasNavyReformerLevel stmt
+        "naval_reformer" -> numericIcon "naval reformer" MsgHasNavyReformerLevel stmt
+        "navy_reformer" -> numericIcon "naval reformer" MsgHasNavyReformerLevel stmt
         "statesman" -> numericIcon "statesman" MsgHasStatesmanLevel stmt
         "theologian" -> numericIcon "theologian" MsgHasTheologianLevel stmt
         "trader" -> numericIcon "trader" MsgHasTraderLevel stmt

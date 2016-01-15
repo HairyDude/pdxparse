@@ -184,8 +184,9 @@ pp_event evt =
                                     ,content_pp'd
                                     ,line])
                             (field evt)
+                    isTriggeredOnly = maybe False id $ evt_is_triggered_only evt
                 trigger_pp'd <- evtArg "trigger" evt_trigger pp_script
-                mtth_pp'd <- evtArg "mtth" evt_mean_time_to_happen pp_mtth
+                mmtth_pp'd <- mapM pp_mtth (evt_mean_time_to_happen evt)
                 immediate_pp'd <- evtArg "immediate" evt_immediate pp_script
                 return . Right . mconcat $
                     ["{{Event<!-- ", strictText . fromJust . evt_id $ evt, " -->", line
@@ -197,21 +198,28 @@ pp_event evt =
                                 ,text . TL.fromStrict . nl2br $ desc
                                 ,line])
                               (evt_desc_loc evt) ++
-                    maybe [] (\i_t_o ->
-                                ["| triggered only = "
-                                ,(if i_t_o then "(please describe trigger here)"
-                                  else "No")
-                                ,line])
-                              (evt_is_triggered_only evt) ++
+                    -- For triggered only events, mean_time_to_happen is not
+                    -- really mtth but instead describes weight modifiers, for
+                    -- scripts that trigger them with a probability based on a
+                    -- weight (e.g. on_bi_yearly_pulse).
+                    (if isTriggeredOnly then
+                        ["| triggered only = (please describe trigger here)",line
+                        ]
+                        ++ maybe [] (:[line]) mmtth_pp'd
+                    else []) ++
                     trigger_pp'd ++
-                    mtth_pp'd ++
+                    -- mean_time_to_happen is only really mtth if it's *not*
+                    -- triggered only.
+                    (if isTriggeredOnly then [] else case mmtth_pp'd of
+                        Nothing -> []
+                        Just mtth_pp'd ->
+                            ["| mtth = ", line
+                            ,mtth_pp'd]) ++
                     immediate_pp'd ++
                     (if conditional then ["| option conditions = yes", line] else []) ++
                     -- option_conditions = no (not implemented yet)
-                    ["| options = "
-                    ,options_pp'd
-                    ,line
-                    -- collapse = no
+                    ["| options = ", options_pp'd, line
+                    ,"| collapse = yes", line
                     ,"}}"
                     ]
 

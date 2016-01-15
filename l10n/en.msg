@@ -33,13 +33,13 @@ GainSiegeProgress amt@Double: #{gainOrLose amt} #{colourNum True amt} siege prog
 GainPatAuth icon@Text amt@Double: #{gainOrLose amt} #{icon} #{reducedNum (colourPc True) amt} Patriarch authority
 GainPiety icon@Text amt@Double: #{gainOrLose amt} #{icon} #{reducedNum (colourPc True) amt} Piety
 GainRepTrad icon@Text amt@Double: #{gainOrLose amt} #{icon} #{reducedNum (colourNum True) amt} republican tradition
-GainInflation icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum False amt} inflation
-GainLocalAutonomy icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum False amt} local autonomy
+GainInflation icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourPc False amt} inflation
+GainLocalAutonomy icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourPc False amt} local autonomy
 ReformDesire icon@Text amt@Double: {{icon|catholic}} Catholicism has at least #{icon} #{reducedNum plainPc amt} reform desire
 GainReformDesire icon@Text amt@Double: {{icon|catholic}} Catholicism #{gainsOrLoses amt} #{icon} #{reducedNum (colourPc False) amt} reform desire
 GainMercantilism icon@Text amt@Double: #{gainOrLose amt} #{icon} #{reducedNum (colourPc True) amt} mercantilism
 GainMP icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} manpower
-GainMPFrac icon@Text amt@Double: #{gainOrLose amt} #{icon} manpower equal to #{colourPc True amt} of maximum
+GainMPFrac icon@Text amt@Double: #{gainOrLose amt} #{icon} manpower equal to #{reducedNum (colourPc True) amt} of maximum
 CountryMod: country modifier
 ProvMod: province modifier
 PermanentProvMod: permanent province modifier
@@ -47,12 +47,12 @@ RulerMod: ruler modifier
 TradeMod: trade modifier
 GainMod type@Text name@Text: Gain #{type} #{iquotes name}
 GainModDur type@Text name@Text days@Double: Gain #{type} #{iquotes name} for #{roundNumNoSpace days} #{plural days "day" "days"}
-GainModPow type@Text name@Text pow@Double: Gain #{type} #{iquotes name} (#{colourNum True pow} Power)
-GainModPowDur type@Text name@Text pow@Double days@Double: Gain #{type} #{iquotes name} (#{colourNum True pow} Power) for #{plainNum days} #{plural days "day" "days"}
+GainModPow type@Text name@Text pow@Double: Gain #{type} #{iquotes name} (#{colourNumSign True pow} Power)
+GainModPowDur type@Text name@Text pow@Double days@Double: Gain #{type} #{iquotes name} (#{colourNumSign True pow} Power) for #{plainNum days} #{plural days "day" "days"}
 ActorGainsMod who@Text type@Text name@Text: #{who} gains #{type} #{iquotes name}
 ActorGainsModDur who@Text type@Text name@Text days@Double: #{who} gains #{type} #{iquotes name} for #{plainNum days} #{plural days "day" "days"}
-ActorGainsModPow who@Text type@Text name@Text pow@Double: #{who} gains #{type} #{iquotes name} (#{colourNum True pow} Power)
-ActorGainsModPowDur who@Text type@Text name@Text pow@Double days@Double: #{who} gains #{type} #{iquotes name} (#{colourNum True pow} Power) for #{plainNum days} #{plural days "day" "days"}
+ActorGainsModPow who@Text type@Text name@Text pow@Double: #{who} gains #{type} #{iquotes name} (#{colourNumSign True pow} Power)
+ActorGainsModPowDur who@Text type@Text name@Text pow@Double days@Double: #{who} gains #{type} #{iquotes name} (#{colourNumSign True pow} Power) for #{plainNum days} #{plural days "day" "days"}
 HasModifier kind@Text name@Text: Has #{kind} #{iquotes name}
 RemoveModifier kind@Text name@Text: Remove #{kind} ''"#{name}''
 AllOf: All of:
@@ -88,7 +88,7 @@ HiddenEffect: Hidden effect:
 If: If:
 Limit: Limited to:
 Owner: Province owner:
-RandomActiveTradeNode: One random active trade node:
+RandomActiveTradeNode: One random trade node with a merchant present:
 RandomAlly: One random ally:
 RandomCoreCountry: One random country with a core on this province:
 RandomCountry: One random country:
@@ -100,7 +100,7 @@ RandomOwnedProvince: One random owned province:
 RandomProvince: One random province:
 RandomRival: One random rival:
 RandomChance chance@Double: #{plainPc chance} chance of:
-Random: At random:
+Random: One of the following at random:
 ChangeGovernment what@Text: Change government to #{what}
 ContinentIs what@Text: Continent is #{what}
 CultureIs what@Text: Culture is #{what}
@@ -126,7 +126,7 @@ AdvisorIsEmployed advisorID@Double: Advisor with ID #{plainNum advisorID} is emp
 ClearFlag flagType@Text name@Text: Clear #{flagType} flag <tt>#{name}</tt>
 HasFlag flagType@Text name@Text: #{T.toTitle flagType} flag <tt>#{name}</tt> is set
 SetFlag flagType@Text name@Text: Set #{flagType} flag <tt>#{name}</tt>
-HadFlag category@Text name@Text days@Double:
+HadFlag category@Text name@Text days@Double: Has had #{category} flag #{name} for #{roundNum days} days
 CountryFlag: country
 ProvinceFlag: province
 RulerFlag: ruler
@@ -171,7 +171,7 @@ NumCardinals icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural
 NumColonists icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "colonist" "colonists"}
 NumHeavyShips icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "heavy ship" "heavy ships"}
 NumMerchants icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "merchant" "merchants"}
-Stability icon@Text amt@Double: #{icon} Stability is at least #{colourNum True amt}
+Stability icon@Text amt@Double: #{icon} Stability is at least #{colourNumSign True amt}
 TotalDevelopment icon@Text amt@Double: Country's total #{icon} development is at least #{roundNum amt}
 TotalCardinals icon@Text amt@Double: At least #{icon} #{roundNum amt} #{plural amt "cardinal" "cardinals"} exist in the world
 Unrest icon@Text amt@Double: Unrest is at least #{icon} #{colourNum False amt}
@@ -185,11 +185,11 @@ ManpowerPercentage icon@Text amt@Double: #{icon} Manpower reserves are at least 
 Mercantilism icon@Text amt@Double: #{icon} Mercantilism is at least #{reducedNum plainPc amt}
 ChangeGoods icon@Text what@Text: Change province's goods produced to #{icon} #{what}
 CreateAdvisor icon@Text what@Text: Gain #{icon} #{what} advisor
-HasIdeaGroup icon@Text what@Text: Has activated the #{icon} #{what} idea group
+HasIdeaGroup icon@Text what@Text: Has activated #{icon} #{what}
 ProducesGoods icon@Text what@Text: Produces #{icon} #{what}
 HasEstate icon@Text what@Text: Has estate #{icon} #{what}
 AssignToEstate icon@Text what@Text: Assign province to the #{icon} #{what} estate
-RulerIsGeneral icon@Text what@Text: Ruler is a #{icon} #{what} general
+RulerIsGeneral icon@Text _what@Text: Ruler is a #{icon} general
 AlliedWith who@Text: Is allied to #{who}
 CedeProvinceTo who@Text: Cede province to #{who}
 ControlledBy who@Text: Province is controlled by #{who}
@@ -227,8 +227,8 @@ HasClaimOn what@Text: Has a claim on #{what}
 IsAIControlled yn@Bool: Is #{ifThenElseT yn "AI" "player"}-controlled
 HasCardinal yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} a cardinal
 HasHeir yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} an heir
-HasOwnerCulture yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} the same culture as its owner
-HasOwnerReligion yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} the same religion as its owner
+HasOwnerCulture yn@Bool: Has #{ifThenElseT yn "the same culture as" "a different culture from"} its owner
+HasOwnerReligion yn@Bool: Has #{ifThenElseT yn "the same religion as" "a different religion from"} its owner
 HasPort yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} a port
 HasSeatInParliament yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} a seat in Parliament
 IsInRegency yn@Bool: Is#{ifThenElseT yn "" " ''not''"} in a regency
@@ -292,14 +292,14 @@ GainAdvisorName name@Text skill@Double: Gain skill #{roundNum skill} advisor nam
 GainAdvisorNameDiscount name@Text skill@Double: Gain skill #{roundNum skill} advisor named #{name} (50% cheaper to employ)
 GainAdvisorNameLoc name@Text where@Text skill@Double: Gain skill #{roundNum skill} advisor named #{name} in #{where}
 GainAdvisorNameLocDiscount name@Text where@Text skill@Double: Gain skill #{roundNum skill} advisor named #{name} in #{where} (50% cheaper to employ)
-GainAdvisorType advtype@Text skill@Double: Gain skill #{roundNum skill} #{advtype}
-GainAdvisorTypeDiscount advtype@Text skill@Double: Gain skill #{roundNum skill} #{advtype} (50% cheaper to employ)
-GainAdvisorTypeLoc advtype@Text where@Text skill@Double: Gain skill #{roundNum skill} #{advtype} in #{where}
-GainAdvisorTypeLocDiscount advtype@Text where@Text skill@Double: Gain skill #{roundNum skill} #{advtype} in #{where} (50% cheaper to employ)
-GainAdvisorTypeName advtype@Text name@Text skill@Double: Gain skill #{roundNum skill} #{advtype} named #{name}
-GainAdvisorTypeNameDiscount advtype@Text name@Text skill@Double: Gain skill #{roundNum skill} #{advtype} named #{name} (50% cheaper to employ)
-GainAdvisorTypeNameLoc advtype@Text name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{advtype} named #{name} in #{where}
-GainAdvisorTypeNameLocDiscount advtype@Text name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{advtype} named #{name} in #{where} (50% cheaper to employ)
+GainAdvisorType advtype@Text skill@Double: Gain skill #{roundNum skill} #{advtype} advisor
+GainAdvisorTypeDiscount advtype@Text skill@Double: Gain skill #{roundNum skill} #{advtype} advisor (50% cheaper to employ)
+GainAdvisorTypeLoc advtype@Text where@Text skill@Double: Gain skill #{roundNum skill} #{advtype} advisor in #{where}
+GainAdvisorTypeLocDiscount advtype@Text where@Text skill@Double: Gain skill #{roundNum skill} #{advtype} advisor in #{where} (50% cheaper to employ)
+GainAdvisorTypeName advtype@Text name@Text skill@Double: Gain skill #{roundNum skill} #{advtype} advisor named #{name}
+GainAdvisorTypeNameDiscount advtype@Text name@Text skill@Double: Gain skill #{roundNum skill} #{advtype} advisor named #{name} (50% cheaper to employ)
+GainAdvisorTypeNameLoc advtype@Text name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{advtype} advisor named #{name} in #{where}
+GainAdvisorTypeNameLocDiscount advtype@Text name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{advtype} advisor named #{name} in #{where} (50% cheaper to employ)
 GainFemaleAdvisor female@Bool skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} advisor
 GainFemaleAdvisorDiscount female@Bool skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} advisor (50% cheaper to employ)
 GainFemaleAdvisorLoc female@Bool where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} advisor in #{where}
@@ -308,14 +308,14 @@ GainFemaleAdvisorName female@Bool name@Text skill@Double: Gain skill #{roundNum 
 GainFemaleAdvisorNameDiscount female@Bool name@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} advisor named #{name} (50% cheaper to employ)
 GainFemaleAdvisorNameLoc female@Bool name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} advisor named #{name} in #{where}
 GainFemaleAdvisorNameLocDiscount female@Bool name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} advisor named #{name} in #{where} (50% cheaper to employ)
-GainFemaleAdvisorType female@Bool advtype@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype}
-GainFemaleAdvisorTypeDiscount female@Bool advtype@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} (50% cheaper to employ)
-GainFemaleAdvisorTypeLoc female@Bool advtype@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} in #{where}
-GainFemaleAdvisorTypeLocDiscount female@Bool advtype@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} in #{where} (50% cheaper to employ)
-GainFemaleAdvisorTypeName female@Bool advtype@Text name@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} named #{name}
-GainFemaleAdvisorTypeNameDiscount female@Bool advtype@Text name@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} named #{name} (50% cheaper to employ)
-GainFemaleAdvisorTypeNameLoc female@Bool advtype@Text name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} named #{name} in #{where}
-GainFemaleAdvisorTypeNameLocDiscount female@Bool advtype@Text name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} named #{name} in #{where} (50% cheaper to employ)
+GainFemaleAdvisorType female@Bool advtype@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} advisor
+GainFemaleAdvisorTypeDiscount female@Bool advtype@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} advisor (50% cheaper to employ)
+GainFemaleAdvisorTypeLoc female@Bool advtype@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} advisor in #{where}
+GainFemaleAdvisorTypeLocDiscount female@Bool advtype@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} advisor in #{where} (50% cheaper to employ)
+GainFemaleAdvisorTypeName female@Bool advtype@Text name@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} advisor named #{name}
+GainFemaleAdvisorTypeNameDiscount female@Bool advtype@Text name@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} advisor named #{name} (50% cheaper to employ)
+GainFemaleAdvisorTypeNameLoc female@Bool advtype@Text name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} advisor named #{name} in #{where}
+GainFemaleAdvisorTypeNameLocDiscount female@Bool advtype@Text name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} advisor named #{name} in #{where} (50% cheaper to employ)
 RebelLeaderRuler: The leader of the rebels becomes the country's new ruler
 NewRuler regent@Bool: A new #{ifThenElseT regent "regent" "ruler"} comes to power
 NewRulerAttribs regent@Bool: A new #{ifThenElseT regent "regent" "ruler"} comes to power with the following attributes:
@@ -402,10 +402,10 @@ GainYearlyPapalInfluence icon@Text amt@Double: #{icon} #{colourNum True amt} Yea
 GainYearlyDevotion icon@Text amt@Double: #{icon} #{colourNum True amt} {{DLC-only|Yearly devotion}}
 GainMonthlyFervor icon@Text amt@Double: #{icon} #{colourNum True amt} {{DLC-only|Monthly fervor}}
 GainChurchPowerModifier icon@Text amt@Double: #{icon} #{colourNum True amt} {{DLC-only|Church power}}
-GainYearlyPrestige icon@Text amt@Double: #{icon} #{colourNum True amt} Yearly prestige
+GainYearlyPrestige icon@Text amt@Double: #{icon} <!-- Prestige is at least -->#{colourNumSign True amt} Yearly prestige
 GainMissionaryStrengthVsHeretics icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Missionary strength vs heretics
 GainCultureConvCost icon@Text amt@Double: #{icon} #{reducedNum (colourPc False) amt} Culture conversion cost
-HasOpinion amt@Double who@Text: Has at least #{colourNum True amt} opinion of #{who}
+HasOpinion amt@Double who@Text: Has at least #{colourNumSign True amt} opinion of #{who}
 NormalOrHistoricalNations yn@Bool: #{ifThenElseT yn "Playing" "''Not'' playing"} with normal or historical nations
 IsCustomNation yn@Bool: Is#{ifThenElseT yn "" " ''not''"} playing a custom nation
 ReligionEnabled icon@Text what@Text: The #{icon} #{what} religion is enabled
@@ -447,13 +447,13 @@ HasDiplomatLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} S
 HasArmyReformerLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Army Reformer advisor
 HasNaturalScientistLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Natural Scientist advisor
 HasNavyReformerLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Navy Reformer advisor
-HasTheologianLevel icon@Text level@Double:
+HasTheologianLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Theologian advisor
 HasTraderLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Trader advisor
 HasStatesmanLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} Statesman advisor
 NumRoyalMarriages icon@Text amt@Double: Has at least #{icon} #{roundNum amt} royal #{plural amt "marriage" "marriages"}
 IsBankrupt yn@Bool: Is#{ifThenElseT yn "" " ''not''"} bankrupt
 NumColonialSubjects amt@Double: Has at least #{roundNum amt} colonial #{plural amt "subject" "subjects"}
-TradeEfficiency icon@Text amt@Double: Has at least #{icon} #{plainNum amt} trade efficiency
+TradeEfficiency icon@Text amt@Double: Has at least #{icon} #{reducedNum plainPc amt} trade efficiency
 HasWarTaxes yn@Bool: Has#{ifThenElseT yn "" " ''not''"} raised war taxes
 RevoltPercentage amt@Double: At least #{roundPc amt} of provinces are in revolt
 HasAnyDisaster yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} an ongoing disaster
