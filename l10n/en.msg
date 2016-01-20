@@ -196,7 +196,8 @@ ControlledBy who@Text: Province is controlled by #{who}
 DefensiveWarAgainst who@Text: Is defending in a war against #{who}
 DiscoverCountry who@Text: Discover #{who}
 GainClaim who@Text: #{who} gains a claim on this province
-GainPermanentClaim who@Text: #{who} gains a permanent claim on this province
+GainPermanentClaimCountry who@Text: #{who} gains a permanent claim on this province
+GainPermanentClaimProvince where@Text: Gain a permanent claim on #{where}
 HasDiscovered who@Text: Has discovered #{who}
 Inherit who@Text: Inherit #{who}
 Neighbors who@Text: Has a border with #{who}
@@ -252,6 +253,8 @@ GainCBDuration cbtype@Text who@Text months@Double: Gain #{cbtype} casus belli ag
 ReverseGainCB cbtype@Text who@Text: #{who} gains #{cbtype} casus belli against this country
 ReverseGainCBDuration cbtype@Text who@Text months@Double: #{who} gains #{cbtype} casus belli against this country for #{roundNum months} months
 FactionGainInfluence icon@Text who@Text amt@Double: #{gainOrLose amt} #{icon} #{plainNum amt} influence for the #{who} faction
+FactionInPower icon@Text who@Text: #{icon} #{who} is in power
+HasFactions yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} factions
 HasBuilding icon@Text what@Text: Has #{icon} #{what} building
 Indefinitely: indefinitely
 ForDays days@Double: for #{roundNum days} days
@@ -370,41 +373,41 @@ HasDefensiveIdea name@Text num@Int: Has {{icon|defensive}} Defensive idea #{show
 HasInnovativeIdea name@Text num@Int: Has {{icon|innovative}} Innovative idea #{show num} #{iquotes name}
 HasOffensiveIdea name@Text num@Int: Has {{icon|offensive}} Offensive idea #{show num} #{iquotes name}
 HasMaritimeIdea name@Text num@Int: Has {{icon|maritime}} Maritime idea #{show num} #{iquotes name}
-GainColonists icon@Text amt@Double: #{icon} #{colourNum True amt} Colonists
+GainColonists icon@Text amt@Double: #{icon} #{colourNumSign True amt} Colonists
 MayExplore: Can recruit explorers and conquistadors. Explorers may explore ocean provinces.
-GainColonialRange icon@Text amt@Double: #{icon} #{colourNum True amt} Colonial range
-GainGlobalSettlers icon@Text amt@Double: #{icon} #{colourNum True amt} Global settler increase
-GainGlobalTariffs icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Global tariffs
-GainNavalForcelimitMod icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Naval forcelimit modifier
+GainColonialRange icon@Text amt@Double: #{icon} #{colourNumSign True amt} Colonial range
+GainGlobalSettlers icon@Text amt@Double: #{icon} #{colourNumSign True amt} Global settler increase
+GainGlobalTariffs icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Global tariffs
+GainNavalForcelimitMod icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Naval forcelimit modifier
 GainPrimitivesCB: Gain permanent "Colonial Conquest" Casus Belli against all primitives.
-GainYearlyNavyTradition icon@Text amt@Double: #{icon} #{colourNum True amt} Yearly naval tradition
-GainLightShipPower icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Light ship combat ability
-GainGlobalShipRepair icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Global ship repair
-GainGlobalShipCost icon@Text amt@Double: #{icon} #{reducedNum (colourPc False) amt} Global ship cost
-GainNavalLeaderManeuver icon@Text amt@Double: #{icon} #{colourNum True amt} Naval leader maneuver
-GainBlockadeEfficiency icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Blockade efficiency
+GainYearlyNavyTradition icon@Text amt@Double: #{icon} #{colourNumSign True amt} Yearly naval tradition
+GainLightShipPower icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Light ship combat ability
+GainGlobalShipRepair icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Global ship repair
+GainGlobalShipCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Global ship cost
+GainNavalLeaderManeuver icon@Text amt@Double: #{icon} #{colourNumSign True amt} Naval leader maneuver
+GainBlockadeEfficiency icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Blockade efficiency
 GainSeaRepair: Ships repair while in coastal sea provinces.
 Primitives yn@Bool: Is#{ifThenElseT yn "" " ''not''"} primitive
-GainGlobalTaxModifier icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Global tax modifier
-GainBuildCost icon@Text amt@Double: #{icon} #{reducedNum (colourPc False) amt} Build cost
-GainYearlyInflationReduction icon@Text amt@Double: #{icon} #{colourNum False (negate amt)} Yearly inflation reduction
-GainInterestPerAnnum icon@Text amt@Double: #{icon} #{colourNum False amt} Interest per annum
-GainGlobalAutonomy icon@Text amt@Double: #{icon} #{colourNum False amt} Monthly autonomy change
-GainLandMaintenanceMod icon@Text amt@Double: #{icon} #{reducedNum (colourPc False) amt} Land maintenance modifier
-GainProdEff icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Production efficiency
-GainDevelCost icon@Text amt@Double: #{icon} #{reducedNum (colourPc False) amt} {{DLC-only|Development cost}}
+GainGlobalTaxModifier icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Global tax modifier
+GainBuildCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Build cost
+GainYearlyInflationReduction icon@Text amt@Double: #{icon} #{colourNumSign False (negate amt)} Yearly inflation reduction
+GainInterestPerAnnum icon@Text amt@Double: #{icon} #{colourNumSign False amt} Interest per annum
+GainGlobalAutonomy icon@Text amt@Double: #{icon} #{colourNumSign False amt} Monthly autonomy change
+GainLandMaintenanceMod icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Land maintenance modifier
+GainProdEff icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Production efficiency
+GainDevelCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} {{DLC-only|Development cost}}
 GainReligiousCB: Gain permanent "Holy War" and "Purging of Heresy" Casus Belli against heathens and heretics respectively.
-GainMissionaries icon@Text amt@Double: #{icon} #{colourNum True amt} Missionaries
-GainStabilityCost icon@Text amt@Double: #{icon} #{reducedNum (colourPc False) amt} Stability cost modifier
-GainMissionaryStrength icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Missionary strength
-GainToleranceTrue icon@Text amt@Double: #{icon} #{colourNum True amt} Tolerance of the true faith
-GainYearlyPapalInfluence icon@Text amt@Double: #{icon} #{colourNum True amt} Yearly papal influence
-GainYearlyDevotion icon@Text amt@Double: #{icon} #{colourNum True amt} {{DLC-only|Yearly devotion}}
-GainMonthlyFervor icon@Text amt@Double: #{icon} #{colourNum True amt} {{DLC-only|Monthly fervor}}
-GainChurchPowerModifier icon@Text amt@Double: #{icon} #{colourNum True amt} {{DLC-only|Church power}}
+GainMissionaries icon@Text amt@Double: #{icon} #{colourNumSign True amt} Missionaries
+GainStabilityCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Stability cost modifier
+GainMissionaryStrength icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Missionary strength
+GainToleranceTrue icon@Text amt@Double: #{icon} #{colourNumSign True amt} Tolerance of the true faith
+GainYearlyPapalInfluence icon@Text amt@Double: #{icon} #{colourNumSign True amt} Yearly papal influence
+GainYearlyDevotion icon@Text amt@Double: #{icon} #{colourNumSign True amt} {{DLC-only|Yearly devotion}}
+GainMonthlyFervor icon@Text amt@Double: #{icon} #{colourNumSign True amt} {{DLC-only|Monthly fervor}}
+GainChurchPowerModifier icon@Text amt@Double: #{icon} #{colourNumSign True amt} {{DLC-only|Church power}}
 GainYearlyPrestige icon@Text amt@Double: #{icon} <!-- Prestige is at least -->#{colourNumSign True amt} Yearly prestige
-GainMissionaryStrengthVsHeretics icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Missionary strength vs heretics
-GainCultureConvCost icon@Text amt@Double: #{icon} #{reducedNum (colourPc False) amt} Culture conversion cost
+GainMissionaryStrengthVsHeretics icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Missionary strength vs heretics
+GainCultureConvCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Culture conversion cost
 HasOpinion amt@Double who@Text: Has at least #{colourNumSign True amt} opinion of #{who}
 NormalOrHistoricalNations yn@Bool: #{ifThenElseT yn "Playing" "''Not'' playing"} with normal or historical nations
 IsCustomNation yn@Bool: Is#{ifThenElseT yn "" " ''not''"} playing a custom nation
@@ -476,3 +479,19 @@ Blockade icon@Text amt@Double: Is at least #{icon} #{plainPc amt} blockaded
 CreateAlliance who@Text: Create alliance with #{who}
 AddLocalUnrest icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum False amt} unrest
 GoldIncomePercentage icon@Text amt@Double: At least #{reducedNum plainPc amt} of the country's income is from #{icon} Gold
+IsTribal yn@Bool: Is#{ifThenElseT yn "" " ''not''"} tribal
+SetCapital what@Text: Change capital to #{what}
+ChangePrimaryCulture what@Text: Change primary culture to #{what}
+ColonialRegion where@Text: Is in colonial region #{where}
+JuniorUnionWith who@Text: Is the junior partner in a personal union with #{who}
+VassalOf who@Text: Is a vassal of #{who}
+OverlordOf who@Text: Is the overlord of #{who}
+ChangeProvinceName what@Text: Rename province to #{what}
+RenameCapital what@Text: Rename provincial capital to #{what}
+OwnsOrVassal where@Text: Owns #{where} or is overlord of its owner
+IsInColonialRange who@Text: Is within colonial range of #{who}
+ConstructingGreatProject what@Text: Is constructing the #{what}
+Constructing what@Text: Is constructing a #{what}
+StartConstructingGreatProject what@Text: Begin constructing the #{what}
+CancelConstruction: Cancel construction
+YearsOfIncome icon@Text amt@Double: Treasury contains at least #{icon} #{plainNum amt} #{plural amt "year's" "years'"} worth of income

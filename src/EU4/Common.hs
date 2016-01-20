@@ -125,6 +125,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
     GenericLhs label -> case T.map toLower label of
         -- Statements where RHS is irrelevant (usually "yes")
         "add_cardinal"          -> msgToPP MsgAddCardinal
+        "cancel_construction"   -> msgToPP MsgCancelConstruction
         "cb_on_primitives"      -> msgToPP MsgGainPrimitivesCB
         "cb_on_religious_enemies" -> msgToPP MsgGainReligiousCB
         "enable_hre_leagues"    -> msgToPP MsgEnableHRELeagues
@@ -189,7 +190,6 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "papal_influence"        -> gainIcon "papal influence" MsgGainYearlyPapalInfluence stmt
         "prestige"               -> gainIcon "prestige" MsgGainYearlyPrestige stmt
         "production_efficiency"  -> gainIcon "production efficiency" MsgGainProdEff stmt
-        "range"                  -> gainIcon "colonial range" MsgGainGlobalTariffs stmt
         "stability_cost_modifier" -> gainIcon "stability cost" MsgGainStabilityCost stmt
         "tolerance_own"          -> gainIcon "tolerance of the true faith" MsgGainToleranceTrue stmt
         -- numbers
@@ -204,6 +204,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         -- Special
         "add_manpower" -> gainManpower stmt
         "is_month" -> isMonth stmt
+        "range" -> range stmt
         -- Modifiers
         "add_country_modifier"      -> addModifier MsgCountryMod stmt
         "add_permanent_province_modifier" -> addModifier MsgPermanentProvMod stmt
@@ -271,9 +272,13 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         -- Random
         "random" -> random stmt
         -- Simple generic statements (RHS is a localizable atom)
+        "add_great_project" -> withLocAtom MsgStartConstructingGreatProject stmt
         "change_government" -> withLocAtom MsgChangeGovernment stmt
         "continent"         -> withLocAtom MsgContinentIs stmt
         "change_culture"    -> withLocAtom MsgChangeCulture stmt
+        "change_primary_culture" -> withLocAtom MsgChangePrimaryCulture stmt
+        "change_province_name" -> withLocAtom MsgChangeProvinceName stmt -- will usually fail localization
+        "colonial_region"   -> withLocAtom MsgColonialRegion stmt
         "culture"           -> withLocAtom MsgCultureIs stmt
         "culture_group"     -> withLocAtom MsgCultureIsGroup stmt
         "dynasty"           -> withLocAtom MsgRulerIsDynasty stmt
@@ -281,7 +286,9 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "government"        -> withLocAtom MsgGovernmentIs stmt
         "has_advisor"       -> withLocAtom MsgHasAdvisor stmt
         "has_active_policy" -> withLocAtom MsgHasActivePolicy stmt
+        "has_construction"  -> withLocAtom MsgConstructing stmt
         "has_disaster"      -> withLocAtom MsgDisasterOngoing stmt
+        "has_great_project" -> withLocAtom MsgConstructingGreatProject stmt
         "has_idea"          -> withLocAtom MsgHasIdea stmt
         "has_terrain"       -> withLocAtom MsgHasTerrain stmt 
         "infantry"          -> withLocAtom MsgInfantrySpawns stmt
@@ -289,13 +296,18 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "primary_culture"   -> withLocAtom MsgPrimaryCultureIs stmt
         "region"            -> withLocAtom MsgRegionIs stmt
         "remove_advisor"    -> withLocAtom MsgLoseAdvisor stmt
+        "rename_capital"    -> withLocAtom MsgRenameCapital stmt -- will usually fail localization
         -- RHS is a province ID
         "capital"            -> withProvince MsgCapitalIs stmt
         "owns"               -> withProvince MsgOwns stmt
         "owns_core_province" -> withProvince MsgOwnsCore stmt
+        "owns_or_vassal_of"  -> withProvince MsgOwnsOrVassal stmt
         "province_id"        -> withProvince MsgProvinceIs stmt
+        "set_capital"        -> withProvince MsgSetCapital stmt
         -- RHS is a flag OR a province ID
-        "remove_core"      -> withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince stmt
+        "add_permanent_claim" -> withFlagOrProvince MsgGainPermanentClaimCountry MsgGainPermanentClaimProvince stmt
+        "has_discovered"      -> withFlagOrProvince MsgHasDiscovered MsgHasDiscovered stmt
+        "remove_core"         -> withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince stmt
         -- RHS is an advisor ID (TODO: parse advisor files)
         "advisor_exists"      -> numeric MsgAdvisorExists stmt
         "is_advisor_employed" -> numeric MsgAdvisorIsEmployed stmt
@@ -340,24 +352,25 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "defensive_war_with" -> withFlag MsgDefensiveWarAgainst stmt
         "discover_country"   -> withFlag MsgDiscoverCountry stmt
         "add_claim"          -> withFlag MsgGainClaim stmt
-        "add_permanent_claim" -> withFlag MsgGainPermanentClaim stmt
         "create_alliance"    -> withFlag MsgCreateAlliance stmt
         "galley"             -> withFlag MsgGalley stmt
-        "has_discovered"     -> withFlag MsgHasDiscovered stmt
         "heavy_ship"         -> withFlag MsgHeavyShip stmt
         "inherit"            -> withFlag MsgInherit stmt
         "is_neighbor_of"     -> withFlag MsgNeighbors stmt
         "is_league_enemy"    -> withFlag MsgIsLeagueEnemy stmt
         "is_subject_of"      -> withFlag MsgIsSubjectOf stmt
+        "junior_union_with"  -> withFlag MsgJuniorUnionWith stmt
         "light_ship"         -> withFlag MsgLightShip stmt
         "marriage_with"      -> withFlag MsgRoyalMarriageWith stmt
         "offensive_war_with" -> withFlag MsgOffensiveWarAgainst stmt
+        "overlord_of"        -> withFlag MsgOverlordOf stmt
         "owned_by"           -> withFlag MsgOwnedBy stmt
         "release"            -> withFlag MsgReleaseVassal stmt
         "sieged_by"          -> withFlag MsgUnderSiegeBy stmt
         "is_strongest_trade_power" -> withFlag MsgStrongestTradePower stmt
         "tag"                -> withFlag MsgCountryIs stmt
         "truce_with"         -> withFlag MsgTruceWith stmt
+        "vassal_of"          -> withFlag MsgVassalOf stmt
         "war_with"           -> withFlag MsgAtWarWith stmt
         "white_peace"        -> withFlag MsgMakeWhitePeace stmt
         -- Simple generic statements with flag or "yes"/"no"
@@ -374,6 +387,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "ai"                     -> withBool MsgIsAIControlled stmt
         "has_any_disaster"       -> withBool MsgHasAnyDisaster stmt
         "has_cardinal"           -> withBool MsgHasCardinal stmt
+        "has_factions"           -> withBool MsgHasFactions stmt
         "has_heir"               -> withBool MsgHasHeir stmt
         "has_owner_culture"      -> withBool MsgHasOwnerCulture stmt
         "has_owner_religion"     -> withBool MsgHasOwnerReligion stmt
@@ -411,6 +425,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "is_religion_reformed"   -> withBool MsgReligionReformed stmt
         "is_sea"                 -> withBool MsgIsSea stmt -- province or trade node
         "is_subject"             -> withBool MsgIsSubject stmt
+        "is_tribal"              -> withBool MsgIsTribal stmt
         "luck"                   -> withBool MsgLucky stmt
         "normal_or_historical_nations" -> withBool MsgNormalOrHistoricalNations stmt
         "papacy_active"          -> withBool MsgPapacyIsActive stmt
@@ -493,6 +508,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "unrest"               -> numericIcon "unrest" MsgUnrest stmt
         "war_exhaustion"       -> numericIcon "war exhaustion" MsgWarExhaustion stmt
         "war_score"            -> numericIcon "war score" MsgWarScore stmt
+        "years_of_income"      -> numericIcon "ducats" MsgYearsOfIncome stmt
         -- As above - advisors
         "army_reformer" -> numericIcon "army reformer" MsgHasArmyReformerLevel stmt
         "artist" -> numericIcon "artist" MsgHasArtistLevel stmt
@@ -571,6 +587,7 @@ ppOne stmt@(Statement lhs rhs) = case lhs of
         "offensive_ideas"      -> hasIdea MsgHasOffensiveIdea stmt
         -- Special
         "add_core"  -> addCore stmt
+        "faction_in_power" -> factionInPower stmt
         "government_rank" -> govtRank stmt
         "set_government_rank" -> setGovtRank stmt
         "has_dlc"   -> hasDlc stmt
@@ -1042,6 +1059,30 @@ ppAiMod (AIModifier Nothing _) =
 -- We want to use the faction influence icons, not the faction icons, so
 -- textValue unfortunately doesn't work here.
 
+facInfluence_iconkey :: Text -> Maybe Text
+facInfluence_iconkey fac = case fac of
+        -- Celestial empire
+        "enuchs" {- sic -} -> Just "eunuchs influence"
+        "temples"          -> Just "temples influence"
+        "bureaucrats"      -> Just "bureaucrats influence"
+        -- Merchant republic
+        "mr_aristocrats"   -> Just "aristocrats influence"
+        "mr_guilds"        -> Just "guilds influence"
+        "mr_traders"       -> Just "traders influence"
+        _ {- unknown -}    -> Nothing
+
+fac_iconkey :: Text -> Maybe Text
+fac_iconkey fac = case fac of
+        -- Celestial empire
+        "enuchs" {- sic -} -> Just "eunuchs"
+        "temples"          -> Just "temples"
+        "bureaucrats"      -> Just "bureaucrats"
+        -- Merchant republic
+        "mr_aristocrats"   -> Just "aristocrats"
+        "mr_guilds"        -> Just "guilds"
+        "mr_traders"       -> Just "traders"
+        _ {- unknown -}    -> Nothing
+
 data FactionInfluence = FactionInfluence {
         faction :: Maybe Text
     ,   influence :: Maybe Double
@@ -1055,17 +1096,7 @@ factionInfluence stmt@(Statement _ (CompoundRhs scr))
             if isJust (faction inf) && isJust (influence inf)
             then
                 let fac = fromJust (faction inf)
-                    fac_iconkey = case fac of
-                            -- Celestial empire
-                            "enuchs" {- sic -} -> Just "eunuchs influence"
-                            "temples"          -> Just "temples influence"
-                            "bureaucrats"      -> Just "bureaucrats influence"
-                            -- Merchant republic
-                            "mr_aristocrats"   -> Just "aristocrats influence"
-                            "mr_guilds"        -> Just "guilds influence"
-                            "mr_traders"       -> Just "traders influence"
-                            _ {- unknown -}    -> Nothing
-                    fac_icon = maybe ("<!-- " <> fac <> " -->") iconText fac_iconkey
+                    fac_icon = maybe ("<!-- " <> fac <> " -->") iconText (facInfluence_iconkey fac)
                     infl = fromJust (influence inf)
                 in do
                     fac_loc <- getGameL10n fac
@@ -1076,6 +1107,13 @@ factionInfluence stmt@(Statement _ (CompoundRhs scr))
         addField inf (Statement (GenericLhs "influence") rhs) | Just amt <- floatRhs rhs = inf { influence = Just amt }
         addField inf _ = inf -- unknown statement
 factionInfluence stmt = preStatement stmt
+
+factionInPower :: GenericStatement -> PP extra [(Int, ScriptMessage)]
+factionInPower (Statement _ rhs)
+    | Just fac <- textRhs rhs, Just facKey <- fac_iconkey fac
+    = do fac_loc <- getGameL10n fac
+         msgToPP $ MsgFactionInPower (iconText facKey) fac_loc
+factionInPower stmt = preStatement stmt
 
 -- Modifiers
 
@@ -1995,6 +2033,11 @@ isMonth (Statement _ rhs) | Just num <- floatRhs rhs, (num::Int) >= 1, num <= 12
             _ -> error "impossible: tried to localize bad month number"
         msgToPP $ MsgIsMonth month_loc
 isMonth stmt = preStatement stmt
+
+range :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
+range stmt@(Statement _ rhs) | Just _ <- floatRhs rhs :: Maybe Double
+    = gainIcon "colonial range" MsgGainColonialRange stmt
+range stmt = withFlag MsgIsInColonialRange stmt
 
 ----------------------
 -- Idea group ideas --

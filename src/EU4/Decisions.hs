@@ -16,6 +16,7 @@ import qualified Data.Text as T
 
 import Abstract
 import Doc
+import Messages
 import SettingsTypes
 import EU4.Common
 
@@ -79,7 +80,8 @@ pp_decision dec = do
     pot_pp'd    <- pp_script (dec_potential dec)
     allow_pp'd  <- pp_script (dec_allow dec)
     effect_pp'd <- pp_script (dec_effect dec)
-    return $ mconcat
+    mawd_pp'd    <- mapM ((imsg2doc =<<) . ppAiWillDo) (dec_ai_will_do dec)
+    return . mconcat $
         ["{{Decision<!-- ", strictText (dec_name dec), " -->", line
         ,"| version = ", strictText version, line
         ,"| decision_name = ", strictText (dec_name_loc dec), line
@@ -89,4 +91,8 @@ pp_decision dec = do
         ,"| potential = ", line, pot_pp'd, line
         ,"| allow = ", line, allow_pp'd, line
         ,"| effect = ", line, effect_pp'd, line
-        ,"}}"]
+        ] ++
+        (flip (maybe []) mawd_pp'd $ \awd_pp'd ->
+            ["| comment = AI decision factors:", line
+            ,awd_pp'd, line]) ++
+        ["}}"]

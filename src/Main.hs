@@ -68,7 +68,7 @@ main = do
 
     createDirectoryIfMissing False "output"
 
-    forM_ ["decisions","missions","events","policies","ideagroups"] $ \category -> do
+    forM_ ["decisions"{-,"missions","events","policies","ideagroups"-}] $ \category -> do
         scripts <- readScripts settings category -- :: [(FilePath, GenericScript)]
 
         let handler :: GenericStatement -> PP Extra (Either Text Doc)
@@ -86,10 +86,10 @@ main = do
                                 local (\s -> s { currentFile = Just file })
                                       (mapM handler script))
                 -- for testing -- comment out for release
-                . filter (\(file, _) -> file `elem`
-                    ["events/RandomEvents.txt"
-                    ,"events/RandomProvinceEvents.txt"
-                    ])
+--                . filter (\(file, _) -> file `elem`
+--                    ["events/RandomEvents.txt"
+--                    ,"events/RandomProvinceEvents.txt"
+--                    ])
                 $ scripts
 
         forM_ (runReader results settings) $ \(path, mesgs) -> do

@@ -1,5 +1,12 @@
 *.swp
 *.swo
+*.o
+*.o-boot
+*.hi
+*.hi-boot
+*.dyn_hi
+*.dyn_hi-boot
+*.dyn_o
 cabal.sandbox.config
 output/
 dist/

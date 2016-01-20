@@ -4,7 +4,7 @@ module MessageTools (
     ,   roundNum, roundPc
     ,   roundNumNoSpace
     ,   colourNum, colourPc
-    ,   colourNumSign
+    ,   colourNumSign, colourPcSign
     ,   reducedNum
     ,   plural
     ,   gainOrLose, gainsOrLoses
@@ -109,7 +109,11 @@ roundPc = roundNum' True False
 --
 -- The first argument is True if positive is good, False if negative is good.
 colourNumSign :: Bool -> Double -> Doc
-colourNumSign = ppNum True False True
+colourNumSign good = ppNum True False good True
+
+-- | As 'colourNumSign', but treat as a percentage (i.e. add a percent sign).
+colourPcSign :: Bool -> Double -> Doc
+colourPcSign good = ppNum True True good True
 
 -- | As colourNum, but interpret the number as a percentage.
 colourPc :: Bool -> Double -> Doc
