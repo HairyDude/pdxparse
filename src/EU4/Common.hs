@@ -34,6 +34,8 @@ import qualified Data.Text.Encoding as TE
 -- TODO: get rid of these, do icon key lookups from another module
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
+import Data.Trie (Trie)
+import qualified Data.Trie as Tr
 
 import Data.Set (Set)
 import qualified Data.Set as S
@@ -120,483 +122,489 @@ pp_statement stmt = imsg2doc =<< ppOne stmt
 ppMany :: GenericScript -> PP IdeaTable [(Int, ScriptMessage)]
 ppMany scr = indentUp (concat <$> mapM ppOne scr)
 
-ppOne :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-ppOne stmt@(Statement lhs rhs) = case lhs of
-    GenericLhs label -> case T.map toLower label of
+-- Table of handlers for statements.
+-- Dispatch on strings is /much/ quicker using a lookup table than a
+-- huge case statement, which uses (==) on each one in turn.
+ppHandlers :: Trie (GenericStatement -> PP IdeaTable [(Int, ScriptMessage)])
+ppHandlers = Tr.fromList $
         -- Statements where RHS is irrelevant (usually "yes")
-        "add_cardinal"          -> msgToPP MsgAddCardinal
-        "cancel_construction"   -> msgToPP MsgCancelConstruction
-        "cb_on_primitives"      -> msgToPP MsgGainPrimitivesCB
-        "cb_on_religious_enemies" -> msgToPP MsgGainReligiousCB
-        "enable_hre_leagues"    -> msgToPP MsgEnableHRELeagues
-        "kill_heir"             -> msgToPP MsgHeirDies
-        "kill_ruler"            -> msgToPP MsgRulerDies
-        "may_explore"           -> msgToPP MsgMayExplore
-        "set_hre_religion_treaty" -> msgToPP MsgSignWestphalia
-        "remove_cardinal"       -> msgToPP MsgLoseCardinal
-        "sea_repair"            -> msgToPP MsgGainSeaRepair
+        [("add_cardinal"           , const (msgToPP MsgAddCardinal))
+        ,("cancel_construction"    , const (msgToPP MsgCancelConstruction))
+        ,("cb_on_primitives"       , const (msgToPP MsgGainPrimitivesCB))
+        ,("cb_on_religious_enemies", const (msgToPP MsgGainReligiousCB))
+        ,("enable_hre_leagues"     , const (msgToPP MsgEnableHRELeagues))
+        ,("kill_heir"              , const (msgToPP MsgHeirDies))
+        ,("kill_ruler"             , const (msgToPP MsgRulerDies))
+        ,("may_explore"            , const (msgToPP MsgMayExplore))
+        ,("set_hre_religion_treaty", const (msgToPP MsgSignWestphalia))
+        ,("remove_cardinal"        , const (msgToPP MsgLoseCardinal))
+        ,("sea_repair"             , const (msgToPP MsgGainSeaRepair))
         -- Gain/lose, with optional icon
         --  numbers
-        "add_adm_power"         -> gainIcon "adm" MsgGainADM stmt
-        "add_army_tradition"    -> gainIcon "army tradition" MsgGainAT stmt
-        "add_authority"         -> gain' MsgGainAuth stmt
-        "add_base_tax"          -> gainIcon "base tax" MsgGainBT stmt
-        "add_base_production"   -> gainIcon "production" MsgGainBP stmt
-        "add_base_manpower"     -> gainIcon "manpower" MsgGainBM stmt
-        "add_dip_power"         -> gainIcon "dip" MsgGainDIP stmt
-        "add_doom"              -> gain' MsgGainDoom stmt
-        "add_heir_claim"        -> gain' MsgHeirGainClaim stmt
-        "add_devotion"          -> gainIcon "devotion" MsgGainDevotion stmt
-        "add_horde_unity"        -> gainIcon "horde unity" MsgGainHordeUnity stmt
-        "add_imperial_influence" -> gainIcon "imperial authority" MsgGainImperialAuthority stmt
-        "add_karma"              -> gainIcon "high karma" MsgGainKarma stmt
-        "add_legitimacy"         -> gainIcon "legitimacy" MsgGainLegitimacy stmt
-        "add_mil_power"          -> gainIcon "mil" MsgGainMIL stmt
-        "add_navy_tradition"     -> gainIcon "navy tradition" MsgGainNavyTradition stmt
-        "add_papal_influence"    -> gainIcon "papal influence" MsgGainPapalInfluence stmt
-        "add_prestige"           -> gainIcon "prestige" MsgGainPrestige stmt
-        "add_stability"          -> gainIcon "stability" MsgGainStability stmt
-        "add_war_exhaustion"     -> gainIcon "war exhaustion" MsgGainWarExhaustion stmt
-        "add_yearly_manpower"    -> gainIcon "manpower" MsgGainYearlyManpower stmt
-        "change_adm"             -> gainIcon "adm" MsgGainADMSkill stmt
-        "change_dip"             -> gainIcon "dip" MsgGainDIPSkill stmt
-        "change_mil"             -> gainIcon "mil" MsgGainMILSkill stmt
-        "change_siege"           -> gain' MsgGainSiegeProgress stmt
+        ,("add_adm_power"         , gainIcon "adm" MsgGainADM)
+        ,("add_army_tradition"    , gainIcon "army tradition" MsgGainAT)
+        ,("add_authority"         , gain' MsgGainAuth)
+        ,("add_base_tax"          , gainIcon "base tax" MsgGainBT)
+        ,("add_base_production"   , gainIcon "production" MsgGainBP)
+        ,("add_base_manpower"     , gainIcon "manpower" MsgGainBM)
+        ,("add_dip_power"         , gainIcon "dip" MsgGainDIP)
+        ,("add_doom"              , gain' MsgGainDoom)
+        ,("add_heir_claim"        , gain' MsgHeirGainClaim)
+        ,("add_devotion"          , gainIcon "devotion" MsgGainDevotion)
+        ,("add_horde_unity"       , gainIcon "horde unity" MsgGainHordeUnity)
+        ,("add_imperial_influence", gainIcon "imperial authority" MsgGainImperialAuthority)
+        ,("add_karma"             , gainIcon "high karma" MsgGainKarma)
+        ,("add_legitimacy"        , gainIcon "legitimacy" MsgGainLegitimacy)
+        ,("add_mil_power"         , gainIcon "mil" MsgGainMIL)
+        ,("add_navy_tradition"    , gainIcon "navy tradition" MsgGainNavyTradition)
+        ,("add_papal_influence"   , gainIcon "papal influence" MsgGainPapalInfluence)
+        ,("add_prestige"          , gainIcon "prestige" MsgGainPrestige)
+        ,("add_stability"         , gainIcon "stability" MsgGainStability)
+        ,("add_war_exhaustion"    , gainIcon "war exhaustion" MsgGainWarExhaustion)
+        ,("add_yearly_manpower"   , gainIcon "manpower" MsgGainYearlyManpower)
+        ,("change_adm"            , gainIcon "adm" MsgGainADMSkill)
+        ,("change_dip"            , gainIcon "dip" MsgGainDIPSkill)
+        ,("change_mil"            , gainIcon "mil" MsgGainMILSkill)
+        ,("change_siege"          , gain' MsgGainSiegeProgress)
         -- Used in ideas and other bonuses, omit "gain/lose" in l10n
-        "colonists"              -> gainIcon "colonist" MsgGainColonists stmt
-        "blockade_efficiency"    -> gainIcon "blockade efficiency" MsgGainBlockadeEfficiency stmt
-        "build_cost"             -> gainIcon "build cost" MsgGainBuildCost stmt
-        "church_power_modifier"  -> gainIcon "church power" MsgGainChurchPowerModifier stmt
-        "culture_conversion_cost" -> gainIcon "culture conversion cost" MsgGainCultureConvCost stmt
-        "development_cost"       -> gainIcon "development cost" MsgGainDevelCost stmt
-        "devotion"               -> gainIcon "devotion" MsgGainYearlyDevotion stmt
-        "global_autonomy"        -> gainIcon "global autonomy" MsgGainGlobalAutonomy stmt
-        "global_colonial_growth" -> gainIcon "global settler increase" MsgGainGlobalSettlers stmt
-        "global_missionary_strength" -> gainIcon "missionary strength" MsgGainMissionaryStrength stmt
-        "global_ship_repair"     -> gainIcon "global ship repair" MsgGainGlobalShipRepair stmt
-        "global_ship_cost"       -> gainIcon "ship cost" MsgGainGlobalShipCost stmt
-        "global_tax_modifier"    -> gainIcon "global tax modifier" MsgGainGlobalTaxModifier stmt
-        "global_tariffs"         -> gainIcon "global tariffs" MsgGainGlobalTariffs stmt
-        "inflation_reduction"    -> gainIcon "inflation reduction" MsgGainYearlyInflationReduction stmt
-        "interest"               -> gainIcon "interest" MsgGainInterestPerAnnum stmt
-        "land_maintenance_modifier" -> gainIcon "land maintenance" MsgGainLandMaintenanceMod stmt
-        "leader_naval_manuever" {- sic -} -> gainIcon "naval forcelimit" MsgGainNavalLeaderManeuver stmt
-        "light_ship_power"       -> gainIcon "light ship combat ability" MsgGainLightShipPower stmt
-        "missionaries"           -> gainIcon "colonist" MsgGainMissionaries stmt
-        "global_heretic_missionary_strength" -> gainIcon "missionary strength vs heretics" MsgGainMissionaryStrengthVsHeretics stmt
-        "monthly_fervor_increase" -> gainIcon "monthly fervor" MsgGainMonthlyFervor stmt
-        "naval_forcelimit_modifier" -> gainIcon "naval forcelimit" MsgGainNavalForcelimitMod stmt
-        "navy_tradition"         -> gainIcon "navy tradition" MsgGainYearlyNavyTradition stmt
-        "papal_influence"        -> gainIcon "papal influence" MsgGainYearlyPapalInfluence stmt
-        "prestige"               -> gainIcon "prestige" MsgGainYearlyPrestige stmt
-        "production_efficiency"  -> gainIcon "production efficiency" MsgGainProdEff stmt
-        "stability_cost_modifier" -> gainIcon "stability cost" MsgGainStabilityCost stmt
-        "tolerance_own"          -> gainIcon "tolerance of the true faith" MsgGainToleranceTrue stmt
+        ,("colonists"                         , gainIcon "colonist" MsgGainColonists)
+        ,("blockade_efficiency"               , gainIcon "blockade efficiency" MsgGainBlockadeEfficiency)
+        ,("build_cost"                        , gainIcon "build cost" MsgGainBuildCost)
+        ,("church_power_modifier"             , gainIcon "church power" MsgGainChurchPowerModifier)
+        ,("culture_conversion_cost"           , gainIcon "culture conversion cost" MsgGainCultureConvCost)
+        ,("development_cost"                  , gainIcon "development cost" MsgGainDevelCost)
+        ,("devotion"                          , gainIcon "devotion" MsgGainYearlyDevotion)
+        ,("global_autonomy"                   , gainIcon "global autonomy" MsgGainGlobalAutonomy)
+        ,("global_colonial_growth"            , gainIcon "global settler increase" MsgGainGlobalSettlers)
+        ,("global_missionary_strength"        , gainIcon "missionary strength" MsgGainMissionaryStrength)
+        ,("global_ship_repair"                , gainIcon "global ship repair" MsgGainGlobalShipRepair)
+        ,("global_ship_cost"                  , gainIcon "ship cost" MsgGainGlobalShipCost)
+        ,("global_tax_modifier"               , gainIcon "global tax modifier" MsgGainGlobalTaxModifier)
+        ,("global_tariffs"                    , gainIcon "global tariffs" MsgGainGlobalTariffs)
+        ,("inflation_reduction"               , gainIcon "inflation reduction" MsgGainYearlyInflationReduction)
+        ,("interest"                          , gainIcon "interest" MsgGainInterestPerAnnum)
+        ,("land_maintenance_modifier"         , gainIcon "land maintenance" MsgGainLandMaintenanceMod)
+        ,("leader_naval_manuever" {- sic -}   , gainIcon "naval forcelimit" MsgGainNavalLeaderManeuver)
+        ,("light_ship_power"                  , gainIcon "light ship combat ability" MsgGainLightShipPower)
+        ,("missionaries"                      , gainIcon "colonist" MsgGainMissionaries)
+        ,("global_heretic_missionary_strength", gainIcon "missionary strength vs heretics" MsgGainMissionaryStrengthVsHeretics)
+        ,("monthly_fervor_increase"           , gainIcon "monthly fervor" MsgGainMonthlyFervor)
+        ,("naval_forcelimit_modifier"         , gainIcon "naval forcelimit" MsgGainNavalForcelimitMod)
+        ,("navy_tradition"                    , gainIcon "navy tradition" MsgGainYearlyNavyTradition)
+        ,("papal_influence"                   , gainIcon "papal influence" MsgGainYearlyPapalInfluence)
+        ,("prestige"                          , gainIcon "prestige" MsgGainYearlyPrestige)
+        ,("production_efficiency"             , gainIcon "production efficiency" MsgGainProdEff)
+        ,("stability_cost_modifier"           , gainIcon "stability cost" MsgGainStabilityCost)
+        ,("tolerance_own"                     , gainIcon "tolerance of the true faith" MsgGainToleranceTrue)
         -- numbers
-        "add_patriarch_authority"  -> gainIcon "patriarch authority" MsgGainPatAuth stmt
-        "add_piety"                -> gainIcon "piety" MsgGainPiety stmt
-        "add_republican_tradition" -> gainIcon "republican tradition" MsgGainRepTrad stmt
+        ,("add_patriarch_authority" , gainIcon "patriarch authority" MsgGainPatAuth)
+        ,("add_piety"               , gainIcon "piety" MsgGainPiety)
+        ,("add_republican_tradition", gainIcon "republican tradition" MsgGainRepTrad)
         -- Percentages
-        "add_inflation"      -> gainIcon "inflation" MsgGainInflation stmt
-        "add_local_autonomy" -> gainIcon "local autonomy" MsgGainLocalAutonomy stmt
-        "add_reform_desire"  -> gainIcon "reform desire" MsgGainReformDesire stmt
-        "add_mercantilism"   -> gainIcon "mercantilism" MsgGainMercantilism stmt
+        ,("add_inflation"     , gainIcon "inflation" MsgGainInflation)
+        ,("add_local_autonomy", gainIcon "local autonomy" MsgGainLocalAutonomy)
+        ,("add_reform_desire" , gainIcon "reform desire" MsgGainReformDesire)
+        ,("add_mercantilism"  , gainIcon "mercantilism" MsgGainMercantilism)
         -- Special
-        "add_manpower" -> gainManpower stmt
-        "is_month" -> isMonth stmt
-        "range" -> range stmt
+        ,("add_manpower", gainManpower)
+        ,("is_month"    , isMonth)
+        ,("range"       , range)
         -- Modifiers
-        "add_country_modifier"      -> addModifier MsgCountryMod stmt
-        "add_permanent_province_modifier" -> addModifier MsgPermanentProvMod stmt
-        "add_province_modifier"     -> addModifier MsgProvMod stmt
-        "add_ruler_modifier"        -> addModifier MsgRulerMod stmt
-        "add_trade_modifier"        -> addModifier MsgTradeMod stmt
-        "has_country_modifier"      -> withLocAtom2 MsgCountryMod MsgHasModifier stmt
-        "has_province_modifier"     -> withLocAtom2 MsgProvMod MsgHasModifier stmt
-        "has_ruler_modifier"        -> withLocAtom2 MsgRulerMod MsgHasModifier stmt
-        "has_trade_modifier"        -> tradeMod stmt
-        "remove_country_modifier"   -> withLocAtom2 MsgCountryMod MsgRemoveModifier stmt
-        "remove_province_modifier"  -> withLocAtom2 MsgProvMod MsgRemoveModifier stmt
+        ,("add_country_modifier"           , addModifier MsgCountryMod)
+        ,("add_permanent_province_modifier", addModifier MsgPermanentProvMod)
+        ,("add_province_modifier"          , addModifier MsgProvMod)
+        ,("add_ruler_modifier"             , addModifier MsgRulerMod)
+        ,("add_trade_modifier"             , addModifier MsgTradeMod)
+        ,("has_country_modifier"           , withLocAtom2 MsgCountryMod MsgHasModifier)
+        ,("has_province_modifier"          , withLocAtom2 MsgProvMod MsgHasModifier)
+        ,("has_ruler_modifier"             , withLocAtom2 MsgRulerMod MsgHasModifier)
+        ,("has_trade_modifier"             , tradeMod)
+        ,("remove_country_modifier"        , withLocAtom2 MsgCountryMod MsgRemoveModifier)
+        ,("remove_province_modifier"       , withLocAtom2 MsgProvMod MsgRemoveModifier)
         -- Simple compound statements
         -- Note that "any" can mean "all" or "one or more" depending on context.
-        "and"  -> compoundMessage MsgAllOf stmt
-        "root" -> compoundMessage MsgOurCountry stmt
+        ,("and" , compoundMessage MsgAllOf)
+        ,("root", compoundMessage MsgOurCountry)
         -- These two are ugly, but without further analysis we can't know
         -- what it means.
-        "from" -> compoundMessage MsgFROM stmt
-        "prev" -> compoundMessage MsgPREV stmt
-        "not"  -> compoundMessage MsgNoneOf stmt
-        "or"   -> compoundMessage MsgAtLeastOneOf stmt
+        ,("from", compoundMessage MsgFROM)
+        ,("prev", compoundMessage MsgPREV)
+        ,("not" , compoundMessage MsgNoneOf)
+        ,("or"  , compoundMessage MsgAtLeastOneOf)
         -- There is a semantic distinction between "all" and "every",
         -- namely that the former means "this is true for all <type>" while
         -- the latter means "do this for every <type>." But their contexts
         -- are disjoint, so they can be presented the same way.
-        "all_owned_province"        -> compoundMessage MsgEveryOwnedProvince stmt
-        "any_active_trade_node"     -> compoundMessage MsgAnyActiveTradeNode stmt
-        "any_ally"                  -> compoundMessage MsgAnyAlly stmt
-        "any_core_country"          -> compoundMessage MsgAnyCoreCountry stmt
-        "any_country"               -> compoundMessage MsgAnyCountry stmt
-        "any_enemy_country"         -> compoundMessage MsgAnyEnemyCountry stmt
-        "any_known_country"         -> compoundMessage MsgAnyKnownCountry stmt
-        "any_neighbor_country"      -> compoundMessage MsgAnyNeighborCountry stmt
-        "any_neighbor_province"     -> compoundMessage MsgAnyNeighborProvince stmt
-        "any_owned_province"        -> compoundMessage MsgAnyOwnedProvince stmt
-        "any_rival_country"         -> compoundMessage MsgAnyRival stmt
-        "capital_scope"             -> compoundMessage MsgCapital stmt
-        "controller"                -> compoundMessage MsgController stmt
-        "emperor"                   -> compoundMessage MsgEmperor stmt
-        "every_country"             -> compoundMessage MsgEveryCountry stmt
-        "every_enemy_country"       -> compoundMessage MsgEveryEnemyCountry stmt
-        "every_known_country"       -> compoundMessage MsgEveryKnownCountry stmt
-        "every_neighbor_country"    -> compoundMessage MsgEveryNeighborCountry stmt
-        "every_neighbor_province"   -> compoundMessage MsgEveryNeighborProvince stmt
-        "every_owned_province"      -> compoundMessage MsgEveryOwnedProvince stmt
-        "every_province"            -> compoundMessage MsgEveryProvince stmt
-        "every_rival_country"       -> compoundMessage MsgEveryRival stmt
-        "every_subject_country"     -> compoundMessage MsgEverySubject stmt
-        "hidden_effect"             -> compoundMessage MsgHiddenEffect stmt
-        "if"                        -> compoundMessage MsgIf stmt
-        "limit"                     -> compoundMessage MsgLimit stmt
-        "owner"                     -> compoundMessage MsgOwner stmt
-        "random_active_trade_node"  -> compoundMessage MsgRandomActiveTradeNode stmt
-        "random_ally"               -> compoundMessage MsgRandomAlly stmt
-        "random_core_country"       -> compoundMessage MsgRandomCoreCountry stmt
-        "random_country"            -> compoundMessage MsgRandomCountry stmt
-        "random_known_country"      -> compoundMessage MsgRandomKnownCountry stmt
-        "random_list"               -> compoundMessage MsgRandom stmt
-        "random_neighbor_country"   -> compoundMessage MsgRandomNeighborCountry stmt
-        "random_neighbor_province"  -> compoundMessage MsgRandomNeighborProvince stmt
-        "random_owned_province"     -> compoundMessage MsgRandomOwnedProvince stmt
-        "random_province"           -> compoundMessage MsgRandomProvince stmt
-        "random_rival_country"      -> compoundMessage MsgRandomRival stmt
+        ,("all_owned_province"      , compoundMessage MsgEveryOwnedProvince)
+        ,("any_active_trade_node"   , compoundMessage MsgAnyActiveTradeNode)
+        ,("any_ally"                , compoundMessage MsgAnyAlly)
+        ,("any_core_country"        , compoundMessage MsgAnyCoreCountry)
+        ,("any_country"             , compoundMessage MsgAnyCountry)
+        ,("any_enemy_country"       , compoundMessage MsgAnyEnemyCountry)
+        ,("any_known_country"       , compoundMessage MsgAnyKnownCountry)
+        ,("any_neighbor_country"    , compoundMessage MsgAnyNeighborCountry)
+        ,("any_neighbor_province"   , compoundMessage MsgAnyNeighborProvince)
+        ,("any_owned_province"      , compoundMessage MsgAnyOwnedProvince)
+        ,("any_rival_country"       , compoundMessage MsgAnyRival)
+        ,("capital_scope"           , compoundMessage MsgCapital)
+        ,("controller"              , compoundMessage MsgController)
+        ,("emperor"                 , compoundMessage MsgEmperor)
+        ,("every_country"           , compoundMessage MsgEveryCountry)
+        ,("every_enemy_country"     , compoundMessage MsgEveryEnemyCountry)
+        ,("every_known_country"     , compoundMessage MsgEveryKnownCountry)
+        ,("every_neighbor_country"  , compoundMessage MsgEveryNeighborCountry)
+        ,("every_neighbor_province" , compoundMessage MsgEveryNeighborProvince)
+        ,("every_owned_province"    , compoundMessage MsgEveryOwnedProvince)
+        ,("every_province"          , compoundMessage MsgEveryProvince)
+        ,("every_rival_country"     , compoundMessage MsgEveryRival)
+        ,("every_subject_country"   , compoundMessage MsgEverySubject)
+        ,("hidden_effect"           , compoundMessage MsgHiddenEffect)
+        ,("if"                      , compoundMessage MsgIf)
+        ,("limit"                   , compoundMessage MsgLimit)
+        ,("owner"                   , compoundMessage MsgOwner)
+        ,("random_active_trade_node", compoundMessage MsgRandomActiveTradeNode)
+        ,("random_ally"             , compoundMessage MsgRandomAlly)
+        ,("random_core_country"     , compoundMessage MsgRandomCoreCountry)
+        ,("random_country"          , compoundMessage MsgRandomCountry)
+        ,("random_known_country"    , compoundMessage MsgRandomKnownCountry)
+        ,("random_list"             , compoundMessage MsgRandom)
+        ,("random_neighbor_country" , compoundMessage MsgRandomNeighborCountry)
+        ,("random_neighbor_province", compoundMessage MsgRandomNeighborProvince)
+        ,("random_owned_province"   , compoundMessage MsgRandomOwnedProvince)
+        ,("random_province"         , compoundMessage MsgRandomProvince)
+        ,("random_rival_country"    , compoundMessage MsgRandomRival)
         -- Random
-        "random" -> random stmt
+        ,("random" , random)
         -- Simple generic statements (RHS is a localizable atom)
-        "add_great_project" -> withLocAtom MsgStartConstructingGreatProject stmt
-        "change_government" -> withLocAtom MsgChangeGovernment stmt
-        "continent"         -> withLocAtom MsgContinentIs stmt
-        "change_culture"    -> withLocAtom MsgChangeCulture stmt
-        "change_primary_culture" -> withLocAtom MsgChangePrimaryCulture stmt
-        "change_province_name" -> withLocAtom MsgChangeProvinceName stmt -- will usually fail localization
-        "colonial_region"   -> withLocAtom MsgColonialRegion stmt
-        "culture"           -> withLocAtom MsgCultureIs stmt
-        "culture_group"     -> withLocAtom MsgCultureIsGroup stmt
-        "dynasty"           -> withLocAtom MsgRulerIsDynasty stmt
-        "end_disaster"      -> withLocAtom MsgDisasterEnds stmt
-        "government"        -> withLocAtom MsgGovernmentIs stmt
-        "has_advisor"       -> withLocAtom MsgHasAdvisor stmt
-        "has_active_policy" -> withLocAtom MsgHasActivePolicy stmt
-        "has_construction"  -> withLocAtom MsgConstructing stmt
-        "has_disaster"      -> withLocAtom MsgDisasterOngoing stmt
-        "has_great_project" -> withLocAtom MsgConstructingGreatProject stmt
-        "has_idea"          -> withLocAtom MsgHasIdea stmt
-        "has_terrain"       -> withLocAtom MsgHasTerrain stmt 
-        "infantry"          -> withLocAtom MsgInfantrySpawns stmt
-        "kill_advisor"      -> withLocAtom MsgAdvisorDies stmt
-        "primary_culture"   -> withLocAtom MsgPrimaryCultureIs stmt
-        "region"            -> withLocAtom MsgRegionIs stmt
-        "remove_advisor"    -> withLocAtom MsgLoseAdvisor stmt
-        "rename_capital"    -> withLocAtom MsgRenameCapital stmt -- will usually fail localization
+        ,("add_great_project"     , withLocAtom MsgStartConstructingGreatProject)
+        ,("change_government"     , withLocAtom MsgChangeGovernment)
+        ,("continent"             , withLocAtom MsgContinentIs)
+        ,("change_culture"        , withLocAtom MsgChangeCulture)
+        ,("change_primary_culture", withLocAtom MsgChangePrimaryCulture)
+        ,("change_province_name"  , withLocAtom MsgChangeProvinceName) -- will usually fail localization
+        ,("colonial_region"       , withLocAtom MsgColonialRegion)
+        ,("culture"               , withLocAtom MsgCultureIs)
+        ,("culture_group"         , withLocAtom MsgCultureIsGroup)
+        ,("dynasty"               , withLocAtom MsgRulerIsDynasty)
+        ,("end_disaster"          , withLocAtom MsgDisasterEnds)
+        ,("government"            , withLocAtom MsgGovernmentIs)
+        ,("has_advisor"           , withLocAtom MsgHasAdvisor)
+        ,("has_active_policy"     , withLocAtom MsgHasActivePolicy)
+        ,("has_construction"      , withLocAtom MsgConstructing)
+        ,("has_disaster"          , withLocAtom MsgDisasterOngoing)
+        ,("has_great_project"     , withLocAtom MsgConstructingGreatProject)
+        ,("has_idea"              , withLocAtom MsgHasIdea)
+        ,("has_terrain"           , withLocAtom MsgHasTerrain )
+        ,("infantry"              , withLocAtom MsgInfantrySpawns)
+        ,("kill_advisor"          , withLocAtom MsgAdvisorDies)
+        ,("primary_culture"       , withLocAtom MsgPrimaryCultureIs)
+        ,("region"                , withLocAtom MsgRegionIs)
+        ,("remove_advisor"        , withLocAtom MsgLoseAdvisor)
+        ,("rename_capital"        , withLocAtom MsgRenameCapital) -- will usually fail localization
         -- RHS is a province ID
-        "capital"            -> withProvince MsgCapitalIs stmt
-        "owns"               -> withProvince MsgOwns stmt
-        "owns_core_province" -> withProvince MsgOwnsCore stmt
-        "owns_or_vassal_of"  -> withProvince MsgOwnsOrVassal stmt
-        "province_id"        -> withProvince MsgProvinceIs stmt
-        "set_capital"        -> withProvince MsgSetCapital stmt
+        ,("capital"           , withProvince MsgCapitalIs)
+        ,("owns"              , withProvince MsgOwns)
+        ,("owns_core_province", withProvince MsgOwnsCore)
+        ,("owns_or_vassal_of" , withProvince MsgOwnsOrVassal)
+        ,("province_id"       , withProvince MsgProvinceIs)
+        ,("set_capital"       , withProvince MsgSetCapital)
         -- RHS is a flag OR a province ID
-        "add_permanent_claim" -> withFlagOrProvince MsgGainPermanentClaimCountry MsgGainPermanentClaimProvince stmt
-        "has_discovered"      -> withFlagOrProvince MsgHasDiscovered MsgHasDiscovered stmt
-        "remove_core"         -> withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince stmt
+        ,("add_permanent_claim", withFlagOrProvince MsgGainPermanentClaimCountry MsgGainPermanentClaimProvince)
+        ,("has_discovered"     , withFlagOrProvince MsgHasDiscovered MsgHasDiscovered)
+        ,("remove_core"        , withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince)
         -- RHS is an advisor ID (TODO: parse advisor files)
-        "advisor_exists"      -> numeric MsgAdvisorExists stmt
-        "is_advisor_employed" -> numeric MsgAdvisorIsEmployed stmt
+        ,("advisor_exists"     , numeric MsgAdvisorExists)
+        ,("is_advisor_employed", numeric MsgAdvisorIsEmployed)
         -- Simple generic statements (typewriter face)
-        "clr_country_flag"  -> withNonlocAtom2 MsgCountryFlag MsgClearFlag stmt
-        "clr_province_flag" -> withNonlocAtom2 MsgProvinceFlag MsgClearFlag stmt
-        "clr_ruler_flag"    -> withNonlocAtom2 MsgRulerFlag MsgClearFlag stmt
-        "has_country_flag"  -> withNonlocAtom2 MsgCountryFlag MsgHasFlag stmt
-        "has_global_flag"   -> withNonlocAtom2 MsgGlobalFlag MsgHasFlag stmt
-        "has_province_flag" -> withNonlocAtom2 MsgProvinceFlag MsgHasFlag stmt
-        "has_ruler_flag"    -> withNonlocAtom2 MsgRulerFlag MsgHasFlag stmt
-        "set_country_flag"  -> withNonlocAtom2 MsgCountryFlag MsgSetFlag stmt
-        "set_global_flag"   -> withNonlocAtom2 MsgGlobalFlag MsgSetFlag stmt
-        "set_province_flag" -> withNonlocAtom2 MsgProvinceFlag MsgSetFlag stmt
-        "set_ruler_flag"    -> withNonlocAtom2 MsgRulerFlag MsgSetFlag stmt
+        ,("clr_country_flag" , withNonlocAtom2 MsgCountryFlag MsgClearFlag)
+        ,("clr_province_flag", withNonlocAtom2 MsgProvinceFlag MsgClearFlag)
+        ,("clr_ruler_flag"   , withNonlocAtom2 MsgRulerFlag MsgClearFlag)
+        ,("has_country_flag" , withNonlocAtom2 MsgCountryFlag MsgHasFlag)
+        ,("has_global_flag"  , withNonlocAtom2 MsgGlobalFlag MsgHasFlag)
+        ,("has_province_flag", withNonlocAtom2 MsgProvinceFlag MsgHasFlag)
+        ,("has_ruler_flag"   , withNonlocAtom2 MsgRulerFlag MsgHasFlag)
+        ,("set_country_flag" , withNonlocAtom2 MsgCountryFlag MsgSetFlag)
+        ,("set_global_flag"  , withNonlocAtom2 MsgGlobalFlag MsgSetFlag)
+        ,("set_province_flag", withNonlocAtom2 MsgProvinceFlag MsgSetFlag)
+        ,("set_ruler_flag"   , withNonlocAtom2 MsgRulerFlag MsgSetFlag)
         -- Simple generic statements with icon
-        "advisor"            -> withLocAtomIcon MsgHasAdvisorType stmt
-        "change_technology_group" -> withLocAtomIcon MsgChangeTechGroup stmt
-        "change_trade_goods" -> withLocAtomIcon MsgChangeGoods stmt
-        "change_unit_type"   -> withLocAtomIcon MsgChangeUnitType stmt
-        "create_advisor"     -> withLocAtomIcon MsgCreateAdvisor stmt
-        "dominant_religion"  -> withLocAtomIcon MsgDominantReligion stmt
-        "has_building"       -> withLocAtomIcon MsgHasBuilding stmt
-        "has_idea_group"     -> withLocAtomIcon MsgHasIdeaGroup stmt -- FIXME: icon fails
-        "full_idea_group"    -> withLocAtomIcon MsgFullIdeaGroup stmt
-        "hre_religion"       -> withLocAtomIcon MsgHREReligion stmt
-        "is_religion_enabled" -> withLocAtomIcon MsgReligionEnabled stmt
-        "remove_estate"      -> withLocAtomIcon MsgRemoveFromEstate stmt 
-        "secondary_religion" -> withLocAtomIcon MsgSecondaryReligion stmt
-        "set_hre_heretic_religion" -> withLocAtomIcon MsgSetHREHereticReligion stmt
-        "set_hre_religion"   -> withLocAtomIcon MsgSetHREReligion stmt
-        "technology_group"   -> withLocAtomIcon MsgTechGroup stmt
-        "trade_goods"        -> withLocAtomIcon MsgProducesGoods stmt
-        "has_estate"         -> withLocAtomIcon MsgHasEstate stmt -- Country scope "estate exists", province "assigned to estate"
-        "set_estate"         -> withLocAtomIcon MsgAssignToEstate stmt
-        "is_monarch_leader"  -> withLocAtomAndIcon "ruler general" MsgRulerIsGeneral stmt
+        ,("advisor"                 , withLocAtomIcon MsgHasAdvisorType)
+        ,("change_technology_group" , withLocAtomIcon MsgChangeTechGroup)
+        ,("change_trade_goods"      , withLocAtomIcon MsgChangeGoods)
+        ,("change_unit_type"        , withLocAtomIcon MsgChangeUnitType)
+        ,("create_advisor"          , withLocAtomIcon MsgCreateAdvisor)
+        ,("dominant_religion"       , withLocAtomIcon MsgDominantReligion)
+        ,("has_building"            , withLocAtomIcon MsgHasBuilding)
+        ,("has_idea_group"          , withLocAtomIcon MsgHasIdeaGroup) -- FIXME: icon fails
+        ,("full_idea_group"         , withLocAtomIcon MsgFullIdeaGroup)
+        ,("hre_religion"            , withLocAtomIcon MsgHREReligion)
+        ,("is_religion_enabled"     , withLocAtomIcon MsgReligionEnabled)
+        ,("remove_estate"           , withLocAtomIcon MsgRemoveFromEstate )
+        ,("secondary_religion"      , withLocAtomIcon MsgSecondaryReligion)
+        ,("set_hre_heretic_religion", withLocAtomIcon MsgSetHREHereticReligion)
+        ,("set_hre_religion"        , withLocAtomIcon MsgSetHREReligion)
+        ,("technology_group"        , withLocAtomIcon MsgTechGroup)
+        ,("trade_goods"             , withLocAtomIcon MsgProducesGoods)
+        ,("has_estate"              , withLocAtomIcon MsgHasEstate) -- Country scope "estate exists", province "assigned to estate"
+        ,("set_estate"              , withLocAtomIcon MsgAssignToEstate)
+        ,("is_monarch_leader"       , withLocAtomAndIcon "ruler general" MsgRulerIsGeneral)
         -- Simple generic statements with flag
-        "alliance_with"      -> withFlag MsgAlliedWith stmt
-        "cede_province"      -> withFlag MsgCedeProvinceTo stmt
-        "change_tag"         -> withFlag MsgChangeTag stmt
-        "controlled_by"      -> withFlag MsgControlledBy stmt
-        "defensive_war_with" -> withFlag MsgDefensiveWarAgainst stmt
-        "discover_country"   -> withFlag MsgDiscoverCountry stmt
-        "add_claim"          -> withFlag MsgGainClaim stmt
-        "create_alliance"    -> withFlag MsgCreateAlliance stmt
-        "galley"             -> withFlag MsgGalley stmt
-        "heavy_ship"         -> withFlag MsgHeavyShip stmt
-        "inherit"            -> withFlag MsgInherit stmt
-        "is_neighbor_of"     -> withFlag MsgNeighbors stmt
-        "is_league_enemy"    -> withFlag MsgIsLeagueEnemy stmt
-        "is_subject_of"      -> withFlag MsgIsSubjectOf stmt
-        "junior_union_with"  -> withFlag MsgJuniorUnionWith stmt
-        "light_ship"         -> withFlag MsgLightShip stmt
-        "marriage_with"      -> withFlag MsgRoyalMarriageWith stmt
-        "offensive_war_with" -> withFlag MsgOffensiveWarAgainst stmt
-        "overlord_of"        -> withFlag MsgOverlordOf stmt
-        "owned_by"           -> withFlag MsgOwnedBy stmt
-        "release"            -> withFlag MsgReleaseVassal stmt
-        "sieged_by"          -> withFlag MsgUnderSiegeBy stmt
-        "is_strongest_trade_power" -> withFlag MsgStrongestTradePower stmt
-        "tag"                -> withFlag MsgCountryIs stmt
-        "truce_with"         -> withFlag MsgTruceWith stmt
-        "vassal_of"          -> withFlag MsgVassalOf stmt
-        "war_with"           -> withFlag MsgAtWarWith stmt
-        "white_peace"        -> withFlag MsgMakeWhitePeace stmt
+        ,("alliance_with"           , withFlag MsgAlliedWith)
+        ,("cede_province"           , withFlag MsgCedeProvinceTo)
+        ,("change_tag"              , withFlag MsgChangeTag)
+        ,("controlled_by"           , withFlag MsgControlledBy)
+        ,("defensive_war_with"      , withFlag MsgDefensiveWarAgainst)
+        ,("discover_country"        , withFlag MsgDiscoverCountry)
+        ,("add_claim"               , withFlag MsgGainClaim)
+        ,("create_alliance"         , withFlag MsgCreateAlliance)
+        ,("galley"                  , withFlag MsgGalley)
+        ,("heavy_ship"              , withFlag MsgHeavyShip)
+        ,("inherit"                 , withFlag MsgInherit)
+        ,("is_neighbor_of"          , withFlag MsgNeighbors)
+        ,("is_league_enemy"         , withFlag MsgIsLeagueEnemy)
+        ,("is_subject_of"           , withFlag MsgIsSubjectOf)
+        ,("junior_union_with"       , withFlag MsgJuniorUnionWith)
+        ,("light_ship"              , withFlag MsgLightShip)
+        ,("marriage_with"           , withFlag MsgRoyalMarriageWith)
+        ,("offensive_war_with"      , withFlag MsgOffensiveWarAgainst)
+        ,("overlord_of"             , withFlag MsgOverlordOf)
+        ,("owned_by"                , withFlag MsgOwnedBy)
+        ,("release"                 , withFlag MsgReleaseVassal)
+        ,("sieged_by"               , withFlag MsgUnderSiegeBy)
+        ,("is_strongest_trade_power", withFlag MsgStrongestTradePower)
+        ,("tag"                     , withFlag MsgCountryIs)
+        ,("truce_with"              , withFlag MsgTruceWith)
+        ,("vassal_of"               , withFlag MsgVassalOf)
+        ,("war_with"                , withFlag MsgAtWarWith)
+        ,("white_peace"             , withFlag MsgMakeWhitePeace)
         -- Simple generic statements with flag or "yes"/"no"
-        "exists"            -> withFlagOrBool MsgExists MsgCountryExists stmt
+        ,("exists", withFlagOrBool MsgExists MsgCountryExists)
         -- Statements that may be an icon, a flag, or a pronoun (such as ROOT)
         -- Boolean argument is whether to emit an icon.
-        "religion"          -> iconOrFlag MsgReligion MsgSameReligion stmt
-        "religion_group"    -> iconOrFlag MsgReligionGroup MsgSameReligionGroup stmt
-        "change_religion"   -> iconOrFlag MsgChangeReligion MsgChangeSameReligion stmt
+        ,("religion"       , iconOrFlag MsgReligion MsgSameReligion)
+        ,("religion_group" , iconOrFlag MsgReligionGroup MsgSameReligionGroup)
+        ,("change_religion", iconOrFlag MsgChangeReligion MsgChangeSameReligion)
         -- Statements that may be either a tag or a province
-        "is_core"  -> tagOrProvince MsgIsCoreOf MsgHasCoreOn stmt
-        "is_claim" -> tagOrProvince MsgHasClaim MsgHasClaimOn stmt
+        ,("is_core" , tagOrProvince MsgIsCoreOf MsgHasCoreOn)
+        ,("is_claim", tagOrProvince MsgHasClaim MsgHasClaimOn)
         -- Boolean statements
-        "ai"                     -> withBool MsgIsAIControlled stmt
-        "has_any_disaster"       -> withBool MsgHasAnyDisaster stmt
-        "has_cardinal"           -> withBool MsgHasCardinal stmt
-        "has_factions"           -> withBool MsgHasFactions stmt
-        "has_heir"               -> withBool MsgHasHeir stmt
-        "has_owner_culture"      -> withBool MsgHasOwnerCulture stmt
-        "has_owner_religion"     -> withBool MsgHasOwnerReligion stmt
-        "has_parliament"         -> withBool MsgHasParliament stmt
-        "has_port"               -> withBool MsgHasPort stmt
-        "has_seat_in_parliament" -> withBool MsgHasSeatInParliament stmt
-        "has_regency"            -> withBool MsgIsInRegency stmt
-        "has_siege"              -> withBool MsgUnderSiege stmt
-        "has_secondary_religion" -> withBool MsgHasSecondaryReligion stmt
-        "has_truce"              -> withBool MsgHasTruce stmt
-        "has_wartaxes"           -> withBool MsgHasWarTaxes stmt
-        "hre_leagues_enabled"    -> withBool MsgHRELeaguesEnabled stmt
-        "hre_religion_locked"    -> withBool MsgHREReligionLocked stmt
-        "hre_religion_treaty"    -> withBool MsgHREWestphalia stmt
-        "is_at_war"              -> withBool MsgAtWar stmt
-        "is_bankrupt"            -> withBool MsgIsBankrupt stmt
-        "is_capital"             -> withBool MsgIsCapital stmt
-        "is_city"                -> withBool MsgIsCity stmt
-        "is_colony"              -> withBool MsgIsColony stmt
-        "is_colonial_nation"     -> withBool MsgIsColonialNation stmt
-        "is_defender_of_faith"   -> withBool MsgIsDefenderOfFaith stmt
-        "is_former_colonial_nation" -> withBool MsgIsFormerColonialNation stmt
-        "is_elector"             -> withBool MsgIsElector stmt
-        "is_emperor"             -> withBool MsgIsEmperor stmt
-        "is_female"              -> withBool MsgIsFemale stmt
-        "is_in_league_war"       -> withBool MsgIsInLeagueWar stmt
-        "is_lesser_in_union"     -> withBool MsgIsLesserInUnion stmt
-        "is_looted"              -> withBool MsgIsLooted stmt
-        "is_nomad"               -> withBool MsgIsNomad stmt
-        "is_overseas"            -> withBool MsgIsOverseas stmt
-        "is_part_of_hre"         -> withBool MsgIsPartOfHRE stmt
-        "is_playing_custom_nation" -> withBool MsgIsCustomNation stmt
-        "is_random_new_world"    -> withBool MsgRandomNewWorld stmt
-        "is_reformation_center"  -> withBool MsgIsCenterOfReformation stmt
-        "is_religion_reformed"   -> withBool MsgReligionReformed stmt
-        "is_sea"                 -> withBool MsgIsSea stmt -- province or trade node
-        "is_subject"             -> withBool MsgIsSubject stmt
-        "is_tribal"              -> withBool MsgIsTribal stmt
-        "luck"                   -> withBool MsgLucky stmt
-        "normal_or_historical_nations" -> withBool MsgNormalOrHistoricalNations stmt
-        "papacy_active"          -> withBool MsgPapacyIsActive stmt
-        "primitives"             -> withBool MsgPrimitives stmt
-        "set_hre_religion_locked" -> withBool MsgSetHREReligionLocked stmt
-        "set_in_empire"          -> withBool MsgSetInEmpire stmt
-        "unit_in_siege"          -> withBool MsgUnderSiege stmt -- duplicate?
-        "was_player"             -> withBool MsgHasBeenPlayer stmt
+        ,("ai"                          , withBool MsgIsAIControlled)
+        ,("has_any_disaster"            , withBool MsgHasAnyDisaster)
+        ,("has_cardinal"                , withBool MsgHasCardinal)
+        ,("has_factions"                , withBool MsgHasFactions)
+        ,("has_heir"                    , withBool MsgHasHeir)
+        ,("has_owner_culture"           , withBool MsgHasOwnerCulture)
+        ,("has_owner_religion"          , withBool MsgHasOwnerReligion)
+        ,("has_parliament"              , withBool MsgHasParliament)
+        ,("has_port"                    , withBool MsgHasPort)
+        ,("has_seat_in_parliament"      , withBool MsgHasSeatInParliament)
+        ,("has_regency"                 , withBool MsgIsInRegency)
+        ,("has_siege"                   , withBool MsgUnderSiege)
+        ,("has_secondary_religion"      , withBool MsgHasSecondaryReligion)
+        ,("has_truce"                   , withBool MsgHasTruce)
+        ,("has_wartaxes"                , withBool MsgHasWarTaxes)
+        ,("hre_leagues_enabled"         , withBool MsgHRELeaguesEnabled)
+        ,("hre_religion_locked"         , withBool MsgHREReligionLocked)
+        ,("hre_religion_treaty"         , withBool MsgHREWestphalia)
+        ,("is_at_war"                   , withBool MsgAtWar)
+        ,("is_bankrupt"                 , withBool MsgIsBankrupt)
+        ,("is_capital"                  , withBool MsgIsCapital)
+        ,("is_city"                     , withBool MsgIsCity)
+        ,("is_colony"                   , withBool MsgIsColony)
+        ,("is_colonial_nation"          , withBool MsgIsColonialNation)
+        ,("is_defender_of_faith"        , withBool MsgIsDefenderOfFaith)
+        ,("is_former_colonial_nation"   , withBool MsgIsFormerColonialNation)
+        ,("is_elector"                  , withBool MsgIsElector)
+        ,("is_emperor"                  , withBool MsgIsEmperor)
+        ,("is_female"                   , withBool MsgIsFemale)
+        ,("is_in_league_war"            , withBool MsgIsInLeagueWar)
+        ,("is_lesser_in_union"          , withBool MsgIsLesserInUnion)
+        ,("is_looted"                   , withBool MsgIsLooted)
+        ,("is_nomad"                    , withBool MsgIsNomad)
+        ,("is_overseas"                 , withBool MsgIsOverseas)
+        ,("is_part_of_hre"              , withBool MsgIsPartOfHRE)
+        ,("is_playing_custom_nation"    , withBool MsgIsCustomNation)
+        ,("is_random_new_world"         , withBool MsgRandomNewWorld)
+        ,("is_reformation_center"       , withBool MsgIsCenterOfReformation)
+        ,("is_religion_reformed"        , withBool MsgReligionReformed)
+        ,("is_sea"                      , withBool MsgIsSea) -- province or trade node
+        ,("is_subject"                  , withBool MsgIsSubject)
+        ,("is_tribal"                   , withBool MsgIsTribal)
+        ,("luck"                        , withBool MsgLucky)
+        ,("normal_or_historical_nations", withBool MsgNormalOrHistoricalNations)
+        ,("papacy_active"               , withBool MsgPapacyIsActive)
+        ,("primitives"                  , withBool MsgPrimitives)
+        ,("set_hre_religion_locked"     , withBool MsgSetHREReligionLocked)
+        ,("set_in_empire"               , withBool MsgSetInEmpire)
+        ,("unit_in_siege"               , withBool MsgUnderSiege) -- duplicate?
+        ,("was_player"                  , withBool MsgHasBeenPlayer)
         -- Numeric statements
-        "colonysize"                -> numeric MsgColonySettlers stmt
-        "had_recent_war"            -> numeric MsgWasAtWar stmt
-        "heir_age"                  -> numeric MsgHeirAge stmt
-        "is_year"                   -> numeric MsgYearIs stmt
-        "num_of_colonial_subjects"  -> numeric MsgNumColonialSubjects stmt
-        "num_of_colonies"           -> numeric MsgNumColonies stmt
-        "num_of_loans"              -> numeric MsgNumLoans stmt
-        "num_of_mercenaries"        -> numeric MsgNumMercs stmt
-        "num_of_ports"              -> numeric MsgNumPorts stmt
-        "num_of_rebel_armies"       -> numeric MsgNumRebelArmies stmt
-        "num_of_rebel_controlled_provinces" -> numeric MsgNumRebelControlledProvinces stmt
-        "num_of_trade_embargos"     -> numeric MsgNumEmbargoes stmt
-        "revolt_percentage"         -> numeric MsgRevoltPercentage stmt
-        "trade_income_percentage"   -> numeric MsgTradeIncomePercentage stmt
-        "units_in_province"         -> numeric MsgUnitsInProvince stmt
+        ,("colonysize"                       , numeric MsgColonySettlers)
+        ,("had_recent_war"                   , numeric MsgWasAtWar)
+        ,("heir_age"                         , numeric MsgHeirAge)
+        ,("is_year"                          , numeric MsgYearIs)
+        ,("num_of_colonial_subjects"         , numeric MsgNumColonialSubjects)
+        ,("num_of_colonies"                  , numeric MsgNumColonies)
+        ,("num_of_loans"                     , numeric MsgNumLoans)
+        ,("num_of_mercenaries"               , numeric MsgNumMercs)
+        ,("num_of_ports"                     , numeric MsgNumPorts)
+        ,("num_of_rebel_armies"              , numeric MsgNumRebelArmies)
+        ,("num_of_rebel_controlled_provinces", numeric MsgNumRebelControlledProvinces)
+        ,("num_of_trade_embargos"            , numeric MsgNumEmbargoes)
+        ,("revolt_percentage"                , numeric MsgRevoltPercentage)
+        ,("trade_income_percentage"          , numeric MsgTradeIncomePercentage)
+        ,("units_in_province"                , numeric MsgUnitsInProvince)
         -- Statements that may be numeric or a tag
-        "num_of_cities"             -> numericOrTag MsgNumCities MsgNumCitiesThan stmt
+        ,("num_of_cities", numericOrTag MsgNumCities MsgNumCitiesThan)
         -- Signed numeric statements
-        "tolerance_to_this" -> numeric MsgToleranceToThis stmt
+        ,("tolerance_to_this", numeric MsgToleranceToThis)
         -- Special cases
-        "legitimacy_or_horde_unity" -> numeric MsgLegitimacyOrHordeUnity stmt
+        ,("legitimacy_or_horde_unity", numeric MsgLegitimacyOrHordeUnity)
         -- Statements of numeric quantities with icons
-        "add_treasury"          -> numericIcon "ducats" MsgAddTreasury stmt
-        "add_unrest"            -> numericIcon "local unrest" MsgAddLocalUnrest stmt
-        "add_years_of_income"   -> numericIcon "ducats" MsgAddYearsOfIncome stmt
-        "adm"                   -> numericIcon "adm" MsgRulerADM stmt
-        "adm_power"             -> numericIcon "adm" MsgHasADM stmt
-        "adm_tech"              -> numericIcon "adm tech" MsgADMTech stmt
-        "army_tradition"        -> numericIcon "army tradition" MsgArmyTradition stmt
-        "base_manpower"         -> numericIcon "navy tradition" MsgBaseManpower stmt
-        "base_production"       -> numericIcon "base production" MsgBaseProduction stmt
-        "base_tax"              -> numericIcon "base tax" MsgBaseTax stmt
-        "blockade"              -> numericIcon "blockade" MsgBlockade stmt
-        "create_admiral"        -> numericIcon "admiral" MsgCreateAdmiral stmt
-        "create_conquistador"   -> numericIcon "conquistador" MsgCreateConquistador stmt
-        "create_explorer"       -> numericIcon "explorer" MsgCreateExplorer stmt
-        "create_general"        -> numericIcon "general" MsgCreateGeneral stmt
-        "development"           -> numericIcon "development" MsgDevelopment stmt
-        "dip"                   -> numericIcon "dip" MsgRulerDIP stmt
-        "dip_power"             -> numericIcon "adm" MsgHasDIP stmt
-        "dip_tech"              -> numericIcon "dip tech" MsgDIPTech stmt
-        "fort_level"            -> numericIcon "fort level" MsgFortLevel stmt
-        "gold_income_percentage" -> numericIcon "gold" MsgGoldIncomePercentage stmt
-        "horde_unity"           -> numericIcon "horde unity" MsgHordeUnity stmt
-        "inflation"             -> numericIcon "inflation" MsgInflation stmt
-        "karma"                 -> numericIcon "high karma" MsgKarma stmt
-        "legitimacy"            -> numericIcon "legitimacy" MsgLegitimacy stmt
-        "local_autonomy"        -> numericIcon "local autonomy" MsgLocalAutonomy stmt
-        "manpower_percentage"   -> numericIcon "manpower" MsgManpowerPercentage stmt
-        "mercantilism"          -> numericIcon "mercantilism" MsgMercantilism stmt
-        "mil"                   -> numericIcon "mil" MsgRulerMIL stmt
-        "mil_power"             -> numericIcon "adm" MsgHasMIL stmt
-        "mil_tech"              -> numericIcon "mil tech" MsgMILTech stmt
-        "monthly_income"        -> numericIcon "ducats" MsgMonthlyIncome stmt
-        "naval_forcelimit"      -> numericIcon "naval force limit" MsgNavalForcelimit stmt
-        "num_of_allies"         -> numericIcon "alliance" MsgNumAllies stmt
-        "num_of_cardinals"      -> numericIcon "cardinal" MsgNumCardinals stmt
-        "num_of_colonists"      -> numericIcon "colonists" MsgNumColonists stmt
-        "num_of_heavy_ship"     -> numericIcon "heavy ship" MsgNumHeavyShips stmt
-        "num_of_merchants"      -> numericIcon "merchant" MsgNumMerchants stmt
-        "num_of_royal_marriages" -> numericIcon "royal marriage" MsgNumRoyalMarriages stmt
-        "overextension_percentage" -> numericIcon "overextension" MsgOverextension stmt
-        "reform_desire"         -> numericIcon "reform desire" MsgReformDesire stmt
-        "religious_unity"       -> numericIcon "religious unity" MsgReligiousUnity stmt
-        "republican_tradition"  -> numericIcon "republican tradition" MsgRepTrad stmt
-        "stability"             -> numericIcon "stability" MsgStability stmt
-        "total_development"     -> numericIcon "development" MsgTotalDevelopment stmt
-        "total_number_of_cardinals" -> numericIcon "cardinal" MsgTotalCardinals stmt
-        "trade_efficiency"      -> numericIcon "trade efficiency" MsgTradeEfficiency stmt
-        "treasury"              -> numericIcon "ducats" MsgHasDucats stmt
-        "unrest"               -> numericIcon "unrest" MsgUnrest stmt
-        "war_exhaustion"       -> numericIcon "war exhaustion" MsgWarExhaustion stmt
-        "war_score"            -> numericIcon "war score" MsgWarScore stmt
-        "years_of_income"      -> numericIcon "ducats" MsgYearsOfIncome stmt
+        ,("add_treasury"             , numericIcon "ducats" MsgAddTreasury)
+        ,("add_unrest"               , numericIcon "local unrest" MsgAddLocalUnrest)
+        ,("add_years_of_income"      , numericIcon "ducats" MsgAddYearsOfIncome)
+        ,("adm"                      , numericIcon "adm" MsgRulerADM)
+        ,("adm_power"                , numericIcon "adm" MsgHasADM)
+        ,("adm_tech"                 , numericIcon "adm tech" MsgADMTech)
+        ,("army_tradition"           , numericIcon "army tradition" MsgArmyTradition)
+        ,("base_manpower"            , numericIcon "navy tradition" MsgBaseManpower)
+        ,("base_production"          , numericIcon "base production" MsgBaseProduction)
+        ,("base_tax"                 , numericIcon "base tax" MsgBaseTax)
+        ,("blockade"                 , numericIcon "blockade" MsgBlockade)
+        ,("create_admiral"           , numericIcon "admiral" MsgCreateAdmiral)
+        ,("create_conquistador"      , numericIcon "conquistador" MsgCreateConquistador)
+        ,("create_explorer"          , numericIcon "explorer" MsgCreateExplorer)
+        ,("create_general"           , numericIcon "general" MsgCreateGeneral)
+        ,("development"              , numericIcon "development" MsgDevelopment)
+        ,("dip"                      , numericIcon "dip" MsgRulerDIP)
+        ,("dip_power"                , numericIcon "adm" MsgHasDIP)
+        ,("dip_tech"                 , numericIcon "dip tech" MsgDIPTech)
+        ,("fort_level"               , numericIcon "fort level" MsgFortLevel)
+        ,("gold_income_percentage"   , numericIcon "gold" MsgGoldIncomePercentage)
+        ,("horde_unity"              , numericIcon "horde unity" MsgHordeUnity)
+        ,("inflation"                , numericIcon "inflation" MsgInflation)
+        ,("karma"                    , numericIcon "high karma" MsgKarma)
+        ,("legitimacy"               , numericIcon "legitimacy" MsgLegitimacy)
+        ,("local_autonomy"           , numericIcon "local autonomy" MsgLocalAutonomy)
+        ,("manpower_percentage"      , numericIcon "manpower" MsgManpowerPercentage)
+        ,("mercantilism"             , numericIcon "mercantilism" MsgMercantilism)
+        ,("mil"                      , numericIcon "mil" MsgRulerMIL)
+        ,("mil_power"                , numericIcon "adm" MsgHasMIL)
+        ,("mil_tech"                 , numericIcon "mil tech" MsgMILTech)
+        ,("monthly_income"           , numericIcon "ducats" MsgMonthlyIncome)
+        ,("naval_forcelimit"         , numericIcon "naval force limit" MsgNavalForcelimit)
+        ,("num_of_allies"            , numericIcon "alliance" MsgNumAllies)
+        ,("num_of_cardinals"         , numericIcon "cardinal" MsgNumCardinals)
+        ,("num_of_colonists"         , numericIcon "colonists" MsgNumColonists)
+        ,("num_of_heavy_ship"        , numericIcon "heavy ship" MsgNumHeavyShips)
+        ,("num_of_merchants"         , numericIcon "merchant" MsgNumMerchants)
+        ,("num_of_royal_marriages"   , numericIcon "royal marriage" MsgNumRoyalMarriages)
+        ,("overextension_percentage" , numericIcon "overextension" MsgOverextension)
+        ,("reform_desire"            , numericIcon "reform desire" MsgReformDesire)
+        ,("religious_unity"          , numericIcon "religious unity" MsgReligiousUnity)
+        ,("republican_tradition"     , numericIcon "republican tradition" MsgRepTrad)
+        ,("stability"                , numericIcon "stability" MsgStability)
+        ,("total_development"        , numericIcon "development" MsgTotalDevelopment)
+        ,("total_number_of_cardinals", numericIcon "cardinal" MsgTotalCardinals)
+        ,("trade_efficiency"         , numericIcon "trade efficiency" MsgTradeEfficiency)
+        ,("treasury"                 , numericIcon "ducats" MsgHasDucats)
+        ,("unrest"                   , numericIcon "unrest" MsgUnrest)
+        ,("war_exhaustion"           , numericIcon "war exhaustion" MsgWarExhaustion)
+        ,("war_score"                , numericIcon "war score" MsgWarScore)
+        ,("years_of_income"          , numericIcon "ducats" MsgYearsOfIncome)
         -- As above - advisors
-        "army_reformer" -> numericIcon "army reformer" MsgHasArmyReformerLevel stmt
-        "artist" -> numericIcon "artist" MsgHasArtistLevel stmt
-        "diplomat" -> numericIcon "diplomat" MsgHasDiplomatLevel stmt
-        "natural_scientist" -> numericIcon "natural scientist" MsgHasNaturalScientistLevel stmt
-        "naval_reformer" -> numericIcon "naval reformer" MsgHasNavyReformerLevel stmt
-        "navy_reformer" -> numericIcon "naval reformer" MsgHasNavyReformerLevel stmt
-        "statesman" -> numericIcon "statesman" MsgHasStatesmanLevel stmt
-        "theologian" -> numericIcon "theologian" MsgHasTheologianLevel stmt
-        "trader" -> numericIcon "trader" MsgHasTraderLevel stmt
+        ,("army_reformer"    , numericIcon "army reformer" MsgHasArmyReformerLevel)
+        ,("artist"           , numericIcon "artist" MsgHasArtistLevel)
+        ,("diplomat"         , numericIcon "diplomat" MsgHasDiplomatLevel)
+        ,("natural_scientist", numericIcon "natural scientist" MsgHasNaturalScientistLevel)
+        ,("naval_reformer"   , numericIcon "naval reformer" MsgHasNavyReformerLevel)
+        ,("navy_reformer"    , numericIcon "naval reformer" MsgHasNavyReformerLevel)
+        ,("statesman"        , numericIcon "statesman" MsgHasStatesmanLevel)
+        ,("theologian"       , numericIcon "theologian" MsgHasTheologianLevel)
+        ,("trader"           , numericIcon "trader" MsgHasTraderLevel)
         -- Number of provinces of some kind, mostly religions and trade goods
-        "orthodox" -> numProvinces "orthodox" MsgReligionProvinces stmt
-        "cloth" -> numProvinces "cloth" MsgGoodsProvinces stmt
-        "chinaware" -> numProvinces "chinaware" MsgGoodsProvinces stmt
-        "copper" -> numProvinces "copper" MsgGoodsProvinces stmt
-        "fish" -> numProvinces "fish" MsgGoodsProvinces stmt
-        "fur" -> numProvinces "fur" MsgGoodsProvinces stmt
-        "gold" -> numProvinces "gold" MsgGoodsProvinces stmt
-        "grain" -> numProvinces "grain" MsgGoodsProvinces stmt
-        "iron" -> numProvinces "iron" MsgGoodsProvinces stmt
-        "ivory" -> numProvinces "ivory" MsgGoodsProvinces stmt
-        "naval_supplies" -> numProvinces "fish" MsgGoodsProvinces stmt
-        "salt" -> numProvinces "salt" MsgGoodsProvinces stmt
-        "slaves" -> numProvinces "slaves" MsgGoodsProvinces stmt
-        "spices" -> numProvinces "spices" MsgGoodsProvinces stmt
-        "wine" -> numProvinces "wine" MsgGoodsProvinces stmt
-        "wool" -> numProvinces "wool" MsgGoodsProvinces stmt
+        ,("orthodox"      , numProvinces "orthodox" MsgReligionProvinces)
+        ,("cloth"         , numProvinces "cloth" MsgGoodsProvinces)
+        ,("chinaware"     , numProvinces "chinaware" MsgGoodsProvinces)
+        ,("copper"        , numProvinces "copper" MsgGoodsProvinces)
+        ,("fish"          , numProvinces "fish" MsgGoodsProvinces)
+        ,("fur"           , numProvinces "fur" MsgGoodsProvinces)
+        ,("gold"          , numProvinces "gold" MsgGoodsProvinces)
+        ,("grain"         , numProvinces "grain" MsgGoodsProvinces)
+        ,("iron"          , numProvinces "iron" MsgGoodsProvinces)
+        ,("ivory"         , numProvinces "ivory" MsgGoodsProvinces)
+        ,("naval_supplies", numProvinces "fish" MsgGoodsProvinces)
+        ,("salt"          , numProvinces "salt" MsgGoodsProvinces)
+        ,("slaves"        , numProvinces "slaves" MsgGoodsProvinces)
+        ,("spices"        , numProvinces "spices" MsgGoodsProvinces)
+        ,("wine"          , numProvinces "wine" MsgGoodsProvinces)
+        ,("wool"          , numProvinces "wool" MsgGoodsProvinces)
         -- Complex statements
-        "add_casus_belli"                   -> addCB True stmt
-        "add_faction_influence"             -> factionInfluence stmt
-        "add_estate_loyalty"                -> textValue "estate" "loyalty" MsgAddEstateLoyalty MsgAddEstateLoyalty tryLoc stmt
-        "add_estate_influence_modifier"     -> estateInfluenceModifier MsgEstateInfluenceModifier stmt
-        "add_opinion"                       -> opinion MsgAddOpinion MsgAddOpinionDur stmt
-        "reverse_add_opinion"               -> opinion MsgReverseAddOpinion MsgReverseAddOpinionDur stmt
-        "area"                              -> case rhs of
-            CompoundRhs _ -> compoundMessage MsgArea stmt
-            _             -> withLocAtom MsgAreaIs stmt
-        "define_heir"                       -> defineHeir stmt
-        "build_to_forcelimit"               -> buildToForcelimit stmt
-        "check_variable"                    -> textValue "which" "value" MsgCheckVariable MsgCheckVariable tryLoc stmt
-        "country_event"                     -> triggerEvent MsgCountryEvent stmt
-        "declare_war_with_cb"               -> declareWarWithCB stmt
-        "define_advisor"                    -> defineAdvisor stmt
-        "define_ruler"                      -> defineRuler stmt
-        "estate_influence"                  -> textValue "estate" "influence" MsgEstateInfluence MsgEstateInfluence tryLoc stmt
-        "estate_loyalty"                    -> textValue "estate" "loyalty" MsgEstateLoyalty MsgEstateLoyalty tryLoc stmt
-        "had_country_flag"                  -> textValue "flag" "days" MsgHadCountryFlag MsgHadCountryFlag tryLoc stmt
-        "had_global_flag"                   -> textValue "flag" "days" MsgHadGlobalFlag MsgHadGlobalFlag tryLoc stmt
-        "had_province_flag"                 -> textValue "flag" "days" MsgHadProvinceFlag MsgHadProvinceFlag tryLoc stmt
-        "had_ruler_flag"                    -> textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLoc stmt
-        "has_estate_influence_modifier"     -> hasEstateInfluenceModifier stmt
-        "has_opinion"                       -> hasOpinion stmt
-        "has_opinion_modifier"              -> opinion MsgHasOpinionMod (\what who _years -> MsgHasOpinionMod what who) stmt
-        "province_event"                    -> triggerEvent MsgProvinceEvent stmt
-        "remove_opinion"                    -> opinion MsgRemoveOpinionMod (\what who _years -> MsgRemoveOpinionMod what who) stmt
-        "religion_years"                    -> religionYears stmt
-        "reverse_add_casus_belli"           -> addCB False stmt
-        "trigger_switch"                    -> triggerSwitch stmt
-        "num_of_religion"                   -> textValue "religion" "value" MsgNumOfReligion MsgNumOfReligion tryLoc stmt
+        ,("add_casus_belli"              , addCB True)
+        ,("add_faction_influence"        , factionInfluence)
+        ,("add_estate_loyalty"           , textValue "estate" "loyalty" MsgAddEstateLoyalty MsgAddEstateLoyalty tryLoc)
+        ,("add_estate_influence_modifier", estateInfluenceModifier MsgEstateInfluenceModifier)
+        ,("add_opinion"                  , opinion MsgAddOpinion MsgAddOpinionDur)
+        ,("reverse_add_opinion"          , opinion MsgReverseAddOpinion MsgReverseAddOpinionDur)
+        ,("area"                         , area)
+        ,("define_heir"                  , defineHeir)
+        ,("build_to_forcelimit"          , buildToForcelimit)
+        ,("check_variable"               , textValue "which" "value" MsgCheckVariable MsgCheckVariable tryLoc)
+        ,("country_event"                , triggerEvent MsgCountryEvent)
+        ,("declare_war_with_cb"          , declareWarWithCB)
+        ,("define_advisor"               , defineAdvisor)
+        ,("define_ruler"                 , defineRuler)
+        ,("estate_influence"             , textValue "estate" "influence" MsgEstateInfluence MsgEstateInfluence tryLoc)
+        ,("estate_loyalty"               , textValue "estate" "loyalty" MsgEstateLoyalty MsgEstateLoyalty tryLoc)
+        ,("had_country_flag"             , textValue "flag" "days" MsgHadCountryFlag MsgHadCountryFlag tryLoc)
+        ,("had_global_flag"              , textValue "flag" "days" MsgHadGlobalFlag MsgHadGlobalFlag tryLoc)
+        ,("had_province_flag"            , textValue "flag" "days" MsgHadProvinceFlag MsgHadProvinceFlag tryLoc)
+        ,("had_ruler_flag"               , textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLoc)
+        ,("has_estate_influence_modifier", hasEstateInfluenceModifier)
+        ,("has_opinion"                  , hasOpinion)
+        ,("has_opinion_modifier"         , opinion MsgHasOpinionMod (\what who _years -> MsgHasOpinionMod what who))
+        ,("province_event"               , triggerEvent MsgProvinceEvent)
+        ,("remove_opinion"               , opinion MsgRemoveOpinionMod (\what who _years -> MsgRemoveOpinionMod what who))
+        ,("religion_years"               , religionYears)
+        ,("reverse_add_casus_belli"      , addCB False)
+        ,("trigger_switch"               , triggerSwitch)
+        ,("num_of_religion"              , textValue "religion" "value" MsgNumOfReligion MsgNumOfReligion tryLoc)
         -- Rebels
-        "can_spawn_rebels"   -> canSpawnRebels stmt
-        "create_revolt"      -> spawnRebels Nothing stmt
-        "has_spawned_rebels" -> hasSpawnedRebels stmt
-        "likely_rebels"      -> canSpawnRebels stmt
-        "spawn_rebels"       -> spawnRebels Nothing stmt
+        ,("can_spawn_rebels"  , canSpawnRebels)
+        ,("create_revolt"     , spawnRebels Nothing)
+        ,("has_spawned_rebels", hasSpawnedRebels)
+        ,("likely_rebels"     , canSpawnRebels)
+        ,("spawn_rebels"      , spawnRebels Nothing)
         -- Specific rebels
-        "anti_tax_rebels"    -> spawnRebels (Just "anti_tax_rebels") stmt
-        "nationalist_rebels" -> spawnRebels (Just "nationalist_rebels") stmt
-        "noble_rebels"       -> spawnRebels (Just "noble_rebels") stmt
+        ,("anti_tax_rebels"   , spawnRebels (Just "anti_tax_rebels"))
+        ,("nationalist_rebels", spawnRebels (Just "nationalist_rebels"))
+        ,("noble_rebels"      , spawnRebels (Just "noble_rebels"))
         -- Idea groups
-        "aristocracy_ideas"    -> hasIdea MsgHasAristocraticIdea stmt
-        "defensive_ideas"      -> hasIdea MsgHasDefensiveIdea stmt
-        "economic_ideas"       -> hasIdea MsgHasEconomicIdea stmt
-        "innovativeness_ideas" -> hasIdea MsgHasInnovativeIdea stmt
-        "maritime_ideas"      -> hasIdea MsgHasMaritimeIdea stmt
-        "offensive_ideas"      -> hasIdea MsgHasOffensiveIdea stmt
+        ,("aristocracy_ideas"   , hasIdea MsgHasAristocraticIdea)
+        ,("defensive_ideas"     , hasIdea MsgHasDefensiveIdea)
+        ,("economic_ideas"      , hasIdea MsgHasEconomicIdea)
+        ,("innovativeness_ideas", hasIdea MsgHasInnovativeIdea)
+        ,("maritime_ideas"      , hasIdea MsgHasMaritimeIdea)
+        ,("offensive_ideas"     , hasIdea MsgHasOffensiveIdea)
         -- Special
-        "add_core"  -> addCore stmt
-        "faction_in_power" -> factionInPower stmt
-        "government_rank" -> govtRank stmt
-        "set_government_rank" -> setGovtRank stmt
-        "has_dlc"   -> hasDlc stmt
-        "hre_reform_level" -> hreReformLevel stmt
+        ,("add_core"            , addCore)
+        ,("faction_in_power"    , factionInPower)
+        ,("government_rank"     , govtRank)
+        ,("set_government_rank" , setGovtRank)
+        ,("has_dlc"             , hasDlc)
+        ,("hre_reform_level"    , hreReformLevel)
         -- Ignored
-        "custom_tooltip" -> plainMsg "(custom tooltip - delete this line)"
-        "tooltip" -> plainMsg "(explanatory tooltip - delete this line)"
+        ,("custom_tooltip", const (plainMsg "(custom tooltip - delete this line)"))
+        ,("tooltip"       , const (plainMsg "(explanatory tooltip - delete this line)"))
+        ]
+
+ppOne :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
+ppOne stmt@(Statement lhs rhs) = case lhs of
+    GenericLhs label -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
+        Just handler -> handler stmt
         -- default
-        _ -> if isTag label
+        Nothing -> if isTag label
              then case rhs of
                 CompoundRhs scr -> 
                     withCurrentIndent $ \_ -> do -- force indent level at least 1
@@ -2038,6 +2046,10 @@ range :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
 range stmt@(Statement _ rhs) | Just _ <- floatRhs rhs :: Maybe Double
     = gainIcon "colonial range" MsgGainColonialRange stmt
 range stmt = withFlag MsgIsInColonialRange stmt
+
+area :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
+area stmt@(Statement _ (CompoundRhs _)) = compoundMessage MsgArea stmt
+area stmt                               = withLocAtom MsgAreaIs stmt
 
 ----------------------
 -- Idea group ideas --
