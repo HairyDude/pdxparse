@@ -261,9 +261,7 @@ genericStatement2doc = statement2doc (const "") (const "")
 
 script2doc :: (lhs -> Doc) -> (rhs -> Doc) -> [Statement lhs rhs] -> Doc
 script2doc customLhs customRhs
-    = foldr (\x y -> mconcat [x, line, y]) mempty
-            . intersperse line
-            . map (statement2doc customLhs customRhs)
+    = vsep . map (statement2doc customLhs customRhs)
 
 statement2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Statement lhs rhs -> Doc
 statement2doc customLhs _ (StatementBare lhs)
@@ -283,7 +281,7 @@ rhs2doc _ _ (StringRhs rhs) = text (TL.pack (show rhs))
 rhs2doc _ _ (IntRhs rhs) = text (TL.pack (show rhs))
 rhs2doc _ _ (FloatRhs rhs) = pp_float rhs
 rhs2doc customLhs customRhs (CompoundRhs rhs)
-    = text "{" <$$> indent 4 (script2doc customLhs customRhs rhs) <$$> text "}"
+    = vsep ["{", indent 4 (script2doc customLhs customRhs rhs), text "}"]
 rhs2doc _ _ (DateRhs (Date year month day)) =
     mconcat . map (text . TL.pack) $ [show year, ".", show month, ".", show day]
 

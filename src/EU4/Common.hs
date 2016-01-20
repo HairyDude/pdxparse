@@ -29,6 +29,7 @@ import Data.ByteString (ByteString)
 
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as TL
 import qualified Data.Text.Encoding as TE
 
 -- TODO: get rid of these, do icon key lookups from another module
@@ -84,8 +85,8 @@ flag name =
     if isTag name
         then template "flag" . (:[]) <$> getGameL10n name
         else return $ case T.map toUpper name of
-                "ROOT" -> "Our country" -- will need editing for capitalization in some cases
-                "PREV" -> "Previously mentioned country"
+                "ROOT" -> "(Our country)" -- will need editing for capitalization in some cases
+                "PREV" -> "(Previously mentioned country)"
                 -- Suggestions of a description for FROM are welcome.
                 _ -> strictText name
 
@@ -105,8 +106,14 @@ plainMsg msg = (:[]) <$> (alsoIndent' . MsgUnprocessed $ msg)
 pre_statement :: GenericStatement -> Doc
 pre_statement stmt = "<pre>" <> genericStatement2doc stmt <> "</pre>"
 
+-- Don't use doc2text, because it uses renderCompact which is not what we want
+-- here.
 preMessage :: GenericStatement -> ScriptMessage
-preMessage = MsgUnprocessed . doc2text . pre_statement
+preMessage = MsgUnprocessed
+            . TL.toStrict
+            . PP.displayT
+            . PP.renderPretty 0.8 80
+            . pre_statement
 
 preStatement :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
@@ -147,14 +154,15 @@ ppHandlers = Tr.fromList $
         ,("add_base_tax"          , gainIcon "base tax" MsgGainBT)
         ,("add_base_production"   , gainIcon "production" MsgGainBP)
         ,("add_base_manpower"     , gainIcon "manpower" MsgGainBM)
+        ,("add_devotion"          , gainIcon "devotion" MsgGainDevotion)
         ,("add_dip_power"         , gainIcon "dip" MsgGainDIP)
         ,("add_doom"              , gain' MsgGainDoom)
         ,("add_heir_claim"        , gain' MsgHeirGainClaim)
-        ,("add_devotion"          , gainIcon "devotion" MsgGainDevotion)
         ,("add_horde_unity"       , gainIcon "horde unity" MsgGainHordeUnity)
         ,("add_imperial_influence", gainIcon "imperial authority" MsgGainImperialAuthority)
         ,("add_karma"             , gainIcon "high karma" MsgGainKarma)
         ,("add_legitimacy"        , gainIcon "legitimacy" MsgGainLegitimacy)
+        ,("add_liberty_desire"    , gainIcon "liberty desire" MsgGainLibertyDesire)
         ,("add_mil_power"         , gainIcon "mil" MsgGainMIL)
         ,("add_navy_tradition"    , gainIcon "navy tradition" MsgGainNavyTradition)
         ,("add_papal_influence"   , gainIcon "papal influence" MsgGainPapalInfluence)
@@ -235,6 +243,7 @@ ppHandlers = Tr.fromList $
         -- namely that the former means "this is true for all <type>" while
         -- the latter means "do this for every <type>." But their contexts
         -- are disjoint, so they can be presented the same way.
+        ,("all_country" {- sic -}   , compoundMessage MsgAllCountries)
         ,("all_owned_province"      , compoundMessage MsgEveryOwnedProvince)
         ,("any_active_trade_node"   , compoundMessage MsgAnyActiveTradeNode)
         ,("any_ally"                , compoundMessage MsgAnyAlly)
@@ -247,6 +256,7 @@ ppHandlers = Tr.fromList $
         ,("any_owned_province"      , compoundMessage MsgAnyOwnedProvince)
         ,("any_rival_country"       , compoundMessage MsgAnyRival)
         ,("capital_scope"           , compoundMessage MsgCapital)
+        ,("colonial_parent"         , compoundMessage MsgColonialParent)
         ,("controller"              , compoundMessage MsgController)
         ,("emperor"                 , compoundMessage MsgEmperor)
         ,("every_country"           , compoundMessage MsgEveryCountry)
@@ -295,7 +305,6 @@ ppHandlers = Tr.fromList $
         ,("has_great_project"     , withLocAtom MsgConstructingGreatProject)
         ,("has_idea"              , withLocAtom MsgHasIdea)
         ,("has_terrain"           , withLocAtom MsgHasTerrain )
-        ,("infantry"              , withLocAtom MsgInfantrySpawns)
         ,("kill_advisor"          , withLocAtom MsgAdvisorDies)
         ,("primary_culture"       , withLocAtom MsgPrimaryCultureIs)
         ,("region"                , withLocAtom MsgRegionIs)
@@ -310,7 +319,9 @@ ppHandlers = Tr.fromList $
         ,("set_capital"       , withProvince MsgSetCapital)
         -- RHS is a flag OR a province ID
         ,("add_permanent_claim", withFlagOrProvince MsgGainPermanentClaimCountry MsgGainPermanentClaimProvince)
+        ,("cavalry"            , withFlagOrProvince MsgCavalrySpawnsCountry MsgCavalrySpawnsProvince)
         ,("has_discovered"     , withFlagOrProvince MsgHasDiscovered MsgHasDiscovered)
+        ,("infantry"           , withFlagOrProvince MsgInfantrySpawnsCountry MsgInfantrySpawnsProvince)
         ,("remove_core"        , withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince)
         -- RHS is an advisor ID (TODO: parse advisor files)
         ,("advisor_exists"     , numeric MsgAdvisorExists)
@@ -357,6 +368,7 @@ ppHandlers = Tr.fromList $
         ,("discover_country"        , withFlag MsgDiscoverCountry)
         ,("add_claim"               , withFlag MsgGainClaim)
         ,("create_alliance"         , withFlag MsgCreateAlliance)
+        ,("free_vassal"             , withFlag MsgFreeVassal)
         ,("galley"                  , withFlag MsgGalley)
         ,("heavy_ship"              , withFlag MsgHeavyShip)
         ,("inherit"                 , withFlag MsgInherit)
@@ -389,10 +401,12 @@ ppHandlers = Tr.fromList $
         ,("is_claim", tagOrProvince MsgHasClaim MsgHasClaimOn)
         -- Boolean statements
         ,("ai"                          , withBool MsgIsAIControlled)
+        ,("always"                      , withBool MsgAlways)
         ,("has_any_disaster"            , withBool MsgHasAnyDisaster)
         ,("has_cardinal"                , withBool MsgHasCardinal)
         ,("has_factions"                , withBool MsgHasFactions)
         ,("has_heir"                    , withBool MsgHasHeir)
+        ,("has_missionary"              , withBool MsgHasMissionary)
         ,("has_owner_culture"           , withBool MsgHasOwnerCulture)
         ,("has_owner_religion"          , withBool MsgHasOwnerReligion)
         ,("has_parliament"              , withBool MsgHasParliament)
@@ -413,6 +427,7 @@ ppHandlers = Tr.fromList $
         ,("is_colony"                   , withBool MsgIsColony)
         ,("is_colonial_nation"          , withBool MsgIsColonialNation)
         ,("is_defender_of_faith"        , withBool MsgIsDefenderOfFaith)
+        ,("is_force_converted"          , withBool MsgWasForceConverted)
         ,("is_former_colonial_nation"   , withBool MsgIsFormerColonialNation)
         ,("is_elector"                  , withBool MsgIsElector)
         ,("is_emperor"                  , withBool MsgIsEmperor)
@@ -486,6 +501,7 @@ ppHandlers = Tr.fromList $
         ,("inflation"                , numericIcon "inflation" MsgInflation)
         ,("karma"                    , numericIcon "high karma" MsgKarma)
         ,("legitimacy"               , numericIcon "legitimacy" MsgLegitimacy)
+        ,("liberty_desire"           , numericIcon "liberty desire" MsgLibertyDesire)
         ,("local_autonomy"           , numericIcon "local autonomy" MsgLocalAutonomy)
         ,("manpower_percentage"      , numericIcon "manpower" MsgManpowerPercentage)
         ,("mercantilism"             , numericIcon "mercantilism" MsgMercantilism)
@@ -494,12 +510,14 @@ ppHandlers = Tr.fromList $
         ,("mil_tech"                 , numericIcon "mil tech" MsgMILTech)
         ,("monthly_income"           , numericIcon "ducats" MsgMonthlyIncome)
         ,("naval_forcelimit"         , numericIcon "naval force limit" MsgNavalForcelimit)
+        ,("navy_size_percentage"     , numericIcon "naval force limit" MsgNavyPercentage)
         ,("num_of_allies"            , numericIcon "alliance" MsgNumAllies)
         ,("num_of_cardinals"         , numericIcon "cardinal" MsgNumCardinals)
         ,("num_of_colonists"         , numericIcon "colonists" MsgNumColonists)
         ,("num_of_heavy_ship"        , numericIcon "heavy ship" MsgNumHeavyShips)
         ,("num_of_merchants"         , numericIcon "merchant" MsgNumMerchants)
         ,("num_of_royal_marriages"   , numericIcon "royal marriage" MsgNumRoyalMarriages)
+        ,("num_of_vassals"           , numericIcon "vassal" MsgNumVassals)
         ,("overextension_percentage" , numericIcon "overextension" MsgOverextension)
         ,("reform_desire"            , numericIcon "reform desire" MsgReformDesire)
         ,("religious_unity"          , numericIcon "religious unity" MsgReligiousUnity)
@@ -548,6 +566,7 @@ ppHandlers = Tr.fromList $
         ,("add_opinion"                  , opinion MsgAddOpinion MsgAddOpinionDur)
         ,("reverse_add_opinion"          , opinion MsgReverseAddOpinion MsgReverseAddOpinionDur)
         ,("area"                         , area)
+        ,("custom_trigger_tooltip"       , customTriggerTooltip)
         ,("define_heir"                  , defineHeir)
         ,("build_to_forcelimit"          , buildToForcelimit)
         ,("check_variable"               , textValue "which" "value" MsgCheckVariable MsgCheckVariable tryLoc)
@@ -589,6 +608,7 @@ ppHandlers = Tr.fromList $
         ,("offensive_ideas"     , hasIdea MsgHasOffensiveIdea)
         -- Special
         ,("add_core"            , addCore)
+        ,("dominant_culture"    , dominantCulture)
         ,("faction_in_power"    , factionInPower)
         ,("government_rank"     , govtRank)
         ,("set_government_rank" , setGovtRank)
@@ -1389,7 +1409,15 @@ triggerEvent evtType stmt@(Statement _ (CompoundRhs scr))
         addLine :: TriggerEvent -> GenericStatement -> PP extra TriggerEvent
         addLine evt (Statement (GenericLhs "id") (GenericRhs id))
             = (\t_loc -> evt { e_id = Just id, e_title_loc = t_loc })
-              <$> getGameL10nIfPresent (id <> ".t")
+              . msum
+              <$> mapM getGameL10nIfPresent
+                -- The following is a list of schemes that Paradox uses in
+                -- localization keys for event names. We take the first one
+                -- that exists.
+                [id <> ".t"
+                ,let (ns,num) = T.break (=='.') id
+                 in ns <> ".EVTNAME" <> T.drop 1 num
+                ]
         addLine evt (Statement (GenericLhs "days") rhs)
             = return evt { e_days = floatRhs rhs }
         addLine evt _ = return evt
@@ -2050,6 +2078,22 @@ range stmt = withFlag MsgIsInColonialRange stmt
 area :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
 area stmt@(Statement _ (CompoundRhs _)) = compoundMessage MsgArea stmt
 area stmt                               = withLocAtom MsgAreaIs stmt
+
+-- Currently dominant_culture only appears in decisions/Cultural.txt
+-- (dominant_culture = capital).
+dominantCulture :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
+dominantCulture stmt@(Statement _ rhs) | Just "capital" <- textRhs rhs
+    = msgToPP MsgCapitalCultureDominant
+dominantCulture stmt = preStatement stmt
+
+customTriggerTooltip :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
+customTriggerTooltip (Statement _ (CompoundRhs scr))
+    -- ignore the custom tooltip
+    = let rest = flip filter scr $ \stmt -> case stmt of
+            Statement (GenericLhs "tooltip") _ -> False
+            _ -> True
+      in indentDown $ ppMany rest
+customTriggerTooltip stmt = preStatement stmt
 
 ----------------------
 -- Idea group ideas --

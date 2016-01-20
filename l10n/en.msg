@@ -75,6 +75,7 @@ AnyRival: Any rival:
 Capital: Capital:
 Controller: Province controller:
 Emperor: The Holy Roman Emperor:
+AllCountries: All countries in the world:
 EveryCountry: Every country in the world:
 EveryEnemyCountry: Every enemy country:
 EveryKnownCountry: Every known country:
@@ -111,7 +112,10 @@ GovernmentIs what@Text: Government is #{what}
 HasAdvisor who@Text: Has advisor #{who}
 HasAdvisorType icon@Text what@Text: Has #{icon} #{what} advisor
 HasTerrain what@Text: Has #{what} terrain
-InfantrySpawns what@Text: An infantry regiment spawns in #{what}
+CavalrySpawnsCountry who@Text: A cavalry regiment loyal to #{who} spawns
+CavalrySpawnsProvince where@Text: A cavalry regiment spawns in #{where}
+InfantrySpawnsCountry who@Text: An infantry regiment loyal to #{who} spawns
+InfantrySpawnsProvince where@Text: An infantry regiment spawns in #{where}
 AdvisorDies who@Text: Advisor #{who} dies
 PrimaryCultureIs what@Text: Primary culture is #{what}
 RegionIs what@Text: Province is in #{what} region
@@ -495,3 +499,13 @@ Constructing what@Text: Is constructing a #{what}
 StartConstructingGreatProject what@Text: Begin constructing the #{what}
 CancelConstruction: Cancel construction
 YearsOfIncome icon@Text amt@Double: Treasury contains at least #{icon} #{plainNum amt} #{plural amt "year's" "years'"} worth of income
+LibertyDesire icon@Text amt@Double: #{icon} Liberty desire is at least #{colourPc False amt}
+GainLibertyDesire icon@Text amt@Double: Gain #{icon} #{colourPc False amt} liberty desire
+ColonialParent: This country's colonial parent:
+Always yn@Bool: #{ifThenElseT yn "{{icon|yes}} Always" "{{icon|no}} Never"}
+CapitalCultureDominant: The capital's {{icon|culture}} culture is dominant in the country
+NumVassals icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "vassal" "vassals"}
+FreeVassal who@Text: Release vassal #{who} as an independent country
+HasMissionary yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} an active missionary
+NavyPercentage icon@Text amt@Double: Navy is at least #{plainPc amt} of #{icon} force limit
+WasForceConverted yn@Bool: Was#{ifThenElseT yn "" " ''not''"} force converted

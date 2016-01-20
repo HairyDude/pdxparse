@@ -15,7 +15,7 @@ module SettingsTypes
     , emptySettings
     , setGameL10n
     , PP, PPT
-    , indentUp
+    , indentUp, indentDown
     , withCurrentIndent, withCurrentIndentZero
     , alsoIndent, alsoIndent'
     , getGameL10n
@@ -85,6 +85,14 @@ indentUp :: PP extra a -> PP extra a
 indentUp go = do
     mindent <- asks currentIndent
     let mindent' = maybe (Just 1) (Just . succ) mindent
+    local (\s -> s { currentIndent = mindent' }) go
+
+-- Decrease current indent level by 1 for the given action.
+-- For use where a level of indentation should be skipped.
+indentDown :: PP extra a -> PP extra a
+indentDown go = do
+    mindent <- asks currentIndent
+    let mindent' = maybe (Just 0) (Just . pred) mindent
     local (\s -> s { currentIndent = mindent' }) go
 
 -- | Pass the current indent to the action.

@@ -141,16 +141,12 @@ ppNum :: (Ord n, PPSep n) => Bool -- ^ Whether to apply a colour template (red
 ppNum colour is_pc pos pos_plus n =
     let n_pp'd = (if pos_plus then pp_signed else pp_nosigned)
                  ppNumSep n <> if is_pc then "%" else ""
-    in case (if pos then n else negate n) `compare` 0 of
-        LT -> (if colour
-                then template "red" . (:[]) . doc2text
-                else id)
-                    n_pp'd
-        EQ -> bold n_pp'd
-        GT -> (if colour
-                then template "green" . (:[]) . doc2text
-                else id)
-                    n_pp'd
+    in (if not colour then id else
+        case (if pos then n else negate n) `compare` 0 of
+            LT -> template "red" . (:[]) . doc2text
+            EQ -> bold
+            GT -> template "green" . (:[]) . doc2text)
+        n_pp'd
 
 -- | If the numeric argument is singular, return the second argument; otherwise
 -- return the third argument.
