@@ -40,6 +40,7 @@ GainReformDesire icon@Text amt@Double: {{icon|catholic}} Catholicism #{gainsOrLo
 GainMercantilism icon@Text amt@Double: #{gainOrLose amt} #{icon} #{reducedNum (colourPc True) amt} mercantilism
 GainMP icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} manpower
 GainMPFrac icon@Text amt@Double: #{gainOrLose amt} #{icon} manpower equal to #{reducedNum (colourPc True) amt} of maximum
+Separatism icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "year" "years"} of separatism
 CountryMod: country modifier
 ProvMod: province modifier
 PermanentProvMod: permanent province modifier
@@ -126,6 +127,7 @@ DisasterOngoing what@Text: The #{iquotes what} disaster is ongoing
 ProvinceIs what@Text: Province is #{what}
 Owns what@Text: Owns province #{what}
 OwnsCore what@Text: Owns core province #{what}
+Controls what@Text: Controls province #{what}
 AdvisorExists advisorID@Double: Advisor with ID #{plainNum advisorID} exists
 AdvisorIsEmployed advisorID@Double: Advisor with ID #{plainNum advisorID} is employed
 ClearFlag flagType@Text name@Text: Clear #{flagType} flag <tt>#{name}</tt>
@@ -146,6 +148,7 @@ HeirAge amt@Double: Heir is at least #{roundNum amt} #{plural amt "year" "years"
 YearIs amt@Double: Year is #{roundNumNoSpace amt} or later
 NumLoans amt@Double: Has at least #{plainNum amt} #{plural amt "loan" "loans"}
 NumMercs amt@Double: Has at least #{roundNum amt} mercenary #{plural amt "regiment" "regiments"}
+NumMissionaries icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "missionary" "missionaries"}
 NumPorts amt@Double: Has at least #{plainNum amt} #{plural amt "port" "ports"}
 NumRebelArmies amt@Double: At least #{roundNum amt} rebel #{plural (round amt) "army is" "armies are"} present in the country
 NumEmbargoes amt@Double: Is embargoing at least #{roundNum amt} other #{plural (round amt) "country" "countries"}
@@ -174,7 +177,8 @@ MILTech icon@Text amt@Double: #{icon} Military technology is at least #{roundNum
 NumAllies icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "ally" "allies"}
 NumCardinals icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "cardinal" "cardinals"}
 NumColonists icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "colonist" "colonists"}
-NumHeavyShips icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "heavy ship" "heavy ships"}
+NumHeavyShips icon@Text amt@Double: Has at least #{icon} #{roundNum amt} heavy #{plural amt "ship" "ships"}
+NumLightShips icon@Text amt@Double: Has at least #{icon} #{roundNum amt} light #{plural amt "ship" "ships"}
 NumMerchants icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "merchant" "merchants"}
 Stability icon@Text amt@Double: #{icon} Stability is at least #{colourNumSign True amt}
 TotalDevelopment icon@Text amt@Double: Country's total #{icon} development is at least #{roundNum amt}
@@ -489,6 +493,7 @@ SetCapital what@Text: Change capital to #{what}
 ChangePrimaryCulture what@Text: Change primary culture to #{what}
 ColonialRegion where@Text: Is in colonial region #{where}
 JuniorUnionWith who@Text: Is the junior partner in a personal union with #{who}
+SeniorUnionWith who@Text: Is the senior partner in a personal union with #{who}
 VassalOf who@Text: Is a vassal of #{who}
 OverlordOf who@Text: Is the overlord of #{who}
 ChangeProvinceName what@Text: Rename province to #{what}
@@ -505,8 +510,16 @@ GainLibertyDesire icon@Text amt@Double: Gain #{icon} #{colourPc False amt} liber
 ColonialParent: This country's colonial parent:
 Always yn@Bool: #{ifThenElseT yn "{{icon|yes}} Always" "{{icon|no}} Never"}
 CapitalCultureDominant: The capital's {{icon|culture}} culture is dominant in the country
+NumUnions icon@Text amt@Double: Has at least #{icon} #{roundNum amt} personal #{plural amt "union" "unions"}
 NumVassals icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "vassal" "vassals"}
 FreeVassal who@Text: Release vassal #{who} as an independent country
 HasMissionary yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} an active missionary
 NavyPercentage icon@Text amt@Double: Navy is at least #{plainPc amt} of #{icon} force limit
 WasForceConverted yn@Bool: Was#{ifThenElseT yn "" " ''not''"} force converted
+FemaleEmperorAllowed yn@Bool: The Emperor may#{ifThenElseT yn "" " ''not''"} be female
+ImperialAuthority icon@Text amt@Double: #{icon} Imperial Authority is at least #{roundNum amt}
+HasFemaleHeir yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} a female heir
+Piety icon@Text amt@Double: Has at least #{icon} #{reducedNum (colourPcSign True) amt} piety
+IsInTutorial yn@Bool: Is#{ifThenElseT yn "" " ''not''"} in the tutorial
+GainFervor icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} fervor
+GainChurchPower icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} church power
