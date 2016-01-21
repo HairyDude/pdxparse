@@ -49,6 +49,7 @@ module Abstract (
 -}
 
 import Control.Applicative hiding ((<$>))
+import Control.Monad (void)
 import qualified Data.Foldable as F
 import Data.Monoid
 
@@ -148,7 +149,7 @@ floatOrTextRhs rhs = case floatRhs rhs of
 
 skipSpace :: Parser ()
 skipSpace = Ap.skipMany
-            (   (Ap.space >> return ())
+            (   (void Ap.space)
             <|> comment)
 
 comment :: Parser ()

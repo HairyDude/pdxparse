@@ -130,7 +130,7 @@ addOption (Just opts) opt = do
     return $ Just (opts ++ [opt])
 
 optionAddStatement :: Option -> GenericStatement -> PP extra Option
-optionAddStatement opt stmt@(Statement (GenericLhs label) rhs) = do
+optionAddStatement opt stmt@(Statement (GenericLhs label) rhs) =
     case label of
         "name" -> case rhs of
             StringRhs name ->
@@ -184,7 +184,7 @@ pp_event evt =
                                     ,content_pp'd
                                     ,line])
                             (field evt)
-                    isTriggeredOnly = maybe False id $ evt_is_triggered_only evt
+                    isTriggeredOnly = fromMaybe False $ evt_is_triggered_only evt
                 trigger_pp'd <- evtArg "trigger" evt_trigger pp_script
                 mmtth_pp'd <- mapM pp_mtth (evt_mean_time_to_happen evt)
                 immediate_pp'd <- evtArg "immediate" evt_immediate pp_script
@@ -235,30 +235,29 @@ pp_options opts = do
         (err:_, _) -> Left err
 
 pp_option :: Bool -> Option -> PP IdeaTable (Either Text Doc)
-pp_option triggered opt = do
-    case opt_name_loc opt of
-        -- NB: some options have no effect, e.g. start of Peasants' War.
-        Just name_loc ->
-            let mtrigger = opt_trigger opt
-                has_trigger = isJust mtrigger
-                the_trigger = fromJust mtrigger
-            in do
-                effects_pp'd <- pp_script (maybe [] id (opt_effects opt))
-                trigger_pp'd <- pp_script the_trigger
-                return . Right . mconcat $
-                    ["{{Option\n"
-                    ,"| option_text = ", strictText name_loc, line
-                    ,"| effect =", line, effects_pp'd, line]
-                    ++
-                    (if triggered then
-                        if has_trigger then
-                            ["| trigger = Enabled if:", line
-                            ,trigger_pp'd, line]
-                        else
-                            ["| trigger = Always enabled:", line]
-                    else [])
-                    ++
-                    -- 1 = no
-                    ["}}"
-                    ]
-        Nothing -> return . Left $ "some required option sections missing - dumping: " <> T.pack (show opt)
+pp_option triggered opt = case opt_name_loc opt of
+    -- NB: some options have no effect, e.g. start of Peasants' War.
+    Just name_loc ->
+        let mtrigger = opt_trigger opt
+            has_trigger = isJust mtrigger
+            the_trigger = fromJust mtrigger
+        in do
+            effects_pp'd <- pp_script (fromMaybe [] (opt_effects opt))
+            trigger_pp'd <- pp_script the_trigger
+            return . Right . mconcat $
+                ["{{Option\n"
+                ,"| option_text = ", strictText name_loc, line
+                ,"| effect =", line, effects_pp'd, line]
+                ++
+                (if triggered then
+                    if has_trigger then
+                        ["| trigger = Enabled if:", line
+                        ,trigger_pp'd, line]
+                    else
+                        ["| trigger = Always enabled:", line]
+                else [])
+                ++
+                -- 1 = no
+                ["}}"
+                ]
+    Nothing -> return . Left $ "some required option sections missing - dumping: " <> T.pack (show opt)

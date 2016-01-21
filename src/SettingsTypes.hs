@@ -84,7 +84,7 @@ type PPT extra m a = ReaderT (Settings extra) m a
 indentUp :: PP extra a -> PP extra a
 indentUp go = do
     mindent <- asks currentIndent
-    let mindent' = maybe (Just 1) (Just . succ) mindent
+    let mindent' = Just (maybe 1 succ mindent)
     local (\s -> s { currentIndent = mindent' }) go
 
 -- Decrease current indent level by 1 for the given action.
@@ -92,7 +92,7 @@ indentUp go = do
 indentDown :: PP extra a -> PP extra a
 indentDown go = do
     mindent <- asks currentIndent
-    let mindent' = maybe (Just 0) (Just . pred) mindent
+    let mindent' = Just (maybe 0 pred mindent)
     local (\s -> s { currentIndent = mindent' }) go
 
 -- | Pass the current indent to the action.

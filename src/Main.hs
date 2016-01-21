@@ -92,8 +92,8 @@ main = do
 --                    ])
                 $ scripts
 
-        forM_ (runReader results settings) $ \(path, mesgs) -> do
-            forM_ mesgs $ \mesg -> do
+        forM_ (runReader results settings) $ \(path, mesgs) ->
+            forM_ mesgs $ \mesg ->
                 case mesg of
                     Left err -> do
                         putStrLn $ "Processing " ++ path ++ " failed: " ++ T.unpack err

@@ -92,7 +92,7 @@ pp_decision dec = do
         ,"| allow = ", line, allow_pp'd, line
         ,"| effect = ", line, effect_pp'd, line
         ] ++
-        (flip (maybe []) mawd_pp'd $ \awd_pp'd ->
+        flip (maybe []) mawd_pp'd (\awd_pp'd ->
             ["| comment = AI decision factors:", line
             ,awd_pp'd, line]) ++
         ["}}"]

@@ -72,6 +72,7 @@ AnyNeighborCountry: Any neighbouring country:
 AnyNeighborProvince: Any neighbouring province:
 AnyOwnedProvince: Any owned province:
 AnyRival: Any rival:
+AnySubject: Any subject:
 Capital: Capital:
 Controller: Province controller:
 Emperor: The Holy Roman Emperor:

@@ -33,7 +33,7 @@ newAIWillDo = AIWillDo Nothing []
 newAIModifier = AIModifier Nothing []
 
 aiWillDo :: GenericScript -> AIWillDo
-aiWillDo scr = foldl' aiWillDoAddSection newAIWillDo scr
+aiWillDo = foldl' aiWillDoAddSection newAIWillDo
 aiWillDoAddSection :: AIWillDo -> GenericStatement -> AIWillDo
 aiWillDoAddSection awd (Statement (GenericLhs left) right) = case T.toLower left of
     "factor" -> case floatRhs right of
@@ -46,7 +46,7 @@ aiWillDoAddSection awd (Statement (GenericLhs left) right) = case T.toLower left
 aiWillDoAddSection awd _ = awd
 
 awdModifier :: GenericScript -> AIModifier
-awdModifier scr = foldl' awdModifierAddSection newAIModifier scr
+awdModifier = foldl' awdModifierAddSection newAIModifier
 awdModifierAddSection :: AIModifier -> GenericStatement -> AIModifier
 awdModifierAddSection aim stmt@(Statement (GenericLhs left) right) = case T.toLower left of
     "factor" -> case floatRhs right of

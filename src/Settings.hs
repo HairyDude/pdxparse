@@ -5,6 +5,8 @@ module Settings (
     ,   module SettingsTypes
     ) where
 
+import Data.Maybe
+
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -54,19 +56,19 @@ data Platform
     | MacOS
     | WindowsXP
     | Windows -- 7 or later (and Vista?)
-    | Unknown -- AFAIK, these are the only platforms that support Steam.
+    | Unknown -- AFAIK, these are the only platforms that Steam supports.
     deriving (Eq, Show)
 platform :: Platform
 platform = case System.Info.os of
     "linux" -> Linux
     "darwin" -> MacOS
-    osid -> -- Windows: running under either Cygwin or MinGW (more likely the latter).
-        if      osid == "CYGWIN_NT-5.1" then WindowsXP
-        else if take 6 osid == "CYGWIN" then Windows
-        else if osid == "MINGW32_NT-5.1" then WindowsXP
-        else if osid == "MINGW64_NT-5.1" then Unknown -- Steam doesn't support 64 bit XP afaik
-        else if take 5 osid == "MINGW" then Windows
-        else Unknown
+    "CYGWIN_NT-5.1"  -> WindowsXP
+    "MINGW32_NT-5.1" -> WindowsXP
+    "MINGW64_NT-5.1" -> Unknown -- Steam doesn't support 64 bit XP afaik
+    osid -- Windows: running under either Cygwin or MinGW (more likely the latter).
+        | take 6 osid == "CYGWIN"  -> Windows
+        | take 5 osid == "MINGW"   -> Windows
+        | otherwise                -> Unknown
 {-# INLINE platform #-}
 
 -- | Read the settings and localization files. If we can't, abort.
@@ -89,12 +91,12 @@ readSettings getExtra = do
                         home <- getHomeDirectory
                         return $ home </> "Library/Application Support"
                     -- TODO: allow user to specify drive only.
-                    WindowsXP -> return $ maybe "C" id (steamDriveI settings) ++ ":"
-                                      </> maybe "Program Files" id (steamDirI settings)
-                    Windows -> return $ maybe "C" id (steamDriveI settings) ++ ":"
-                                      </> maybe "Program Files (x86)" id (steamDirI settings)
+                    WindowsXP -> return $ fromMaybe "C" (steamDriveI settings) ++ ":"
+                                      </> fromMaybe "Program Files" (steamDirI settings)
+                    Windows -> return $ fromMaybe "C" (steamDriveI settings) ++ ":"
+                                      </> fromMaybe "Program Files (x86)" (steamDirI settings)
                     Unknown -> fail $ "Unknown platform: " ++ System.Info.os
-            let steamAppsCanonicalized = maybe "Steam/steamapps/common" id (steamAppsI settings)
+            let steamAppsCanonicalized = fromMaybe "Steam/steamapps/common" (steamAppsI settings)
                 provisionalSettings = emptySettings
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
