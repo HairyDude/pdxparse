@@ -46,7 +46,7 @@ group3 = unfoldr (\cs -> if null cs then Nothing else Just (splitAt 3 cs))
 
 instance PPSep Integer where
     ppNumSep n = strictText . T.pack $
-            (if n < 0 then "-" else "") <> ppNumSep' True (show (abs n))
+            (if n < 0 then "−" else "") <> ppNumSep' True (show (abs n))
 
 -- Split into groups of 3 and intersperse the groups with narrow no-break
 -- spaces.
@@ -70,7 +70,7 @@ instance PPSep Double where
               (_, fracDigits') = splitAt exp digits
               -- fracDigits' is [] if exp is a nonzero whole number
               fracDigits = if fracDigits' == [0] then [] else fracDigits'
-          in (if n < 0 then "-" else "")
+          in (if n < 0 then "−" else "")
                 <> text (TL.pack . ppNumSep' True $ show (truncate absn))
                 <> (if null fracDigits
                     then ""

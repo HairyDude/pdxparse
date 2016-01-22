@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings, TemplateHaskell, MultiParamTypeClasses #-}
+{-# OPTIONS_GHC -O0 #-} -- Compiling with optimizations on takes far too long
 module Messages (
         ScriptMessage (..)
     ,   template, templateDoc

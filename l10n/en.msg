@@ -158,7 +158,7 @@ NumCitiesThan who@Text: Owns at least as many cities as #{who}
 ToleranceToThis amt@Double: Tolerance to this religion is at least #{colourNum True amt}
 RulerADM icon@Text amt@Double: Ruler's #{icon} administrative skill is at least #{roundNum amt}
 ADMTech icon@Text amt@Double: #{icon} Administrative technology is at least #{roundNum amt}
-ArmyTradition icon@Text amt@Double: #{icon} Army tradition is at least #{plainNum amt}
+ArmyTradition icon@Text amt@Double: #{icon} <!-- idea: #{colourNumSign True amt} Yearly --> Army tradition is at least #{plainNum amt}
 BaseManpower icon@Text amt@Double: #{icon} Base manpower is at least #{roundNum amt}
 BaseProduction icon@Text amt@Double: #{icon} Base production is at least #{roundNum amt}
 BaseTax icon@Text amt@Double: #{icon} Base tax is at least #{roundNum amt}
@@ -184,8 +184,8 @@ Stability icon@Text amt@Double: #{icon} Stability is at least #{colourNumSign Tr
 TotalDevelopment icon@Text amt@Double: Country's total #{icon} development is at least #{roundNum amt}
 TotalCardinals icon@Text amt@Double: At least #{icon} #{roundNum amt} #{plural amt "cardinal" "cardinals"} exist in the world
 Unrest icon@Text amt@Double: Unrest is at least #{icon} #{colourNum False amt}
-MonthlyIncome icon@Text amt@Double: Monthly income is at least #{icon} #{colourNum True amt} ducats
-WarExhaustion icon@Text amt@Double: War exhaustion is at least #{icon} #{colourNum False amt}
+MonthlyIncome icon@Text amt@Double: #{icon} Monthly income is at least #{colourNum True amt} ducats
+WarExhaustion icon@Text amt@Double: #{icon} War exhaustion is at least #{colourNum False amt}
 WarScore icon@Text amt@Double: War score is at least #{icon} #{colourPc True amt}
 RepTrad icon@Text amt@Double: #{icon} Republican tradition is at least #{reducedNum roundPc amt}
 Inflation icon@Text amt@Double: #{icon} Inflation is at least #{colourPc False amt}
@@ -382,41 +382,48 @@ HasDefensiveIdea name@Text num@Int: Has {{icon|defensive}} Defensive idea #{show
 HasInnovativeIdea name@Text num@Int: Has {{icon|innovative}} Innovative idea #{show num} #{iquotes name}
 HasOffensiveIdea name@Text num@Int: Has {{icon|offensive}} Offensive idea #{show num} #{iquotes name}
 HasMaritimeIdea name@Text num@Int: Has {{icon|maritime}} Maritime idea #{show num} #{iquotes name}
-GainColonists icon@Text amt@Double: #{icon} #{colourNumSign True amt} Colonists
-MayExplore: Can recruit explorers and conquistadors. Explorers may explore ocean provinces.
+Colonists icon@Text amt@Double: #{icon} #{colourNumSign True amt} Colonists
+MayExplore: {{icon|may explore|28px}} Can recruit explorers and conquistadors. Explorers may explore ocean provinces.
 GainColonialRange icon@Text amt@Double: #{icon} #{colourNumSign True amt} Colonial range
-GainGlobalSettlers icon@Text amt@Double: #{icon} #{colourNumSign True amt} Global settler increase
-GainGlobalTariffs icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Global tariffs
-GainNavalForcelimitMod icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Naval forcelimit modifier
-GainPrimitivesCB: Gain permanent "Colonial Conquest" Casus Belli against all primitives.
-GainYearlyNavyTradition icon@Text amt@Double: #{icon} #{colourNumSign True amt} Yearly naval tradition
-GainLightShipPower icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Light ship combat ability
-GainGlobalShipRepair icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Global ship repair
-GainGlobalShipCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Global ship cost
-GainNavalLeaderManeuver icon@Text amt@Double: #{icon} #{colourNumSign True amt} Naval leader maneuver
-GainBlockadeEfficiency icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Blockade efficiency
+GlobalSettlers icon@Text amt@Double: #{icon} #{colourNumSign True amt} Global settler increase
+GlobalTariffs icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Global tariffs
+NavalForcelimitMod icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Naval forcelimit modifier
+GainOverseasCB: Gain permanent "Overseas Expansion" [[Casus Belli]] against countries with Indian, Sub-Saharan, Chinese or Nomad tech group. (Only usable if country's tech group is Western, Eastern or Anatolian.)
+GainPrimitivesCB: Gain permanent "Colonial Conquest" [[Casus Belli]] against all primitives.
+YearlyNavyTradition icon@Text amt@Double: #{icon} #{colourNumSign True amt} Yearly naval tradition
+HeavyShipCombatAbility icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Heavy ship combat ability
+LightShipCombatAbility icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Light ship combat ability
+GalleyCombatAbility icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Galley combat ability
+GlobalShipRepair icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Ship repair
+GlobalShipCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Ship cost
+RegimentCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Regiment cost
+NavalLeaderManeuver icon@Text amt@Double: #{icon} #{colourNumSign True amt} Naval leader maneuver
+BlockadeEfficiency icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Blockade efficiency
 GainSeaRepair: Ships repair while in coastal sea provinces.
 Primitives yn@Bool: Is#{ifThenElseT yn "" " ''not''"} primitive
-GainGlobalTaxModifier icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Global tax modifier
-GainBuildCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Build cost
-GainYearlyInflationReduction icon@Text amt@Double: #{icon} #{colourNumSign False (negate amt)} Yearly inflation reduction
-GainInterestPerAnnum icon@Text amt@Double: #{icon} #{colourNumSign False amt} Interest per annum
-GainGlobalAutonomy icon@Text amt@Double: #{icon} #{colourNumSign False amt} Monthly autonomy change
-GainLandMaintenanceMod icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Land maintenance modifier
-GainProdEff icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Production efficiency
-GainDevelCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} {{DLC-only|Development cost}}
-GainReligiousCB: Gain permanent "Holy War" and "Purging of Heresy" Casus Belli against heathens and heretics respectively.
-GainMissionaries icon@Text amt@Double: #{icon} #{colourNumSign True amt} Missionaries
-GainStabilityCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Stability cost modifier
-GainMissionaryStrength icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Missionary strength
-GainToleranceTrue icon@Text amt@Double: #{icon} #{colourNumSign True amt} Tolerance of the true faith
-GainYearlyPapalInfluence icon@Text amt@Double: #{icon} #{colourNumSign True amt} Yearly papal influence
-GainYearlyDevotion icon@Text amt@Double: #{icon} #{colourNumSign True amt} {{DLC-only|Yearly devotion}}
-GainMonthlyFervor icon@Text amt@Double: #{icon} #{colourNumSign True amt} {{DLC-only|Monthly fervor}}
-GainChurchPowerModifier icon@Text amt@Double: #{icon} #{colourNumSign True amt} {{DLC-only|Church power}}
-GainYearlyPrestige icon@Text amt@Double: #{icon} <!-- Prestige is at least -->#{colourNumSign True amt} Yearly prestige
-GainMissionaryStrengthVsHeretics icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Missionary strength vs heretics
-GainCultureConvCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Culture conversion cost
+GlobalTaxModifier icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Global tax modifier
+BuildCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Build cost
+YearlyInflationReduction icon@Text amt@Double: #{icon} #{colourNumSign False (negate amt)} Yearly inflation reduction
+InterestPerAnnum icon@Text amt@Double: #{icon} #{colourNumSign False amt} Interest per annum
+GlobalAutonomy icon@Text amt@Double: #{icon} #{colourNumSign False amt} Monthly autonomy change
+LandMaintenanceMod icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Land maintenance modifier
+NavalMaintenanceMod icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Naval maintenance modifier
+ProdEff icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Production efficiency
+DevelCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} {{DLC-only|Development cost}}
+GainReligiousCB: {{icon|cb on religious enemies|28px}} Gain permanent "Holy War" and "Purging of Heresy" [[Casus Belli]] against heathens and heretics respectively.
+Missionaries icon@Text amt@Double: #{icon} #{colourNumSign True amt} Missionaries
+StabilityCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Stability cost modifier
+MissionaryStrength icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Missionary strength
+ToleranceHeathen icon@Text amt@Double: #{icon} #{colourNumSign True amt} Tolerance of heathens
+ToleranceHeretic icon@Text amt@Double: #{icon} #{colourNumSign True amt} Tolerance of heretics
+ToleranceTrue icon@Text amt@Double: #{icon} #{colourNumSign True amt} Tolerance of the true faith
+YearlyPapalInfluence icon@Text amt@Double: #{icon} #{colourNumSign True amt} Yearly papal influence
+YearlyDevotion icon@Text amt@Double: #{icon} #{colourNumSign True amt} {{DLC-only|Yearly devotion}}
+MonthlyFervor icon@Text amt@Double: #{icon} #{colourNumSign True amt} {{DLC-only|Monthly fervor}}
+ChurchPowerModifier icon@Text amt@Double: #{icon} #{colourNumSign True amt} {{DLC-only|Church power}}
+YearlyPrestige icon@Text amt@Double: #{icon} <!-- Prestige is at least -->#{colourNumSign True amt} Yearly prestige
+MissionaryStrengthVsHeretics icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Missionary strength vs heretics
+CultureConvCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Culture conversion cost
 HasOpinion amt@Double who@Text: Has at least #{colourNumSign True amt} opinion of #{who}
 NormalOrHistoricalNations yn@Bool: #{ifThenElseT yn "Playing" "''Not'' playing"} with normal or historical nations
 IsCustomNation yn@Bool: Is#{ifThenElseT yn "" " ''not''"} playing a custom nation
@@ -424,7 +431,7 @@ ReligionEnabled icon@Text what@Text: The #{icon} #{what} religion is enabled
 CapitalIs what@Text: Capital is #{what}
 FullIdeaGroup icon@Text what@Text: Has completed #{icon} #{what}
 TradeIncomePercentage amt@Double: Trade accounts for at least #{reducedNum plainPc amt} of national income
-ReligiousUnity icon@Text amt@Double: #{icon} Religious unity is at least #{reducedNum (colourPc True) amt}
+ReligiousUnity icon@Text amt@Double: #{icon} <!-- idea: #{reducedNum (colourPcSign True) amt} --> Religious unity is at least #{reducedNum (colourPc True) amt}
 HasADM icon@Text amt@Double: Has at least #{icon} #{plainNum amt} administrative power
 HasDIP icon@Text amt@Double: Has at least #{icon} #{plainNum amt} diplomatic power
 HasMIL icon@Text amt@Double: Has at least #{icon} #{plainNum amt} military power
@@ -465,7 +472,7 @@ HasStatesmanLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} 
 NumRoyalMarriages icon@Text amt@Double: Has at least #{icon} #{roundNum amt} royal #{plural amt "marriage" "marriages"}
 IsBankrupt yn@Bool: Is#{ifThenElseT yn "" " ''not''"} bankrupt
 NumColonialSubjects amt@Double: Has at least #{roundNum amt} colonial #{plural amt "subject" "subjects"}
-TradeEfficiency icon@Text amt@Double: Has at least #{icon} #{reducedNum plainPc amt} trade efficiency
+TradeEfficiency icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} <!-- Has at least #{reducedNum plainPc amt} --> trade efficiency
 HasWarTaxes yn@Bool: Has#{ifThenElseT yn "" " ''not''"} raised war taxes
 RevoltPercentage amt@Double: At least #{roundPc amt} of provinces are in revolt
 HasAnyDisaster yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} an ongoing disaster
@@ -523,3 +530,86 @@ Piety icon@Text amt@Double: Has at least #{icon} #{reducedNum (colourPcSign True
 IsInTutorial yn@Bool: Is#{ifThenElseT yn "" " ''not''"} in the tutorial
 GainFervor icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} fervor
 GainChurchPower icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} church power
+IncomeFromVassals icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Income from vassals
+TimeToFabricateClaims icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Time to fabricate claims
+DiploAnnexCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Diplomatic annexation cost
+AEImpact icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Aggressive expansion impact
+DiploRep icon@Text amt@Double: #{icon} #{colourNumSign True amt} Diplomatic reputation
+EnvoyTravelTime icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Envoy travel time
+DiploRelations icon@Text amt@Double: #{icon} #{colourNumSign True amt} Diplomatic relations
+VassalForcelimitContribution icon@Text amt@Double: #{icon} #{colourNumSign True amt} Vassal force limit contribution
+UnjustifiedDemands icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Unjustified demands
+InfantryCombatAbility icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Infantry combat ability
+CavalryCombatAbility icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Cavalry combat ability
+ArtilleryCombatAbility icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Artillery combat ability
+ShipDurability icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Ship durability
+MoraleOfArmies icon@Text amt@Double: #{icon} #{reducedNum (colourNumSign True) amt} Morale of armies
+MoraleOfNavies icon@Text amt@Double: #{icon} #{reducedNum (colourNumSign True) amt} Morale of navies
+NavalAttrition icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Naval attrition
+Discipline icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Discipline
+NationalManpowerMod icon@Text amt@Double: #{icon} #{reducedNum (colourNumSign True) amt} National manpower modifier
+ManpowerRecoverySpeed icon@Text amt@Double: #{icon} #{reducedNum (colourNumSign True) amt} Manpower recovery speed
+AvailableMercs icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Available mercenaries
+GarrisonSize icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Garrison size
+LandAttrition icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Land attrition
+LandForcelimitMod icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Land force limit modifier
+PrestigeDecay icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Prestige decay
+MercCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Mercenary cost
+TechCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Technology cost
+PossibleAdvisors icon@Text amt@Double: #{icon} #{reducedNum (colourNumSign True) amt} Possible advisors
+ReduceInflationCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Reduce inflation cost
+LeadersWithoutUpkeep icon@Text amt@Double: #{icon} #{reducedNum (colourNumSign True) amt} Leader(s)<!-- sic --> without upkeep
+AdvisorCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Advisor costs
+CoreCreationCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Core creation cost
+MercMaintenance icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Mercenary maintenance modifier
+ADMTechCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Administrative technology cost
+DIPTechCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Diplomatic technology cost
+GoodsProducedMod icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Goods produced modifier
+NavalLeaderFire icon@Text amt@Double: #{icon} #{reducedNum (colourNumSign True) amt} Naval leader fire
+NavalLeaderShock icon@Text amt@Double: #{icon} #{reducedNum (colourNumSign True) amt} Naval leader shock
+PrestigeFromLand icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Prestige from land battles
+PrestigeFromNaval icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Prestige from naval battles
+Diplomats icon@Text amt@Double: #{icon} #{colourNumSign True amt} Diplomats
+WarExhaustionCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Cost of reducing war exhaustion
+ImproveRelations icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Improve relations
+ProvinceWarscoreCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Province warscore cost
+ReducedStabImpacts: Lowered impact on stability from diplomatic actions
+NationalUnrest icon@Text amt@Double: #{icon} #{colourNumSign False amt} National unrest
+YearsOfSeparatism icon@Text amt@Double: #{icon} #{colourNumSign False amt} Years of separatism
+AccCultureThreshold icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Accepted culture threshold
+BetterRelationsOverTime icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Better relations over time
+IdeaCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Idea cost
+Merchants icon@Text amt@Double: #{icon} #{colourNumSign True amt} Merchants
+RecruitmentTime icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Recruitment time
+ShipbuildingTime icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Shipbuilding time
+GlobalTradePower icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Global trade power
+EmbargoEff icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Embargo efficiency
+PrivateerEff icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Privateer efficiency
+GlobalSpyDefence icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} National spy defence
+MaySabotageReputation: {{icon|may sabotage reputation|28px}} May [[sabotage reputation]]
+SpyOffense icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Spy offense
+CovertActionRelationImpact icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Covert action relation impact
+MayStudyTech: {{icon|may study technology|28px}} May [[study technology]]
+MaySowDiscontent: {{icon|may sow discontent|28px}} May [[sow discontent]]
+MayAgitateForLiberty: May [[agitate for liberty]]
+MayInfiltrateAdministration: {{icon|may infiltrate administration|28px}} May [[infiltrate administration]]
+RebelSupportEff icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Rebel support efficiency
+ArmyTraditionDecay icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Army tradition decay
+NavyTraditionDecay icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Navy tradition decay
+InfantryCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Infantry cost
+CavalryCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Cavalry cost
+MILTechCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Military technology cost
+HostileCoreCreation icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Hostile core-creation cost on us
+CaravanPower icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Caravan power
+LandLeaderFire icon@Text amt@Double: #{icon} #{colourNumSign True amt} Land leader fire
+LandLeaderShock icon@Text amt@Double: #{icon} #{colourNumSign True amt} Land leader shock
+LandLeaderManeuver icon@Text amt@Double: #{icon} #{colourNumSign True amt} Land leader maneuver
+LeaderSiege icon@Text amt@Double: #{icon} #{colourNumSign True amt} Leader siege
+FortDefense icon@Text amt@Double: #{icon} #{colourPcSign True amt} Fort defense
+FortMaintenance icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Fort maintenance
+ReinforceSpeed icon@Text amt@Double: #{icon} #{colourPcSign True amt} Reinforce speed
+AttritionForEnemies icon@Text amt@Double: #{icon} #{colourNumSign True amt} Attrition for enemies
+SiegeAbility icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Siege ability
+RecoverArmyMoraleSpeed icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Recover army morale speed
+TradeRange icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Trade range
+TradeSteering icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Trade steering

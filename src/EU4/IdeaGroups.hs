@@ -146,21 +146,27 @@ processIdeaGroup stmt = do
 -- XXX: do this properly in the first place.
 fixup :: Doc -> Doc
 fixup = strictText . T.unlines . map (TE.decodeUtf8
-            . mungIdeaIcons multiIdeaIcons
+            -- . mungIdeaIcons multiIdeaIcons
             . mungIdeaIcons singleIdeaIcons
-            . killBadIcons
+            . killIcons
         . TE.encodeUtf8) . T.lines . doc2text where
-    badIcons, singleIdeaIcons, multiIdeaIcons  :: Regex
+    badIcons, singleIdeaIcons, multiIdeaIcons{-, multiIdeaStartIcons -} :: Regex
     badIcons = RE.makeRegex ("((tradition.|bonus) = |\\* )({{icon[^}]*}}) "::ByteString)
     singleIdeaIcons = RE.makeRegex ("idea(.)effect = {{icon\\|([a-z ]*)\\|28px}} "::ByteString)
-    multiIdeaIcons = RE.makeRegex ("idea(.)effect = {{plainlist\\|\\* {{icon\\|([a-z ]*)\\|28px}} "::ByteString)
-    killBadIcons :: ByteString -> ByteString
-    killBadIcons s = case RE.matchOnceText badIcons s of
-        Nothing -> s
+    multiIdeaIcons = RE.makeRegex ("(:)({{icon[^}]*}}) "::ByteString)
+--    multiIdeaStartIcons = RE.makeRegex ("idea(.)effect = {{plainlist\\|\\* {{icon\\|([a-z ]*)\\|28px}} "::ByteString)
+    killIcons :: ByteString -> ByteString
+    killIcons s = case RE.matchOnceText badIcons s of
         Just (pre, matcharr, post) -> mconcat
             [pre, fst (matcharr ! 1)
             ,"<!-- ", fst (matcharr ! 3), " -->"
             ,post]
+        Nothing -> case RE.matchOnceText multiIdeaIcons s of
+            Just (pre, matcharr, post) -> mconcat
+                [pre, fst (matcharr ! 1)
+                ,"<!-- ", fst (matcharr ! 2), " -->"
+                ,post]
+            Nothing -> s
     mungIdeaIcons :: Regex -> ByteString -> ByteString
     mungIdeaIcons re s = case RE.matchOnceText re s of
         Nothing -> s
@@ -181,10 +187,19 @@ ppIdeaGroup ig = do
                 case effmsgs of
                     -- Remove the bullets from a single effect
                     [_] -> imsg2doc (unindent effmsgs)
+                    {- This doesn't work, due to the template's abuse of
+                       deflist markup and misbehaviour of MediaWiki.
                     -- Wrap multiple effects in a plainlist
                     _ -> do
                         effsdoc <- imsg2doc effmsgs
                         return $ templateDoc "plainlist" [effsdoc]
+                    -}
+                    -- Instead, replace bullets with colons.
+                    [] -> return mempty
+                    (m:ms) -> do
+                        first <- imsg2doc (unindent [m])
+                        rest <- mapM (\m -> (":" <>) <$> imsg2doc [m]) (unindent ms)
+                        return (first <> line <> vsep rest)
             bonus_pp'd <- imsg2doc . unindent =<< ppMany bonus
             mtrigger_pp'd <- case ig_trigger ig of
                 Nothing -> return Nothing

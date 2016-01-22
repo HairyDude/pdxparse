@@ -23,7 +23,7 @@ module SettingsTypes
     , getGameL10nIfPresent
     , withCurrentFile
     , getLangs
-    , unfoldM
+    , unfoldM, concatMapM 
     , fromReaderT, toReaderT
     ) where
 
@@ -32,6 +32,7 @@ import Debug.Trace
 import Control.Monad.Identity (runIdentity)
 import Control.Monad.Reader
 
+import Data.Foldable (fold)
 import Data.Maybe
 
 import Data.Text (Text)
@@ -155,6 +156,9 @@ unfoldM f = go where
             Just (next, x') -> do
                 rest <- go x'
                 return (next:rest)
+
+concatMapM :: (Monad m, Traversable t, Monoid (t b)) => (a -> m (t b)) -> t a -> m (t b)
+concatMapM f xs = liftM fold . mapM f $ xs
 
 fromReaderT :: ReaderT r m a -> Reader r (m a)
 fromReaderT mx = runReaderT mx <$> ask
