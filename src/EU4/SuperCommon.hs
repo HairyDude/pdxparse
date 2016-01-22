@@ -52,5 +52,6 @@ awdModifierAddSection aim stmt@(Statement (GenericLhs left) right) = case T.toLo
     "factor" -> case floatRhs right of
         Just fac -> aim { aim_factor = Just fac }
         Nothing  -> aim
-    _ -> aim { aim_triggers = aim_triggers aim ++ [stmt] }
+    _ -> -- the rest of the statements are just the conditions.
+        aim { aim_triggers = aim_triggers aim ++ [stmt] }
 awdModifierAddSection aim _ = aim

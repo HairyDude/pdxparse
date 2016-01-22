@@ -68,7 +68,7 @@ main = do
 
     createDirectoryIfMissing False "output"
 
-    forM_ ["decisions"{-,"missions","events","policies","ideagroups"-}] $ \category -> do
+    forM_ ["decisions","missions","events","policies","ideagroups"] $ \category -> do
         scripts <- readScripts settings category -- :: [(FilePath, GenericScript)]
 
         let handler :: GenericStatement -> PP Extra (Either Text Doc)

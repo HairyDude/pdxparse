@@ -66,35 +66,24 @@ processEvent (Statement left right) = case right of
 eventAddSection :: Event -> GenericStatement -> PP extra Event
 eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file ->
     case label of
-        "id" -> case rhs of
-            StringRhs id -> return evt { evt_id = Just id }
-            GenericRhs id -> return evt { evt_id = Just id }
-            IntRhs id -> return evt { evt_id = Just (T.pack $ show id) }
-            -- id is not supposed to be float, but it parses that way.
-            FloatRhs id -> return evt { evt_id = Just (pp_float_t id) }
+        "id" -> case (textRhs rhs, floatRhs rhs) of
+            (Just tid, _) -> return evt { evt_id = Just tid }
+            (_, Just nid) -> return evt { evt_id = Just (T.pack $ show (nid::Int)) }
             _ -> error $ "bad id in " ++ file ++ ": " ++ show rhs
-        "title" -> case rhs of
-            StringRhs title -> do
-                t_loc <- getGameL10nIfPresent title
-                return evt { evt_title = Just title
-                           , evt_title_loc = t_loc }
-            GenericRhs title -> do
+        "title" -> case textRhs rhs of
+            Just title -> do
                 t_loc <- getGameL10nIfPresent title
                 return evt { evt_title = Just title
                            , evt_title_loc = t_loc }
             _ -> error $ "bad title in " ++ file
-        "desc" -> case rhs of
-            StringRhs desc -> do
-                desc_loc <- getGameL10nIfPresent desc
-                return evt { evt_desc = Just desc
-                           , evt_desc_loc = desc_loc }
-            GenericRhs desc -> do
+        "desc" -> case textRhs rhs of
+            Just desc -> do
                 desc_loc <- getGameL10nIfPresent desc
                 return evt { evt_desc = Just desc
                            , evt_desc_loc = desc_loc }
             _ -> error "bad desc"
-        "picture" -> case rhs of
-            GenericRhs pic -> return evt { evt_picture = Just pic }
+        "picture" -> case textRhs rhs of
+            Just pic -> return evt { evt_picture = Just pic }
             _ -> error "bad picture"
         "trigger" -> case rhs of
             CompoundRhs trigger_script -> case trigger_script of
@@ -132,12 +121,8 @@ addOption (Just opts) opt = do
 optionAddStatement :: Option -> GenericStatement -> PP extra Option
 optionAddStatement opt stmt@(Statement (GenericLhs label) rhs) =
     case label of
-        "name" -> case rhs of
-            StringRhs name ->
-                (\name_loc -> opt { opt_name = Just name
-                                  , opt_name_loc = name_loc })
-                <$> getGameL10nIfPresent name
-            GenericRhs name ->
+        "name" -> case textRhs rhs of
+            Just name ->
                 (\name_loc -> opt { opt_name = Just name
                                   , opt_name_loc = name_loc })
                 <$> getGameL10nIfPresent name

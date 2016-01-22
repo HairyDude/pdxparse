@@ -680,11 +680,11 @@ pp_mtth :: GenericScript -> PP IdeaTable Doc
 pp_mtth scr
     = pp_mtth' $ foldl' addField newMTTH scr
     where
-        addField mtth (Statement (GenericLhs "years") rhs) | Just n <- floatRhs rhs
+        addField mtth (Statement (GenericLhs "years") (floatRhs -> Just n))
             = mtth { mtth_years = Just n }
-        addField mtth (Statement (GenericLhs "months") rhs) | Just n <- floatRhs rhs
+        addField mtth (Statement (GenericLhs "months") (floatRhs -> Just n))
             = mtth { mtth_months = Just n }
-        addField mtth (Statement (GenericLhs "days") rhs) | Just n <- floatRhs rhs
+        addField mtth (Statement (GenericLhs "days") (floatRhs -> Just n))
             = mtth { mtth_days = Just n }
         addField mtth (Statement (GenericLhs "modifier") (CompoundRhs rhs))
             = addMTTHMod mtth rhs
@@ -767,25 +767,25 @@ compoundMessage _ stmt = preStatement stmt
 
 -- RHS is a localizable atom.
 withLocAtom :: (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
-withLocAtom msg (Statement _ rhs) | Just key <- textRhs rhs
+withLocAtom msg (Statement _ (textRhs -> Just key))
     = msgToPP =<< msg <$> getGameL10n key
 withLocAtom _ stmt = preStatement stmt
 
 -- RHS is a localizable atom and we need a second one (passed to message as
 -- first arg).
 withLocAtom2 :: ScriptMessage -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
-withLocAtom2 inMsg msg (Statement _ rhs) | Just key <- textRhs rhs
+withLocAtom2 inMsg msg (Statement _ (textRhs -> Just key))
     = msgToPP =<< msg <$> messageText inMsg <*> getGameL10n key
 withLocAtom2 _ _ stmt = preStatement stmt
 
 withLocAtomAndIcon :: Text -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
-withLocAtomAndIcon iconkey msg (Statement _ rhs) | Just key <- textRhs rhs
+withLocAtomAndIcon iconkey msg (Statement _ (textRhs -> Just key))
     = do what <- getGameL10n key
          msgToPP $ msg (iconText iconkey) what
 withLocAtomAndIcon _ _ stmt = preStatement stmt
 
 withLocAtomIcon :: (Text -> Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
-withLocAtomIcon msg stmt@(Statement _ rhs) | Just key <- textRhs rhs
+withLocAtomIcon msg stmt@(Statement _ (textRhs -> Just key))
     = withLocAtomAndIcon key msg stmt
 withLocAtomIcon _ stmt = preStatement stmt
 
@@ -797,13 +797,13 @@ withProvince _ stmt = preStatement stmt
 -- As withLocAtom but no l10n.
 -- Currently unused
 --withNonlocAtom :: (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
---withNonlocAtom msg (Statement _ rhs) | Just text <- textRhs rhs
+--withNonlocAtom msg (Statement _ (textRhs -> Just text))
 --    = msgToPP $ msg text
 --withNonlocAtom _ stmt = preStatement stmt
 
 -- As withNonlocAtom but with an additional bit of text.
 withNonlocAtom2 :: ScriptMessage -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
-withNonlocAtom2 submsg msg (Statement _ rhs) | Just text <- textRhs rhs = do
+withNonlocAtom2 submsg msg (Statement _ (textRhs -> Just text)) = do
     extratext <- messageText submsg
     msgToPP $ msg extratext text
 withNonlocAtom2 _ _ stmt = preStatement stmt
@@ -895,8 +895,7 @@ tagOrProvince _ _ stmt = preStatement stmt
 
 -- Numeric statement.
 numeric :: (Double -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
-numeric msg (Statement _ rhs) 
-    | Just n <- floatRhs rhs = msgToPP $ msg n
+numeric msg (Statement _ (floatRhs -> Just n)) = msgToPP $ msg n
 numeric _ stmt = plainMsg $ pre_statement' stmt
 
 numericOrTag :: (Double -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
@@ -925,7 +924,7 @@ withBool msg stmt = do
           fullmsg
 
 withBool' :: (Bool -> ScriptMessage) -> GenericStatement -> PP extra (Maybe [(Int, ScriptMessage)])
-withBool' msg (Statement _ rhs) | Just yn <- textRhs rhs, T.map toLower yn `elem` ["yes","no","false"]
+withBool' msg (Statement _ (textRhs -> Just yn)) | T.map toLower yn `elem` ["yes","no","false"]
     = fmap Just . msgToPP $ case T.toCaseFold yn of
         "yes" -> msg True
         "no"  -> msg False
@@ -940,7 +939,7 @@ withFlagOrBool bmsg _ (Statement _ (GenericRhs "no"))  = msgToPP (bmsg False)
 withFlagOrBool _ tmsg stmt = withFlag tmsg stmt
 
 numericIcon :: Text -> (Text -> Double -> ScriptMessage) -> GenericStatement -> PP extra [(Int, ScriptMessage)]
-numericIcon the_icon msg (Statement _ rhs) | Just amt <- floatRhs rhs
+numericIcon the_icon msg (Statement _ (floatRhs -> Just amt))
     = msgToPP $ msg (iconText the_icon) amt
 numericIcon _ _ stmt = plainMsg $ pre_statement' stmt
 
@@ -990,11 +989,9 @@ textValue whatlabel vallabel smallmsg bigmsg loc stmt@(Statement _ (CompoundRhs 
     = msgToPP =<< pp_tv (foldl' addLine newTV scr)
     where
         addLine :: TextValue -> GenericStatement -> TextValue
-        addLine tv (Statement (GenericLhs label) rhs)
-            | label == whatlabel, Just what <- textRhs rhs
+        addLine tv (Statement (GenericLhs label) (textRhs -> Just what)) | label == whatlabel
             = tv { tv_what = Just what }
-        addLine tv (Statement (GenericLhs label) rhs)
-            | label == vallabel, Just val <- floatRhs rhs
+        addLine tv (Statement (GenericLhs label) (floatRhs -> Just val)) | label == vallabel
             = tv { tv_value = Just val }
         addLine nor _ = nor
         pp_tv :: TextValue -> PP extra ScriptMessage
@@ -1027,11 +1024,11 @@ textAtom whatlabel atomlabel msg loc stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< pp_ta (foldl' addLine newTA scr)
     where
         addLine :: TextAtom -> GenericStatement -> TextAtom
-        addLine ta (Statement (GenericLhs label) rhs)
-            | label == whatlabel, Just what <- textRhs rhs
+        addLine ta (Statement (GenericLhs label) (textRhs -> Just what))
+            | label == whatlabel
             = ta { ta_what = Just what }
-        addLine ta (Statement (GenericLhs label) rhs)
-            | label == atomlabel, Just at <- textRhs rhs
+        addLine ta (Statement (GenericLhs label) (textRhs -> Just at))
+            | label == atomlabel
             = ta { ta_atom = Just at }
         addLine nor _ = nor
         pp_ta :: TextAtom -> PP extra ScriptMessage
@@ -1123,14 +1120,13 @@ factionInfluence stmt@(Statement _ (CompoundRhs scr))
                     return $ MsgFactionGainInfluence fac_icon fac_loc infl
             else return $ preMessage stmt
         addField :: FactionInfluence -> GenericStatement -> FactionInfluence
-        addField inf (Statement (GenericLhs "faction") (GenericRhs fac)) = inf { faction = Just fac }
-        addField inf (Statement (GenericLhs "influence") rhs) | Just amt <- floatRhs rhs = inf { influence = Just amt }
+        addField inf (Statement (GenericLhs "faction") (textRhs -> Just fac)) = inf { faction = Just fac }
+        addField inf (Statement (GenericLhs "influence") (floatRhs -> Just amt)) = inf { influence = Just amt }
         addField inf _ = inf -- unknown statement
 factionInfluence stmt = preStatement stmt
 
 factionInPower :: GenericStatement -> PP extra [(Int, ScriptMessage)]
-factionInPower (Statement _ rhs)
-    | Just fac <- textRhs rhs, Just facKey <- fac_iconkey fac
+factionInPower (Statement _ (textRhs -> Just fac)) | Just facKey <- fac_iconkey fac
     = do fac_loc <- getGameL10n fac
          msgToPP $ MsgFactionInPower (iconText facKey) fac_loc
 factionInPower stmt = preStatement stmt
@@ -1196,10 +1192,10 @@ addModifier _ stmt = preStatement stmt
 -- "add_core = <n>" in country scope means "Gain core on <localize PROVn>"
 -- "add_core = <tag>" in province scope means "<localize tag> gains core"
 addCore :: GenericStatement -> PP extra [(Int, ScriptMessage)]
-addCore (Statement _ (GenericRhs tag)) = msgToPP =<< do -- tag
+addCore (Statement _ (textRhs -> Just tag)) = msgToPP =<< do -- tag
     tagflag <- flagText tag
     return $ MsgTagGainsCore tagflag
-addCore (Statement _ rhs) | Just num <- floatRhs rhs = msgToPP =<< do -- province
+addCore (Statement _ (floatRhs -> Just num)) = msgToPP =<< do -- province
     prov <- getProvLoc num
     return $ MsgGainCoreOnProvince prov
 addCore stmt = preStatement stmt
@@ -1223,9 +1219,9 @@ opinion msgIndef msgDur stmt@(Statement _ (CompoundRhs scr))
         addLine :: AddOpinion -> GenericStatement -> AddOpinion
         addLine op (Statement (GenericLhs "who") (GenericRhs tag))
             = op { who = Just tag }
-        addLine op (Statement (GenericLhs "modifier") rhs) | Just label <- textRhs rhs
+        addLine op (Statement (GenericLhs "modifier") (textRhs -> Just label))
             = op { modifier = Just label }
-        addLine op (Statement (GenericLhs "years") rhs) | Just n <- floatRhs rhs
+        addLine op (Statement (GenericLhs "years") (floatRhs -> Just n))
             = op { op_years = Just n }
         addLine op _ = op
         pp_add_opinion op
@@ -1249,8 +1245,8 @@ hasOpinion stmt@(Statement _ (CompoundRhs scr))
     = msgToPP =<< pp_hasOpinion (foldl' addLine newHasOpinion scr)
     where
         addLine :: HasOpinion -> GenericStatement -> HasOpinion
-        addLine hop (Statement (GenericLhs "who")   rhs) | Just who <- textRhs  rhs = hop { hop_who = Just who }
-        addLine hop (Statement (GenericLhs "value") rhs) | Just val <- floatRhs rhs = hop { hop_value = Just val }
+        addLine hop (Statement (GenericLhs "who")   (textRhs -> Just who)) = hop { hop_who = Just who }
+        addLine hop (Statement (GenericLhs "value") (floatRhs -> Just val)) = hop { hop_value = Just val }
         addLine hop _ = trace "warning: unrecognized has_opinion clause" hop
         pp_hasOpinion :: HasOpinion -> PP extra ScriptMessage
         pp_hasOpinion hop = case (hop_who hop, hop_value hop) of
@@ -1326,7 +1322,7 @@ spawnRebels :: Maybe Text -> GenericStatement -> PP extra [(Int, ScriptMessage)]
 spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
     spawnRebels' Nothing (Statement _ (CompoundRhs scr))
         = pp_spawnRebels $ foldl' addLine newSpawnRebels scr
-    spawnRebels' rtype (Statement _ rhs) | Just size <- floatRhs rhs
+    spawnRebels' rtype (Statement _ (floatRhs -> Just size))
         = pp_spawnRebels $ newSpawnRebels { rebelType = rtype, rebelSize = Just size }
     spawnRebels' _ stmt = return (preMessage stmt)
 
@@ -1433,7 +1429,7 @@ triggerEvent _ stmt = preStatement stmt
 -- Specific values
 
 gainManpower :: GenericStatement -> PP extra [(Int, ScriptMessage)]
-gainManpower (Statement _ rhs) | Just amt <- floatRhs rhs = msgToPP =<<
+gainManpower (Statement _ (floatRhs -> Just amt)) = msgToPP =<<
     let mpicon = iconText "manpower"
     in if abs (amt::Double) < 1
         --  interpret amt as a fraction of max
@@ -1647,49 +1643,25 @@ defineRuler (Statement _ (CompoundRhs scr))
     = pp_define_ruler $ foldl' addLine newDefineRuler scr where
         addLine :: DefineRuler -> GenericStatement -> DefineRuler
         addLine dr (Statement (GenericLhs lhs) rhs) = case T.map toLower lhs of
-            "rebel" -> case rhs of
-                GenericRhs "yes" -> dr { dr_rebel = True }
+            "rebel" -> case textRhs rhs of
+                Just "yes" -> dr { dr_rebel = True }
                 _ -> dr
-            "name" ->
-                let mthe_name = case rhs of
-                        GenericRhs a_name -> Just a_name
-                        StringRhs a_name -> Just a_name
-                        _ -> Nothing
-                in dr { dr_name = mthe_name }
-            "dynasty" ->
-                let mthe_dynasty = case rhs of
-                        GenericRhs a_dynasty -> Just a_dynasty
-                        StringRhs a_dynasty -> Just a_dynasty
-                        _ -> Nothing
-                in dr { dr_dynasty = mthe_dynasty }
-            "age" ->
-                let mage = floatRhs rhs
-                in  dr { dr_age = mage }
-            "female" ->
-                let yn = case rhs of
-                        GenericRhs yn' -> Just yn'
-                        StringRhs yn' -> Just yn'
-                        _ -> Nothing
-                in if yn == Just "yes" then dr { dr_female = Just True }
-                   else if yn == Just "no" then dr { dr_female = Just False }
-                   else dr
-            "claim" ->
-                let mclaim = floatRhs rhs
-                in  dr { dr_claim = mclaim }
+            "name" -> dr { dr_name = textRhs rhs }
+            "dynasty" -> dr { dr_dynasty = textRhs rhs }
+            "age" -> dr { dr_age = floatRhs rhs }
+            "female" -> case textRhs rhs of
+                Just "yes" -> dr { dr_female = Just True }
+                Just "no"  -> dr { dr_female = Just False }
+                _ -> dr
+            "claim" -> dr { dr_claim = floatRhs rhs }
             "regency" -> case textRhs rhs of
                 Just "yes" -> dr { dr_regency = True }
                 _ -> dr
-            "adm" ->
-                let madm = floatRhs rhs
-                in  dr { dr_adm = madm }
-            "dip" ->
-                let mdip = floatRhs rhs
-                in  dr { dr_dip = mdip }
-            "mil" ->
-                let mmil = floatRhs rhs
-                in  dr { dr_mil = mmil }
-            "fixed" -> case rhs of
-                GenericRhs "yes" -> dr { dr_fixed = True }
+            "adm" -> dr { dr_adm = floatRhs rhs }
+            "dip" -> dr { dr_dip = floatRhs rhs }
+            "mil" -> dr { dr_mil = floatRhs rhs }
+            "fixed" -> case textRhs rhs of
+                Just "yes" -> dr { dr_fixed = True }
                 _ -> dr
             "attach_leader" -> dr { dr_attach_leader = textRhs rhs }
             _ -> dr
@@ -1749,20 +1721,16 @@ buildToForcelimit :: GenericStatement -> PP extra [(Int, ScriptMessage)]
 buildToForcelimit stmt@(Statement _ (CompoundRhs scr))
     = msgToPP . pp_build_to_forcelimit $ foldl' addLine newBuildToForcelimit scr where
         addLine :: BuildToForcelimit -> GenericStatement -> BuildToForcelimit
-        addLine dr (Statement (GenericLhs lhs) rhs)
-            = let mhowmuch = floatRhs rhs
-                  howmuch = fromJust mhowmuch
-              in if isNothing mhowmuch
-                 then dr
-                 else case T.map toLower lhs of
-                    "infantry"   -> dr { btf_infantry   = Just howmuch }
-                    "cavalry"    -> dr { btf_cavalry    = Just howmuch }
-                    "artillery"  -> dr { btf_artillery  = Just howmuch }
-                    "heavy_ship" -> dr { btf_heavy_ship = Just howmuch }
-                    "light_ship" -> dr { btf_light_ship = Just howmuch }
-                    "galley"     -> dr { btf_galley     = Just howmuch }
-                    "transport"  -> dr { btf_transport  = Just howmuch }
-                    _ -> dr
+        addLine dr (Statement (GenericLhs lhs) (floatRhs -> Just howmuch))
+            = case T.map toLower lhs of
+                "infantry"   -> dr { btf_infantry   = Just howmuch }
+                "cavalry"    -> dr { btf_cavalry    = Just howmuch }
+                "artillery"  -> dr { btf_artillery  = Just howmuch }
+                "heavy_ship" -> dr { btf_heavy_ship = Just howmuch }
+                "light_ship" -> dr { btf_light_ship = Just howmuch }
+                "galley"     -> dr { btf_galley     = Just howmuch }
+                "transport"  -> dr { btf_transport  = Just howmuch }
+                _ -> dr
         addLine dr _ = dr
         pp_build_to_forcelimit :: BuildToForcelimit -> ScriptMessage
         pp_build_to_forcelimit dr =
@@ -1986,7 +1954,7 @@ hreReformLoc n = getGameL10n $ case n of
     _ -> error "called hreReformLoc with n < 1 or n > 8"
 
 hreReformLevel :: GenericStatement -> PP extra [(Int, ScriptMessage)]
-hreReformLevel (Statement _ rhs) | Just level <- floatRhs rhs, level >= 0, level <= 8
+hreReformLevel (Statement _ (floatRhs -> Just level)) | level >= 0, level <= 8
     = if level == 0
         then msgToPP MsgNoHREReforms
         else msgToPP . MsgHREPassedReform =<< hreReformLoc level
@@ -1995,8 +1963,8 @@ hreReformLevel stmt = preStatement stmt
 -- Religion
 
 religionYears :: GenericStatement -> PP extra [(Int, ScriptMessage)]
-religionYears (Statement _ (CompoundRhs [Statement (GenericLhs rel) rhs]))
-    | Just years <- floatRhs rhs = do
+religionYears (Statement _ (CompoundRhs [Statement (GenericLhs rel) (floatRhs -> Just years)]))
+    = do
         let rel_icon = iconText rel
         rel_loc <- getGameL10n rel
         msgToPP $ MsgReligionYears rel_icon rel_loc years
@@ -2005,7 +1973,7 @@ religionYears stmt = preStatement stmt
 -- Government
 
 govtRank :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-govtRank (Statement _ rhs) | Just level <- floatRhs rhs
+govtRank (Statement _ (floatRhs -> Just level))
     = case level :: Int of
         1 -> msgToPP MsgRankDuchy -- unlikely, but account for it anyway
         2 -> msgToPP MsgRankKingdom
@@ -2014,7 +1982,7 @@ govtRank (Statement _ rhs) | Just level <- floatRhs rhs
 govtRank stmt = preStatement stmt
 
 setGovtRank :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-setGovtRank (Statement _ rhs) | Just level <- floatRhs rhs, level `elem` [1..3]
+setGovtRank (Statement _ (floatRhs -> Just level)) | level `elem` [1..3]
     = case level :: Int of
         1 -> msgToPP MsgSetRankDuchy
         2 -> msgToPP MsgSetRankKingdom
@@ -2023,27 +1991,27 @@ setGovtRank (Statement _ rhs) | Just level <- floatRhs rhs, level `elem` [1..3]
 setGovtRank stmt = preStatement stmt
 
 numProvinces :: Text -> (Text -> Text -> Double -> ScriptMessage) -> GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-numProvinces iconKey msg (Statement (GenericLhs what) rhs)
-    | Just amt <- floatRhs rhs = do
-        what_loc <- getGameL10n what
-        msgToPP (msg (iconText iconKey) what_loc amt)
+numProvinces iconKey msg (Statement (GenericLhs what) (floatRhs -> Just amt)) = do
+    what_loc <- getGameL10n what
+    msgToPP (msg (iconText iconKey) what_loc amt)
 numProvinces _ _ stmt = preStatement stmt
 
 withFlagOrProvince :: (Text -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-withFlagOrProvince countryMsg provinceMsg stmt@(Statement _ rhs)
-    | Just _ <- textRhs rhs = withFlag countryMsg stmt
-    | Just _ <- floatRhs rhs :: Maybe Double
-                            = withProvince provinceMsg stmt
+withFlagOrProvince countryMsg provinceMsg stmt@(Statement _ (textRhs -> Just _))
+    = withFlag countryMsg stmt
+withFlagOrProvince countryMsg provinceMsg stmt@(Statement _ (floatRhs -> Just (_ :: Double)))
+    = withProvince provinceMsg stmt
 withFlagOrProvince _ _ stmt = preStatement stmt
 
 tradeMod :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-tradeMod stmt@(Statement _ rhs)
-    | Just _ <- textRhs rhs = withLocAtom2 MsgTradeMod MsgHasModifier stmt
-    | CompoundRhs _ <- rhs  = textAtom "who" "name" MsgHasTradeModifier (fmap Just . flagText) stmt
+tradeMod stmt@(Statement _ (textRhs -> Just _))
+    = withLocAtom2 MsgTradeMod MsgHasModifier stmt
+tradeMod stmt@(Statement _ (CompoundRhs _))
+    = textAtom "who" "name" MsgHasTradeModifier (fmap Just . flagText) stmt
 tradeMod stmt = preStatement stmt
 
 isMonth :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-isMonth (Statement _ rhs) | Just num <- floatRhs rhs, (num::Int) >= 1, num <= 12
+isMonth (Statement _ (floatRhs -> Just (num :: Int))) | num >= 1, num <= 12
     = do
         month_loc <- getGameL10n $ case num of
             1 -> "January"
@@ -2063,7 +2031,7 @@ isMonth (Statement _ rhs) | Just num <- floatRhs rhs, (num::Int) >= 1, num <= 12
 isMonth stmt = preStatement stmt
 
 range :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-range stmt@(Statement _ rhs) | Just _ <- floatRhs rhs :: Maybe Double
+range stmt@(Statement _ (floatRhs -> Just (_ :: Double)))
     = numericIcon "colonial range" MsgGainColonialRange stmt
 range stmt = withFlag MsgIsInColonialRange stmt
 
@@ -2074,7 +2042,7 @@ area stmt                               = withLocAtom MsgAreaIs stmt
 -- Currently dominant_culture only appears in decisions/Cultural.txt
 -- (dominant_culture = capital).
 dominantCulture :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-dominantCulture stmt@(Statement _ rhs) | Just "capital" <- textRhs rhs
+dominantCulture stmt@(Statement _ (textRhs -> Just "capital"))
     = msgToPP MsgCapitalCultureDominant
 dominantCulture stmt = preStatement stmt
 
@@ -2088,7 +2056,7 @@ customTriggerTooltip (Statement _ (CompoundRhs scr))
 customTriggerTooltip stmt = preStatement stmt
 
 piety :: GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-piety stmt@(Statement _ rhs) | Just amt <- floatRhs rhs
+piety stmt@(Statement _ (floatRhs -> Just amt))
     = numericIcon (case amt `compare` (0::Double) of
         LT -> "lack of piety"
         _  -> "being pious")
@@ -2100,7 +2068,7 @@ piety stmt = preStatement stmt
 ----------------------
 
 hasIdea :: (Text -> Int -> ScriptMessage) -> GenericStatement -> PP IdeaTable [(Int, ScriptMessage)]
-hasIdea msg stmt@(Statement (GenericLhs lhs) rhs) | Just n <- floatRhs rhs, n >= 1, n <= 7 = do
+hasIdea msg stmt@(Statement (GenericLhs lhs) (floatRhs -> Just n)) | n >= 1, n <= 7 = do
     mgroupTable <- asks info
     case mgroupTable of
         Nothing -> do -- can't lookup ideas!
