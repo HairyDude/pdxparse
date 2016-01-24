@@ -7,6 +7,9 @@ module EU4.Common (
     ,   IdeaTable
     ,   iconKey, iconFile, iconFileB
     ,   AIWillDo (..), AIModifier (..)
+    ,   Scope, EU4 (..), eu4
+    ,   scope, getCurrentScope
+    ,   getIdeas
     ,   ppAiWillDo, ppAiMod
     ,   module EU4.SuperCommon
     ) where
@@ -52,6 +55,43 @@ import MessageTools (plural)
 import EU4.SuperCommon
 import {-# SOURCE #-} EU4.IdeaGroups
 
+data Scope
+    = Country
+    | Province
+    | TradeNode
+    | Geographic -- area, etc.
+    | Bonus
+    deriving (Show, Eq, Ord, Enum, Bounded)
+
+isGeographic :: Scope -> Bool
+isGeographic Country = False
+isGeographic Province = True
+isGeographic TradeNode = True
+isGeographic Geographic = True
+isGeographic Bonus = False
+
+-- State
+type IdeaTable = HashMap Text IdeaGroup
+data EU4 = EU4
+    { scopeStack :: [Scope]
+    , ideas :: IdeaTable
+    }
+
+eu4 :: EU4
+eu4 = EU4 { ideas = HM.empty, scopeStack = [] }
+
+scope :: Scope -> PP EU4 a -> PP EU4 a
+scope s = local (\r ->
+    let oldinfo = info r
+    in  r { info = oldinfo { scopeStack = s : scopeStack oldinfo } })
+
+-- Get current scope, if there is one.
+getCurrentScope :: PP EU4 (Maybe Scope)
+getCurrentScope = asks (listToMaybe . scopeStack . info)
+
+getIdeas :: PP EU4 IdeaTable
+getIdeas = asks (ideas . info)
+
 -- no particular order from here... TODO: organize this!
 
 msgToPP :: ScriptMessage -> PP extra IndentedMessages
@@ -69,7 +109,7 @@ isPronoun s = T.map toLower s `S.member` pronouns where
         ,"controller"
         ]
 
-pp_script :: GenericScript -> PP IdeaTable Doc
+pp_script :: GenericScript -> PP EU4 Doc
 pp_script [] = return "(Nothing)"
 pp_script script = imsg2doc =<< ppMany script
 
@@ -123,13 +163,13 @@ preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
 pre_statement' :: GenericStatement -> Text
 pre_statement' = doc2text . pre_statement
 
-ppMany :: GenericScript -> PP IdeaTable IndentedMessages
+ppMany :: GenericScript -> PP EU4 IndentedMessages
 ppMany scr = indentUp (concat <$> mapM ppOne scr)
 
 -- Table of handlers for statements.
 -- Dispatch on strings is /much/ quicker using a lookup table than a
 -- huge case statement, which uses (==) on each one in turn.
-ppHandlers :: Trie (GenericStatement -> PP IdeaTable IndentedMessages)
+ppHandlers :: Trie (GenericStatement -> PP EU4 IndentedMessages)
 ppHandlers = Tr.fromList
         -- Statements where RHS is irrelevant (usually "yes")
         [("add_cardinal"           , const (msgToPP MsgAddCardinal))
@@ -207,9 +247,9 @@ ppHandlers = Tr.fromList
         ,("adm_power"                , numericIcon "adm" MsgHasADM)
         ,("adm_tech"                 , numericIcon "adm tech" MsgADMTech)
         ,("army_reformer"            , numericIcon "army reformer" MsgHasArmyReformerLevel)
-        ,("army_tradition"           , numericIcon "army tradition" MsgArmyTradition)
+        ,("army_tradition"           , numericIconBonus "army tradition" MsgArmyTradition MsgYearlyArmyTradition)
         ,("artist"                   , numericIcon "artist" MsgHasArtistLevel)
-        ,("base_manpower"            , numericIcon "navy tradition" MsgBaseManpower)
+        ,("base_manpower"            , numericIcon "manpower" MsgBaseManpower)
         ,("base_production"          , numericIcon "base production" MsgBaseProduction)
         ,("base_tax"                 , numericIcon "base tax" MsgBaseTax)
         ,("blockade"                 , numericIcon "blockade" MsgBlockade)
@@ -231,7 +271,7 @@ ppHandlers = Tr.fromList
         ,("imperial_influence"       , numericIcon "imperial authority" MsgImperialAuthority)
         ,("inflation"                , numericIcon "inflation" MsgInflation)
         ,("karma"                    , numericIcon "high karma" MsgKarma)
-        ,("legitimacy"               , numericIcon "legitimacy" MsgLegitimacy)
+        ,("legitimacy"               , numericIconBonus "legitimacy" MsgLegitimacy MsgYearlyLegitimacy)
         ,("liberty_desire"           , numericIcon "liberty desire" MsgLibertyDesire)
         ,("local_autonomy"           , numericIcon "local autonomy" MsgLocalAutonomy)
         ,("manpower_percentage"      , numericIcon "manpower" MsgManpowerPercentage)
@@ -244,6 +284,7 @@ ppHandlers = Tr.fromList
         ,("natural_scientist"        , numericIcon "natural scientist" MsgHasNaturalScientistLevel)
         ,("naval_forcelimit"         , numericIcon "naval force limit" MsgNavalForcelimit)
         ,("naval_reformer"           , numericIcon "naval reformer" MsgHasNavyReformerLevel)
+        ,("navy_tradition"           , numericIconBonus "navy tradition" MsgNavyTradition MsgYearlyNavyTradition)
         ,("navy_reformer"            , numericIcon "naval reformer" MsgHasNavyReformerLevel) -- both are used
         ,("navy_size_percentage"     , numericIcon "naval force limit" MsgNavyPercentage)
         ,("num_of_allies"            , numericIcon "alliance" MsgNumAllies)
@@ -259,7 +300,7 @@ ppHandlers = Tr.fromList
         ,("overextension_percentage" , numericIcon "overextension" MsgOverextension)
         ,("reform_desire"            , numericIcon "reform desire" MsgReformDesire)
         ,("religious_unity"          , numericIcon "religious unity" MsgReligiousUnity)
-        ,("republican_tradition"     , numericIcon "republican tradition" MsgRepTrad)
+        ,("republican_tradition"     , numericIconBonus "republican tradition" MsgRepTrad MsgYearlyRepTrad)
         ,("stability"                , numericIcon "stability" MsgStability)
         ,("statesman"                , numericIcon "statesman" MsgHasStatesmanLevel)
         ,("theologian"               , numericIcon "theologian" MsgHasTheologianLevel)
@@ -359,7 +400,7 @@ ppHandlers = Tr.fromList
         ,("navy_tradition_decay"              , numericIcon "navy tradition decay" MsgNavyTraditionDecay)
         ,("papal_influence"                   , numericIcon "papal influence" MsgYearlyPapalInfluence)
         ,("possible_mercenaries"              , numericIcon "available mercenaries" MsgAvailableMercs)
-        ,("prestige"                          , numericIcon "prestige" MsgYearlyPrestige)
+        ,("prestige"                          , numericIconBonus "prestige" MsgPrestige MsgYearlyPrestige)
         ,("prestige_decay"                    , numericIcon "prestige decay" MsgPrestigeDecay)
         ,("prestige_from_land"                , numericIcon "prestige from land" MsgPrestigeFromLand)
         ,("prestige_from_naval"               , numericIcon "prestige from naval" MsgPrestigeFromNaval)
@@ -410,47 +451,47 @@ ppHandlers = Tr.fromList
         -- There is a semantic distinction between "all" and "every",
         -- namely that the former means "this is true for all <type>" while
         -- the latter means "do this for every <type>."
-        ,("all_country" {- sic -}   , compoundMessage MsgAllCountries)
-        ,("all_owned_province"      , compoundMessage MsgEveryOwnedProvince)
-        ,("any_active_trade_node"   , compoundMessage MsgAnyActiveTradeNode)
-        ,("any_ally"                , compoundMessage MsgAnyAlly)
-        ,("any_core_country"        , compoundMessage MsgAnyCoreCountry) -- province scope
-        ,("any_country"             , compoundMessage MsgAnyCountry)
-        ,("any_enemy_country"       , compoundMessage MsgAnyEnemyCountry)
-        ,("any_known_country"       , compoundMessage MsgAnyKnownCountry)
-        ,("any_neighbor_country"    , compoundMessage MsgAnyNeighborCountry)
-        ,("any_neighbor_province"   , compoundMessage MsgAnyNeighborProvince)
-        ,("any_owned_province"      , compoundMessage MsgAnyOwnedProvince)
-        ,("any_rival_country"       , compoundMessage MsgAnyRival)
-        ,("any_subject_country"     , compoundMessage MsgAnySubject)
-        ,("capital_scope"           , compoundMessage MsgCapital)
-        ,("colonial_parent"         , compoundMessage MsgColonialParent)
-        ,("controller"              , compoundMessage MsgController)
-        ,("emperor"                 , compoundMessage MsgEmperor)
-        ,("every_country"           , compoundMessage MsgEveryCountry)
-        ,("every_enemy_country"     , compoundMessage MsgEveryEnemyCountry)
-        ,("every_known_country"     , compoundMessage MsgEveryKnownCountry)
-        ,("every_neighbor_country"  , compoundMessage MsgEveryNeighborCountry)
-        ,("every_neighbor_province" , compoundMessage MsgEveryNeighborProvince)
-        ,("every_owned_province"    , compoundMessage MsgEveryOwnedProvince)
-        ,("every_province"          , compoundMessage MsgEveryProvince)
-        ,("every_rival_country"     , compoundMessage MsgEveryRival)
-        ,("every_subject_country"   , compoundMessage MsgEverySubject)
-        ,("hidden_effect"           , compoundMessage MsgHiddenEffect)
-        ,("if"                      , compoundMessage MsgIf) -- always needs editing
-        ,("limit"                   , compoundMessage MsgLimit) -- always needs editing
-        ,("owner"                   , compoundMessage MsgOwner)
-        ,("random_active_trade_node", compoundMessage MsgRandomActiveTradeNode)
-        ,("random_ally"             , compoundMessage MsgRandomAlly)
-        ,("random_core_country"     , compoundMessage MsgRandomCoreCountry)
-        ,("random_country"          , compoundMessage MsgRandomCountry)
-        ,("random_known_country"    , compoundMessage MsgRandomKnownCountry)
-        ,("random_list"             , compoundMessage MsgRandom)
-        ,("random_neighbor_country" , compoundMessage MsgRandomNeighborCountry)
-        ,("random_neighbor_province", compoundMessage MsgRandomNeighborProvince)
-        ,("random_owned_province"   , compoundMessage MsgRandomOwnedProvince)
-        ,("random_province"         , compoundMessage MsgRandomProvince)
-        ,("random_rival_country"    , compoundMessage MsgRandomRival)
+        ,("all_country" {- sic -}   , scope Country   . compoundMessage MsgAllCountries)
+        ,("all_owned_province"      , scope Province  . compoundMessage MsgEveryOwnedProvince)
+        ,("any_active_trade_node"   , scope TradeNode . compoundMessage MsgAnyActiveTradeNode)
+        ,("any_ally"                , scope Country   . compoundMessage MsgAnyAlly)
+        ,("any_core_country"        , scope Country   . compoundMessage MsgAnyCoreCountry) -- province scope
+        ,("any_country"             , scope Country   . compoundMessage MsgAnyCountry)
+        ,("any_enemy_country"       , scope Country   . compoundMessage MsgAnyEnemyCountry)
+        ,("any_known_country"       , scope Country   . compoundMessage MsgAnyKnownCountry)
+        ,("any_neighbor_country"    , scope Country   . compoundMessage MsgAnyNeighborCountry)
+        ,("any_neighbor_province"   , scope Province  . compoundMessage MsgAnyNeighborProvince)
+        ,("any_owned_province"      , scope Province  . compoundMessage MsgAnyOwnedProvince)
+        ,("any_rival_country"       , scope Country   . compoundMessage MsgAnyRival)
+        ,("any_subject_country"     , scope Country   . compoundMessage MsgAnySubject)
+        ,("capital_scope"           , scope Province  . compoundMessage MsgCapital)
+        ,("colonial_parent"         , scope Country   . compoundMessage MsgColonialParent)
+        ,("controller"              , scope Country   . compoundMessage MsgController)
+        ,("emperor"                 , scope Country   . compoundMessage MsgEmperor)
+        ,("every_country"           , scope Country   . compoundMessage MsgEveryCountry)
+        ,("every_enemy_country"     , scope Country   . compoundMessage MsgEveryEnemyCountry)
+        ,("every_known_country"     , scope Country   . compoundMessage MsgEveryKnownCountry)
+        ,("every_neighbor_country"  , scope Country   . compoundMessage MsgEveryNeighborCountry)
+        ,("every_neighbor_province" , scope Province  . compoundMessage MsgEveryNeighborProvince)
+        ,("every_owned_province"    , scope Province  . compoundMessage MsgEveryOwnedProvince)
+        ,("every_province"          , scope Province  . compoundMessage MsgEveryProvince)
+        ,("every_rival_country"     , scope Country   . compoundMessage MsgEveryRival)
+        ,("every_subject_country"   , scope Country   . compoundMessage MsgEverySubject)
+        ,("hidden_effect"           ,                   compoundMessage MsgHiddenEffect)
+        ,("if"                      ,                   compoundMessage MsgIf) -- always needs editing
+        ,("limit"                   ,                   compoundMessage MsgLimit) -- always needs editing
+        ,("owner"                   , scope Country   . compoundMessage MsgOwner)
+        ,("random_active_trade_node", scope TradeNode . compoundMessage MsgRandomActiveTradeNode)
+        ,("random_ally"             , scope Country   . compoundMessage MsgRandomAlly)
+        ,("random_core_country"     , scope Country   . compoundMessage MsgRandomCoreCountry)
+        ,("random_country"          , scope Country   . compoundMessage MsgRandomCountry)
+        ,("random_known_country"    , scope Country   . compoundMessage MsgRandomKnownCountry)
+        ,("random_list"             ,                   compoundMessage MsgRandom)
+        ,("random_neighbor_country" , scope Country   . compoundMessage MsgRandomNeighborCountry)
+        ,("random_neighbor_province", scope Province  . compoundMessage MsgRandomNeighborProvince)
+        ,("random_owned_province"   , scope Province  . compoundMessage MsgRandomOwnedProvince)
+        ,("random_province"         , scope Province  . compoundMessage MsgRandomProvince)
+        ,("random_rival_country"    , scope Country   . compoundMessage MsgRandomRival)
         -- Random
         ,("random", random)
         -- Simple generic statements (RHS is a localizable atom)
@@ -489,9 +530,10 @@ ppHandlers = Tr.fromList
         -- RHS is a flag OR a province ID
         ,("add_permanent_claim", withFlagOrProvince MsgGainPermanentClaimCountry MsgGainPermanentClaimProvince)
         ,("cavalry"            , withFlagOrProvince MsgCavalrySpawnsCountry MsgCavalrySpawnsProvince)
-        ,("has_discovered"     , withFlagOrProvince MsgHasDiscovered MsgHasDiscovered) -- scope sensitive
         ,("infantry"           , withFlagOrProvince MsgInfantrySpawnsCountry MsgInfantrySpawnsProvince)
         ,("remove_core"        , withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince)
+        -- RHS is a flag or province id, but the statement's meaning depends on the scope
+        ,("has_discovered"     , withFlagOrProvinceScope MsgHasDiscovered MsgDiscoveredBy) -- scope sensitive
         -- RHS is an advisor ID (TODO: parse advisor files)
         ,("advisor_exists"     , numeric MsgAdvisorExists)
         ,("is_advisor_employed", numeric MsgAdvisorIsEmployed)
@@ -673,7 +715,7 @@ ppHandlers = Tr.fromList
         ,("define_heir"                  , defineHeir)
         ,("build_to_forcelimit"          , buildToForcelimit)
         ,("check_variable"               , textValue "which" "value" MsgCheckVariable MsgCheckVariable tryLoc)
-        ,("country_event"                , triggerEvent MsgCountryEvent)
+        ,("country_event"                , scope Country . triggerEvent MsgCountryEvent)
         ,("declare_war_with_cb"          , declareWarWithCB)
         ,("define_advisor"               , defineAdvisor)
         ,("define_ruler"                 , defineRuler)
@@ -686,7 +728,7 @@ ppHandlers = Tr.fromList
         ,("has_estate_influence_modifier", hasEstateInfluenceModifier)
         ,("has_opinion"                  , hasOpinion)
         ,("has_opinion_modifier"         , opinion MsgHasOpinionMod (\what who _years -> MsgHasOpinionMod what who))
-        ,("province_event"               , triggerEvent MsgProvinceEvent)
+        ,("province_event"               , scope Province . triggerEvent MsgProvinceEvent)
         ,("remove_opinion"               , opinion MsgRemoveOpinionMod (\what who _years -> MsgRemoveOpinionMod what who))
         ,("religion_years"               , religionYears)
         ,("reverse_add_casus_belli"      , addCB False)
@@ -714,7 +756,7 @@ ppHandlers = Tr.fromList
         ,("tooltip"       , const (plainMsg "(explanatory tooltip - delete this line)"))
         ]
 
-ppOne :: GenericStatement -> PP IdeaTable IndentedMessages
+ppOne :: GenericStatement -> PP EU4 IndentedMessages
 ppOne stmt@(Statement lhs rhs) = case lhs of
     GenericLhs label -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
         Just handler -> handler stmt
@@ -762,7 +804,7 @@ data MTTHModifier = MTTHModifier
         } deriving Show
 newMTTH = MTTH Nothing Nothing Nothing []
 newMTTHMod = MTTHModifier Nothing []
-pp_mtth :: GenericScript -> PP IdeaTable Doc
+pp_mtth :: GenericScript -> PP EU4 Doc
 pp_mtth scr
     = pp_mtth' $ foldl' addField newMTTH scr
     where
@@ -836,7 +878,7 @@ pp_mtth scr
 -- General statement handlers --
 --------------------------------
 
-compound :: Text -> GenericStatement -> PP IdeaTable IndentedMessages
+compound :: Text -> GenericStatement -> PP EU4 IndentedMessages
 compound header (Statement _ (CompoundRhs scr))
     = withCurrentIndent $ \_ -> do -- force indent level at least 1
         headerMsg <- plainMsg (header <> ":")
@@ -844,7 +886,7 @@ compound header (Statement _ (CompoundRhs scr))
         return $ headerMsg ++ scriptMsgs
 compound _ stmt = preStatement stmt
 
-compoundMessage :: ScriptMessage -> GenericStatement -> PP IdeaTable IndentedMessages
+compoundMessage :: ScriptMessage -> GenericStatement -> PP EU4 IndentedMessages
 compoundMessage header (Statement _ (CompoundRhs scr))
     = withCurrentIndent $ \i -> do
         script_pp'd <- ppMany scr
@@ -1029,6 +1071,22 @@ numericIcon the_icon msg (Statement _ (floatRhs -> Just amt))
     = msgToPP $ msg (iconText the_icon) amt
 numericIcon _ _ stmt = plainMsg $ pre_statement' stmt
 
+numericIconBonus :: Text -> (Text -> Double -> ScriptMessage)
+                          -> (Text -> Double -> ScriptMessage)
+                          -> GenericStatement -> PP EU4 IndentedMessages
+numericIconBonus the_icon plainmsg yearlymsg (Statement _ (floatRhs -> Just amt))
+    = do
+        mscope <- getCurrentScope
+        let icont = iconText the_icon
+            yearly = msgToPP $ yearlymsg icont amt
+        case mscope of
+            Nothing -> yearly -- ideas / bonuses
+            Just scope -> case scope of
+                Bonus -> yearly
+                _ -> -- act as though it's country for all others
+                    msgToPP $ plainmsg icont amt
+numericIconBonus _ _ _ stmt = plainMsg $ pre_statement' stmt
+
 ----------------------
 -- Text/value pairs --
 ----------------------
@@ -1132,7 +1190,7 @@ textAtom _ _ _ _ stmt = preStatement stmt
 -- Most of the code for this is in EU4.SuperCommon and re-exported here,
 -- because EU4.IdeaGroups needs them. But only EU4.Common needs output
 -- functions.
-ppAiWillDo :: AIWillDo -> PP IdeaTable IndentedMessages
+ppAiWillDo :: AIWillDo -> PP EU4 IndentedMessages
 ppAiWillDo (AIWillDo mbase mods) = do
     mods_pp'd <- fold <$> traverse ppAiMod mods
     let baseWtMsg = case mbase of
@@ -1141,7 +1199,7 @@ ppAiWillDo (AIWillDo mbase mods) = do
     iBaseWtMsg <- msgToPP baseWtMsg
     return $ iBaseWtMsg ++ mods_pp'd
 
-ppAiMod :: AIModifier -> PP IdeaTable IndentedMessages
+ppAiMod :: AIModifier -> PP EU4 IndentedMessages
 ppAiMod (AIModifier (Just multiplier) triggers) = do
     triggers_pp'd <- ppMany triggers
     case triggers_pp'd of
@@ -1569,7 +1627,7 @@ addCB _ stmt = preStatement stmt
 
 -- Random
 
-random :: GenericStatement -> PP IdeaTable IndentedMessages
+random :: GenericStatement -> PP EU4 IndentedMessages
 random stmt@(Statement _ (CompoundRhs scr))
     | (front, back) <- break
                         (\stmt -> case stmt of 
@@ -1967,7 +2025,7 @@ estateInfluenceModifier _ stmt = preStatement stmt
 
 -- Trigger switch
 
-triggerSwitch :: GenericStatement -> PP IdeaTable IndentedMessages
+triggerSwitch :: GenericStatement -> PP EU4 IndentedMessages
 -- A trigger switch must be of the form
 -- trigger_switch = {
 --  on_trigger = <statement lhs>
@@ -2059,7 +2117,7 @@ religionYears stmt = preStatement stmt
 
 -- Government
 
-govtRank :: GenericStatement -> PP IdeaTable IndentedMessages
+govtRank :: GenericStatement -> PP EU4 IndentedMessages
 govtRank (Statement _ (floatRhs -> Just level))
     = case level :: Int of
         1 -> msgToPP MsgRankDuchy -- unlikely, but account for it anyway
@@ -2068,7 +2126,7 @@ govtRank (Statement _ (floatRhs -> Just level))
         _ -> error "impossible: govtRank matched an invalid rank number"
 govtRank stmt = preStatement stmt
 
-setGovtRank :: GenericStatement -> PP IdeaTable IndentedMessages
+setGovtRank :: GenericStatement -> PP EU4 IndentedMessages
 setGovtRank (Statement _ (floatRhs -> Just level)) | level `elem` [1..3]
     = case level :: Int of
         1 -> msgToPP MsgSetRankDuchy
@@ -2077,27 +2135,39 @@ setGovtRank (Statement _ (floatRhs -> Just level)) | level `elem` [1..3]
         _ -> error "impossible: setGovtRank matched an invalid rank number"
 setGovtRank stmt = preStatement stmt
 
-numProvinces :: Text -> (Text -> Text -> Double -> ScriptMessage) -> GenericStatement -> PP IdeaTable IndentedMessages
+numProvinces :: Text -> (Text -> Text -> Double -> ScriptMessage) -> GenericStatement -> PP EU4 IndentedMessages
 numProvinces iconKey msg (Statement (GenericLhs what) (floatRhs -> Just amt)) = do
     what_loc <- getGameL10n what
     msgToPP (msg (iconText iconKey) what_loc amt)
 numProvinces _ _ stmt = preStatement stmt
 
-withFlagOrProvince :: (Text -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP IdeaTable IndentedMessages
+withFlagOrProvince :: (Text -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP EU4 IndentedMessages
 withFlagOrProvince countryMsg _ stmt@(Statement _ (textRhs -> Just _))
     = withFlag countryMsg stmt
 withFlagOrProvince _ provinceMsg stmt@(Statement _ (floatRhs -> Just (_ :: Double)))
     = withProvince provinceMsg stmt
 withFlagOrProvince _ _ stmt = preStatement stmt
 
-tradeMod :: GenericStatement -> PP IdeaTable IndentedMessages
+withFlagOrProvinceScope :: (Text -> ScriptMessage) -> (Text -> ScriptMessage) -> GenericStatement -> PP EU4 IndentedMessages
+withFlagOrProvinceScope countryMsg geogMsg stmt = do
+    mscope <- getCurrentScope
+    -- If no scope, assume country.
+    if isJust mscope && isGeographic (fromJust mscope) then
+        -- RHS is tag or pronoun - "Has been discovered by <whom>"
+        withFlag geogMsg stmt
+    else
+        -- RHS is tag, pronoun or province ID
+        -- Current usages (i.e. has_discovered) treat them all the same.
+        withFlagOrProvince countryMsg countryMsg stmt
+
+tradeMod :: GenericStatement -> PP EU4 IndentedMessages
 tradeMod stmt@(Statement _ (textRhs -> Just _))
     = withLocAtom2 MsgTradeMod MsgHasModifier stmt
 tradeMod stmt@(Statement _ (CompoundRhs _))
     = textAtom "who" "name" MsgHasTradeModifier (fmap Just . flagText) stmt
 tradeMod stmt = preStatement stmt
 
-isMonth :: GenericStatement -> PP IdeaTable IndentedMessages
+isMonth :: GenericStatement -> PP EU4 IndentedMessages
 isMonth (Statement _ (floatRhs -> Just (num :: Int))) | num >= 1, num <= 12
     = do
         month_loc <- getGameL10n $ case num of
@@ -2117,23 +2187,23 @@ isMonth (Statement _ (floatRhs -> Just (num :: Int))) | num >= 1, num <= 12
         msgToPP $ MsgIsMonth month_loc
 isMonth stmt = preStatement stmt
 
-range :: GenericStatement -> PP IdeaTable IndentedMessages
+range :: GenericStatement -> PP EU4 IndentedMessages
 range stmt@(Statement _ (floatRhs -> Just (_ :: Double)))
     = numericIcon "colonial range" MsgGainColonialRange stmt
 range stmt = withFlag MsgIsInColonialRange stmt
 
-area :: GenericStatement -> PP IdeaTable IndentedMessages
+area :: GenericStatement -> PP EU4 IndentedMessages
 area stmt@(Statement _ (CompoundRhs _)) = compoundMessage MsgArea stmt
 area stmt                               = withLocAtom MsgAreaIs stmt
 
 -- Currently dominant_culture only appears in decisions/Cultural.txt
 -- (dominant_culture = capital).
-dominantCulture :: GenericStatement -> PP IdeaTable IndentedMessages
+dominantCulture :: GenericStatement -> PP EU4 IndentedMessages
 dominantCulture (Statement _ (textRhs -> Just "capital"))
     = msgToPP MsgCapitalCultureDominant
 dominantCulture stmt = preStatement stmt
 
-customTriggerTooltip :: GenericStatement -> PP IdeaTable IndentedMessages
+customTriggerTooltip :: GenericStatement -> PP EU4 IndentedMessages
 customTriggerTooltip (Statement _ (CompoundRhs scr))
     -- ignore the custom tooltip
     = let rest = flip filter scr $ \stmt -> case stmt of
@@ -2142,7 +2212,7 @@ customTriggerTooltip (Statement _ (CompoundRhs scr))
       in indentDown $ ppMany rest
 customTriggerTooltip stmt = preStatement stmt
 
-piety :: GenericStatement -> PP IdeaTable IndentedMessages
+piety :: GenericStatement -> PP EU4 IndentedMessages
 piety stmt@(Statement _ (floatRhs -> Just amt))
     = numericIcon (case amt `compare` (0::Double) of
         LT -> "lack of piety"
@@ -2154,21 +2224,15 @@ piety stmt = preStatement stmt
 -- Idea group ideas --
 ----------------------
 
-hasIdea :: (Text -> Int -> ScriptMessage) -> GenericStatement -> PP IdeaTable IndentedMessages
+hasIdea :: (Text -> Int -> ScriptMessage) -> GenericStatement -> PP EU4 IndentedMessages
 hasIdea msg stmt@(Statement (GenericLhs lhs) (floatRhs -> Just n)) | n >= 1, n <= 7 = do
-    mgroupTable <- asks info
-    case mgroupTable of
-        Nothing -> do -- can't lookup ideas!
-            err <- plainMsg "(warning: couldn't look up idea groups)"
-            premsg <- preStatement stmt
-            return (err ++ premsg)
-        Just groupTable ->
-            let mideagroup = HM.lookup lhs groupTable
-            in case mideagroup of
-                Nothing -> preStatement stmt -- unknown idea group
-                Just group -> do
-                    let idea = ig_ideas group !! (n - 1)
-                        ideaKey = idea_name idea
-                    idea_loc <- getGameL10n ideaKey
-                    msgToPP (msg idea_loc n)
+    groupTable <- getIdeas
+    let mideagroup = HM.lookup lhs groupTable
+    case mideagroup of
+        Nothing -> preStatement stmt -- unknown idea group
+        Just group -> do
+            let idea = ig_ideas group !! (n - 1)
+                ideaKey = idea_name idea
+            idea_loc <- getGameL10n ideaKey
+            msgToPP (msg idea_loc n)
 hasIdea _ stmt = preStatement stmt

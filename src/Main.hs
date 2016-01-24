@@ -23,19 +23,17 @@ import FileIO
 import Settings
 
 -- Script handlers
+import EU4.Common
 import EU4.Decisions
 import EU4.Missions
 import EU4.Events
 import EU4.IdeaGroups
 import EU4.Policies
 
--- Extra info for PP: idea group table
-type Extra = HashMap Text IdeaGroup
-
 -- Read all scripts in a directory.
 -- Return: for each file, its path relative to the game root and the parsed
 --         script.
-readScripts :: Settings Extra -> FilePath -> IO [(FilePath, GenericScript)]
+readScripts :: Settings EU4 -> FilePath -> IO [(FilePath, GenericScript)]
 readScripts settings category =
     let sourceSubdir = case category of
             "policies" -> "common" </> "policies"
@@ -56,22 +54,23 @@ readScripts settings category =
                 return (target, content)
 
 -- Return fake info for the ideas handler to handle basic ideas.
-collateBasicIdeaGroups :: FilePath -> Settings Extra -> (FilePath, GenericScript)
+collateBasicIdeaGroups :: FilePath -> Settings EU4 -> (FilePath, GenericScript)
 collateBasicIdeaGroups file settings
     = (file,
        map (\key -> Statement (GenericLhs "basic idea group") (GenericRhs key))
-           (HM.keys . fromJust . info $ settings)) -- If this blows up, we can't continue anyway.
+           (HM.keys . ideas . info $ settings)) -- If this blows up, we can't continue anyway.
 
 main :: IO ()
 main = do
-    settings <- readSettings ((Just <$>) . readIdeaGroupTable)
+    -- EU4 mode
+    settings <- readSettings (fmap (EU4 []) <$> readIdeaGroupTable)
 
     createDirectoryIfMissing False "output"
 
     forM_ ["decisions","missions","events","policies","ideagroups"] $ \category -> do
         scripts <- readScripts settings category -- :: [(FilePath, GenericScript)]
 
-        let handler :: GenericStatement -> PP Extra (Either Text Doc)
+        let handler :: GenericStatement -> PP EU4 (Either Text Doc)
             handler = case category of
                 "decisions" -> processDecisionGroup
                 "missions" -> processMission
@@ -80,7 +79,7 @@ main = do
                 "ideagroups" -> processIdeaGroup
                 _ -> error $ "tried to process strange category \"" ++ category ++ "\""
 
-            results :: PP Extra [(FilePath, [Either Text Doc])]
+            results :: PP EU4 [(FilePath, [Either Text Doc])]
             results = mapM (\(file, script) ->
                             (,) file <$>
                                 local (\s -> s { currentFile = Just file })

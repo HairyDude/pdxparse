@@ -12,7 +12,7 @@ module SettingsTypes
         , currentIndent
         , info
         )
-    , emptySettings
+    , settings
     , setGameL10n
     , PP, PPT
     , indentUp, indentDown
@@ -55,12 +55,15 @@ data Settings a = Settings {
     ,   currentFile :: Maybe FilePath
     ,   currentIndent :: Maybe Int
     -- Extra information
-    ,   info :: Maybe a
+    ,   info :: a
     } deriving (Show)
 
+instance Functor Settings where
+    fmap f s = s { info = f (info s) }
+
 -- All undefined/Nothing settings, except langs.
-emptySettings :: Settings a
-emptySettings = Settings
+settings :: a -> Settings a
+settings x = Settings
     { steamDir = undefined
     , steamApps = undefined
     , game = undefined
@@ -70,7 +73,7 @@ emptySettings = Settings
     , currentFile = Nothing
     , currentIndent = Nothing
     , langs = ["en"]
-    , info = Nothing
+    , info = x
     }
 
 setGameL10n :: Settings a -> L10n -> Settings a

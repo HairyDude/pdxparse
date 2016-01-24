@@ -39,8 +39,8 @@ data SettingsInput = SettingsInput {
 
 instance FromJSON SettingsInput where
     parseJSON (Object o) = do
-        settings <- o .: "settings"
-        case settings of
+        settingsIn <- o .: "settings"
+        case settingsIn of
             Object o' -> SettingsInput
                             <$> liftM (fmap T.unpack) (o' .:? "steam_drive")
                             <*> liftM (fmap T.unpack) (o' .:? "steam_dir")
@@ -75,13 +75,13 @@ platform = case System.Info.os of
 --
 -- The argument is an action to run after all other settings have been
 -- initialized, in order to get extra information.
-readSettings :: (Settings a -> IO (Maybe a)) -> IO (Settings a)
+readSettings :: (Settings () -> IO a) -> IO (Settings a)
 readSettings getExtra = do
     settingsFile <- getDataFileName "settings.yml"
     result <- decodeFileEither settingsFile
     case result of
-        Right settings -> do
-            steamDirCanonicalized <- case steamDirI settings of
+        Right settingsIn -> do
+            steamDirCanonicalized <- case steamDirI settingsIn of
                 Just path -> return path
                 Nothing -> case platform of
                     Linux -> do
@@ -91,18 +91,18 @@ readSettings getExtra = do
                         home <- getHomeDirectory
                         return $ home </> "Library/Application Support"
                     -- TODO: allow user to specify drive only.
-                    WindowsXP -> return $ fromMaybe "C" (steamDriveI settings) ++ ":"
-                                      </> fromMaybe "Program Files" (steamDirI settings)
-                    Windows -> return $ fromMaybe "C" (steamDriveI settings) ++ ":"
-                                      </> fromMaybe "Program Files (x86)" (steamDirI settings)
+                    WindowsXP -> return $ fromMaybe "C" (steamDriveI settingsIn) ++ ":"
+                                      </> fromMaybe "Program Files" (steamDirI settingsIn)
+                    Windows -> return $ fromMaybe "C" (steamDriveI settingsIn) ++ ":"
+                                      </> fromMaybe "Program Files (x86)" (steamDirI settingsIn)
                     Unknown -> fail $ "Unknown platform: " ++ System.Info.os
-            let steamAppsCanonicalized = fromMaybe "Steam/steamapps/common" (steamAppsI settings)
-                provisionalSettings = emptySettings
+            let steamAppsCanonicalized = fromMaybe "Steam/steamapps/common" (steamAppsI settingsIn)
+                provisionalSettings = (settings ())
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
-                            , game = gameI settings
-                            , language = languageI settings
-                            , gameVersion = T.pack (gameVersionI settings)
+                            , game = gameI settingsIn
+                            , language = languageI settingsIn
+                            , gameVersion = T.pack (gameVersionI settingsIn)
                             , currentFile = Nothing
                             , currentIndent = Nothing }
             game_l10n <- readL10n provisionalSettings

@@ -11,3 +11,4 @@ cabal.sandbox.config
 output/
 dist/
 l10n/.*
+.cabal-sandbox

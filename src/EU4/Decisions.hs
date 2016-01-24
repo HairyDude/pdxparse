@@ -33,7 +33,7 @@ data Decision = Decision
 -- Starts off Nothing/empty everywhere, except name (will get filled in immediately).
 newDecision = Decision undefined undefined Nothing [] [] [] Nothing
 
-processDecisionGroup :: GenericStatement -> PP IdeaTable (Either Text Doc)
+processDecisionGroup :: GenericStatement -> PP EU4 (Either Text Doc)
 processDecisionGroup (Statement (GenericLhs left) rhs)
     | left `elem` ["country_decisions", "religion_decisions"]
     = case rhs of
@@ -43,7 +43,7 @@ processDecisionGroup (Statement (GenericLhs left) rhs)
         _ -> return $ Left "unrecognized form for decision block (RHS)"
 processDecisionGroup _ = return $ Left "unrecognized form for decision block (LHS)"
 
-processDecision :: GenericStatement -> PP IdeaTable (Either Text Doc)
+processDecision :: GenericStatement -> PP EU4 (Either Text Doc)
 processDecision (Statement (GenericLhs decName) rhs) = case rhs of
     CompoundRhs parts -> do
         decName_loc <- getGameL10n (decName <> "_title")
@@ -74,7 +74,7 @@ decisionAddSection dec (Statement (GenericLhs "ai_importance") _)
 decisionAddSection dec stmt = trace ("warning: unrecognized decision section: " ++ show stmt) $
                               return dec
 
-pp_decision :: Decision -> PP IdeaTable Doc
+pp_decision :: Decision -> PP EU4 Doc
 pp_decision dec = do
     version <- asks gameVersion
     pot_pp'd    <- pp_script (dec_potential dec)

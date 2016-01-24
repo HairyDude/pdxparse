@@ -52,7 +52,7 @@ data Option = Option
 newEvent = Event Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 newOption = Option Nothing Nothing Nothing Nothing Nothing
 
-processEvent :: GenericStatement -> PP IdeaTable (Either Text Doc)
+processEvent :: GenericStatement -> PP EU4 (Either Text Doc)
 processEvent (StatementBare _) = return $ Left "bare statement at top level"
 processEvent (Statement left right) = case right of
     CompoundRhs parts -> case left of
@@ -147,7 +147,7 @@ optionAddEffect Nothing stmt = optionAddEffect (Just []) stmt
 optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 
 -- Pretty-print an event, or fail.
-pp_event :: Event -> PP IdeaTable (Either Text Doc)
+pp_event :: Event -> PP EU4 (Either Text Doc)
 pp_event evt =
     if isJust (evt_title_loc evt) && isJust (evt_options evt)
         && (isJust (evt_is_triggered_only evt) ||
@@ -210,7 +210,7 @@ pp_event evt =
 
     else return $ Left "some required event sections missing"
 
-pp_options :: [Option] -> PP IdeaTable (Either Text (Bool, Doc))
+pp_options :: [Option] -> PP EU4 (Either Text (Bool, Doc))
 pp_options opts = do
     let triggered = any (isJust . opt_trigger) opts
     options_pp'd <- mapM (pp_option triggered) opts
@@ -219,7 +219,7 @@ pp_options opts = do
             Right (triggered, mconcat . (line:) . intersperse line $ opts_pp'd)
         (err:_, _) -> Left err
 
-pp_option :: Bool -> Option -> PP IdeaTable (Either Text Doc)
+pp_option :: Bool -> Option -> PP EU4 (Either Text Doc)
 pp_option triggered opt = case opt_name_loc opt of
     -- NB: some options have no effect, e.g. start of Peasants' War.
     Just name_loc ->

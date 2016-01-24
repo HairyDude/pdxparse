@@ -1,7 +1,6 @@
 module EU4.IdeaGroups (
         IdeaGroup (..)
     ,   Idea (..)
-    ,   IdeaTable
     ) where
 
 import Data.Text (Text)
@@ -28,5 +27,3 @@ data Idea = Idea
     ,   idea_effects :: GenericScript
     }
 instance Show Idea
-
-type IdeaTable = HashMap Text IdeaGroup

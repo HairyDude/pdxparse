@@ -2,7 +2,6 @@
 module EU4.IdeaGroups (
         IdeaGroup (..)
     ,   Idea (..)
-    ,   IdeaTable
     ,   readIdeaGroup'
     ,   readIdeaGroupTable
     ,   processIdeaGroup
@@ -32,6 +31,7 @@ import qualified Text.Regex.TDFA as RE
 import Abstract
 import Doc
 import EU4.Common
+import EU4.SuperCommon
 import FileIO
 import Messages
 import SettingsTypes
@@ -57,26 +57,24 @@ data Idea = Idea
 -- Starts off Nothing everywhere, except name (will get filled in immediately).
 newIdeaGroup = IdeaGroup undefined undefined Nothing Nothing Nothing Nothing False [] Nothing
 
-type IdeaTable = HashMap Text IdeaGroup
-
-readIdeaGroupTable :: Settings IdeaTable -> IO (HashMap Text IdeaGroup)
+readIdeaGroupTable :: Settings () -> IO IdeaTable
 readIdeaGroupTable settings = do
     ideaGroupScripts <- readScript settings (buildPath settings "common/ideas/00_basic_ideas.txt")
-    let (errs, ideaGroups) = partitionEithers $ map (readIdeaGroup' settings) ideaGroupScripts
+    let (errs, ideaGroups) = partitionEithers $ map (readIdeaGroup' (const eu4 <$> settings)) ideaGroupScripts
     forM_ errs $ \err -> hPutStrLn stderr $ "Warning while parsing idea groups: " ++ T.unpack err
     return . HM.fromList . map (\ig -> (ig_name ig, ig)) $ ideaGroups
 
-readIdeaGroup' :: Settings IdeaTable -> GenericStatement -> Either Text IdeaGroup
+readIdeaGroup' :: Settings EU4 -> GenericStatement -> Either Text IdeaGroup
 readIdeaGroup' settings stmt = runReader (readIdeaGroup stmt) settings
 
-readIdeaGroup :: GenericStatement -> PP IdeaTable (Either Text IdeaGroup)
+readIdeaGroup :: GenericStatement -> PP EU4 (Either Text IdeaGroup)
 readIdeaGroup (StatementBare _) = return $ Left "bare statement at top level"
 readIdeaGroup (Statement (GenericLhs "basic idea group") (GenericRhs right))
     -- This is a fake entry for an idea group that has already been parsed.
     -- Fetch the corresponding basic idea group from settings.
     = do
-        groups <- asks info
-        case HM.lookup right =<< groups of
+        groups <- getIdeas
+        case HM.lookup right groups of
             Nothing -> return (Left $ "Idea group not found: " <> right)
             Just group -> return (Right group)
 readIdeaGroup (Statement left right) = case right of
@@ -132,7 +130,7 @@ iconForIdea idea = case iconForIdea' idea of
     Nothing -> mempty
     Just icon -> strictText icon
 
-processIdeaGroup :: GenericStatement -> PP IdeaTable (Either Text Doc)
+processIdeaGroup :: GenericStatement -> PP EU4 (Either Text Doc)
 processIdeaGroup stmt = do
     eig <- readIdeaGroup stmt
     case eig of
@@ -174,7 +172,7 @@ fixup = strictText . T.unlines . map (TE.decodeUtf8
             [pre, "idea", nth, "icon = ", iconFileB (fst (matcharr ! 2))
             ,"\n| idea", nth, "effect = ", post]
 
-ppIdeaGroup :: IdeaGroup -> PP IdeaTable (Either Text Doc)
+ppIdeaGroup :: IdeaGroup -> PP EU4 (Either Text Doc)
 ppIdeaGroup ig = do
     version <- asks gameVersion
     let name = ig_name_loc ig
