@@ -86,9 +86,9 @@ main = do
                                 local (\s -> s { currentFile = Just file })
                                       (mapM handler script))
                 -- for testing -- comment out for release
-                . filter (\(file, _) -> file `elem`
-                    ["common/ideas/00_basic_ideas.txt"
-                    ])
+--                . filter (\(file, _) -> file `elem`
+--                    ["common/ideas/00_basic_ideas.txt"
+--                    ])
                 $ scripts
 
         forM_ (runReader results settings) $ \(path, mesgs) ->

@@ -5,6 +5,7 @@ module Messages (
     ,   template, templateDoc
     ,   message, messageText
     ,   imsg2doc
+    ,   IndentedMessage, IndentedMessages
     ,   module Doc
     ) where
 
@@ -26,6 +27,9 @@ data Script = Script
 -- instance for it.
 mkMessage "Script" "l10n" "en"
 
+type IndentedMessage = (Int, ScriptMessage)
+type IndentedMessages = [IndentedMessage]
+
 messageText :: ScriptMessage -> PP extra Text
 messageText msg = do
     langs <- getLangs
@@ -34,7 +38,7 @@ messageText msg = do
 message :: ScriptMessage -> PP extra Doc
 message msg = strictText <$> messageText msg
 
-imsg2doc :: [(Int, ScriptMessage)] -> PP extra Doc
+imsg2doc :: IndentedMessages -> PP extra Doc
 imsg2doc msgs = vsep <$>
                 mapM (\(i,rm) -> do
                         m <- message rm
