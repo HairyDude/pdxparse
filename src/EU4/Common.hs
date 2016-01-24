@@ -15,6 +15,7 @@ import Prelude hiding (sequence, mapM)
 
 import Debug.Trace
 
+import Control.Applicative (liftA2)
 import Control.Arrow
 import Control.Monad.Reader hiding (sequence, mapM, forM)
 
@@ -1755,11 +1756,12 @@ defineRuler (Statement _ (CompoundRhs scr))
         pp_define_ruler    DefineRuler { dr_rebel = True } = msgToPP MsgRebelLeaderRuler
         pp_define_ruler dr@DefineRuler { dr_regency = regency, dr_attach_leader = mleader } = do
             body <- indentUp (unfoldM pp_define_ruler_attrib dr)
-            if null body
-                then msgToPP (MsgNewRuler regency)
-                else do
-                    heading <- msgToPP (MsgNewRulerAttribs regency)
-                    return (heading ++ body)
+            if null body then
+                msgToPP (maybe (MsgNewRuler regency) (MsgNewRulerLeader regency) mleader)
+            else
+                liftA2 (++)
+                    (msgToPP (maybe (MsgNewRulerAttribs regency) (MsgNewRulerLeaderAttribs regency) mleader))
+                    (pure body)
         pp_define_ruler_attrib :: DefineRuler -> PP extra (Maybe (IndentedMessage, DefineRuler))
         -- "Named <foo>"
         pp_define_ruler_attrib dr@DefineRuler { dr_name = Just name } = do

@@ -330,7 +330,9 @@ GainFemaleAdvisorTypeNameLoc female@Bool advtype@Text name@Text where@Text skill
 GainFemaleAdvisorTypeNameLocDiscount female@Bool advtype@Text name@Text where@Text skill@Double: Gain skill #{roundNum skill} #{ifThenElseT female "female" "male"} #{advtype} advisor named #{name} in #{where} (50% cheaper to employ)
 RebelLeaderRuler: The leader of the rebels becomes the country's new ruler
 NewRuler regent@Bool: A new #{ifThenElseT regent "regent" "ruler"} comes to power
+NewRulerLeader regent@Bool name@Text: The leader #{name} becomes #{ifThenElseT regent "regent" "ruler"}
 NewRulerAttribs regent@Bool: A new #{ifThenElseT regent "regent" "ruler"} comes to power with the following attributes:
+NewRulerLeaderAttribs regent@Bool name@Text: The leader #{name} becomes #{ifThenElseT regent "regent" "ruler"} with the following attributes:
 LeaderRuler regent@Bool name@Text: The leader #{name} comes to power as #{ifThenElseT regent "regent" "ruler"}
 NewRulerName name@Text: Named #{name}
 NewRulerDynasty name@Text: Of the #{name} dynasty
