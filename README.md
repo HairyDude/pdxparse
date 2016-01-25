@@ -3,21 +3,24 @@ A parser for scripts used in Paradox Development Studios games, written in Haske
 
 ## Building
 
-This package uses the standard Cabal build system.
+The easiest way to get it running is to use
+[Stack](http://docs.haskellstack.org/en/stable/README.html). Install it, then
+`cd` to the directory where you cloned `pdxparse` and type:
 
-First install the [Haskell Platform](https://www.haskell.org/platform/).
+    $ stack install --install-ghc
 
-Then open a teminal and type:
+This will automatically install the compiler and all dependencies. (If you
+already have GHC 7.10.3 installed, you can probably omit `--install-ghc`.)
 
-    $ cabal update
-    $ cabal sandbox init #optional
+You may also be able to just use `cabal-install` if you have it:
+
     $ cabal install --prefix=/path/to/install
 
-On Linux (and presumably other Unixy platforms... possibly not OS X), the
-executable will be placed in `/path/to/install/bin/pdxparse` and the settings
-file in `/path/to/install/share/<platform>/settings.yml`.
-
 ## Usage
+
+`pdxparse` should be run from the command line. It will create a directory
+`output` in the current directory. Its structure is the same as that of the EU4
+directory.
 
 If you got EU4 from Steam, `pdxparse` should be able to find it automatically
 as long as your steamapps folder is in the default location.  If it's somewhere
