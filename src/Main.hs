@@ -1,8 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import GHC.IO.Encoding
+
 import Debug.Trace
 
+import Control.Exception
 import Control.Monad
 import Data.Maybe
 import Control.Monad.Reader
@@ -62,6 +65,9 @@ collateBasicIdeaGroups file settings
 
 main :: IO ()
 main = do
+    -- work around Windows' strange defaults
+    setLocaleEncoding utf8
+
     -- EU4 mode
     settings <- readSettings (fmap (EU4 []) <$> readIdeaGroupTable)
 
@@ -101,6 +107,11 @@ main = do
                             destinationDir  = takeDirectory destinationFile
                         createDirectoryIfMissing True destinationDir
                         h <- openFile destinationFile AppendMode
-                        displayIO h (renderPretty 0.9 80 output)
+                        result <- try $
+                            displayIO h (renderPretty 0.9 80 output)
+                        case result of
+                            Right () -> return ()
+                            Left err -> hPutStrLn stderr $
+                                "Error writing " ++ show (err::IOError)
                         hClose h
 

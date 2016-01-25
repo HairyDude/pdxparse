@@ -7,6 +7,7 @@ module Settings (
 
 import Data.Maybe
 
+import Data.Char (toLower)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -59,15 +60,15 @@ data Platform
     | Unknown -- AFAIK, these are the only platforms that Steam supports.
     deriving (Eq, Show)
 platform :: Platform
-platform = case System.Info.os of
+platform = case map toLower System.Info.os of
     "linux" -> Linux
     "darwin" -> MacOS
-    "CYGWIN_NT-5.1"  -> WindowsXP
-    "MINGW32_NT-5.1" -> WindowsXP
-    "MINGW64_NT-5.1" -> Unknown -- Steam doesn't support 64 bit XP afaik
+    "cygwin_nt-5.1"  -> WindowsXP
+    "mingw32_nt-5.1" -> WindowsXP
+    "mingw64_nt-5.1" -> Unknown -- Steam doesn't support 64 bit XP afaik
     osid -- Windows: running under either Cygwin or MinGW (more likely the latter).
-        | take 6 osid == "CYGWIN"  -> Windows
-        | take 5 osid == "MINGW"   -> Windows
+        | take 6 osid == "cygwin"  -> Windows
+        | take 5 osid == "mingw"   -> Windows
         | otherwise                -> Unknown
 {-# INLINE platform #-}
 
