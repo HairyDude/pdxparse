@@ -23,6 +23,23 @@ cabal-version:       >=1.10
 executable pdxparse
 
   main-is:             Main.hs
+  other-modules:       Abstract,
+                       Doc,
+                       EU4.Common,
+                       EU4.Decisions,
+                       EU4.Events,
+                       EU4.IdeaGroups,
+                       EU4.Missions,
+                       EU4.Policies,
+                       EU4.SuperCommon,
+                       FileIO,
+                       Localization,
+                       MessageTools,
+                       Messages,
+                       Paths_pdxparse,
+                       Settings,
+                       SettingsTypes
+
   other-extensions:    FlexibleInstances, ViewPatterns, OverloadedStrings
   
   build-depends:       base >=4.7 && <4.9,
