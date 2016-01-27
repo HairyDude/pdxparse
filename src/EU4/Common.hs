@@ -267,7 +267,7 @@ ppHandlers = Tr.fromList
         ,("diplomat"                 , numericIcon "diplomat" MsgHasDiplomatLevel)
         ,("fort_level"               , numericIcon "fort level" MsgFortLevel)
         ,("gold_income_percentage"   , numericIcon "gold" MsgGoldIncomePercentage)
-        ,("horde_unity"              , numericIcon "horde unity" MsgHordeUnity)
+        ,("horde_unity"              , numericIconBonus "horde unity" MsgHordeUnity MsgYearlyHordeUnity)
         ,("imperial_influence"       , numericIcon "imperial authority" MsgImperialAuthority)
         ,("inflation"                , numericIcon "inflation" MsgInflation)
         ,("karma"                    , numericIcon "high karma" MsgKarma)
@@ -299,7 +299,7 @@ ppHandlers = Tr.fromList
         ,("num_of_vassals"           , numericIcon "vassal" MsgNumVassals) -- includes other subjects?
         ,("overextension_percentage" , numericIcon "overextension" MsgOverextension)
         ,("reform_desire"            , numericIcon "reform desire" MsgReformDesire)
-        ,("religious_unity"          , numericIcon "religious unity" MsgReligiousUnity)
+        ,("religious_unity"          , numericIconBonus "religious unity" MsgReligiousUnity MsgReligiousUnityBonus)
         ,("republican_tradition"     , numericIconBonus "republican tradition" MsgRepTrad MsgYearlyRepTrad)
         ,("stability"                , numericIcon "stability" MsgStability)
         ,("statesman"                , numericIcon "statesman" MsgHasStatesmanLevel)
@@ -310,7 +310,7 @@ ppHandlers = Tr.fromList
         ,("trader"                   , numericIcon "trader" MsgHasTraderLevel)
         ,("treasury"                 , numericIcon "ducats" MsgHasDucats)
         ,("unrest"                   , numericIcon "unrest" MsgUnrest)
-        ,("war_exhaustion"           , numericIcon "war exhaustion" MsgWarExhaustion)
+        ,("war_exhaustion"           , numericIconBonus "war exhaustion" MsgWarExhaustion MsgMonthlyWarExhaustion)
         ,("war_score"                , numericIcon "war score" MsgWarScore)
         ,("years_of_income"          , numericIcon "ducats" MsgYearsOfIncome)
         -- Used in ideas and other bonuses, omit "gain/lose" in l10n

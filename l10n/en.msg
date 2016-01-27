@@ -171,6 +171,7 @@ Development icon@Text development@Double: #{icon} Development is at least #{roun
 RulerDIP icon@Text amt@Double: Ruler's #{icon} diplomatic skill is at least #{roundNum amt}
 DIPTech icon@Text amt@Double: #{icon} Diplomatic technology is at least #{roundNum amt}
 HordeUnity icon@Text amt@Double: #{icon} Horde unity is at least #{roundNum amt}
+YearlyHordeUnity icon@Text amt@Double: #{icon} #{colourNum True amt} Yearly horde unity
 Karma icon@Text amt@Double: #{icon} Karma is at least #{colourPc True amt}
 Legitimacy icon@Text amt@Double: #{icon} Legitimacy is at least #{roundPc amt}
 YearlyLegitimacy icon@Text amt@Double: #{icon} #{colourPc True amt} Yearly legitimacy
@@ -188,6 +189,7 @@ TotalCardinals icon@Text amt@Double: At least #{icon} #{roundNum amt} #{plural a
 Unrest icon@Text amt@Double: Unrest is at least #{icon} #{colourNum False amt}
 MonthlyIncome icon@Text amt@Double: #{icon} Monthly income is at least #{colourNum True amt} ducats
 WarExhaustion icon@Text amt@Double: #{icon} War exhaustion is at least #{colourNum False amt}
+MonthlyWarExhaustion icon@Text amt@Double: #{icon} #{colourNum False amt} Monthly war exhaustion 
 WarScore icon@Text amt@Double: War score is at least #{icon} #{colourPc True amt}
 RepTrad icon@Text amt@Double: #{icon} Republican tradition is at least #{reducedNum roundPc amt}
 YearlyRepTrad icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Yearly republican tradition
@@ -440,6 +442,7 @@ CapitalIs what@Text: Capital is #{what}
 FullIdeaGroup icon@Text what@Text: Has completed #{icon} #{what}
 TradeIncomePercentage amt@Double: Trade accounts for at least #{reducedNum plainPc amt} of national income
 ReligiousUnity icon@Text amt@Double: #{icon} <!-- idea: #{reducedNum (colourPcSign True) amt} --> Religious unity is at least #{reducedNum (colourPc True) amt}
+ReligiousUnityBonus icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Religious unity
 HasADM icon@Text amt@Double: Has at least #{icon} #{plainNum amt} administrative power
 HasDIP icon@Text amt@Double: Has at least #{icon} #{plainNum amt} diplomatic power
 HasMIL icon@Text amt@Double: Has at least #{icon} #{plainNum amt} military power
