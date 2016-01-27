@@ -149,7 +149,9 @@ optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 -- Pretty-print an event, or fail.
 pp_event :: Event -> PP EU4 (Either Text Doc)
 pp_event evt =
-    if isJust (evt_title_loc evt) && isJust (evt_options evt)
+    if isJust (evt_id evt)
+        && isJust (evt_title_loc evt)
+        && isJust (evt_options evt)
         && (isJust (evt_is_triggered_only evt) ||
             isJust (evt_mean_time_to_happen evt))
     then do -- Valid event, carry on
@@ -170,11 +172,13 @@ pp_event evt =
                                     ,line])
                             (field evt)
                     isTriggeredOnly = fromMaybe False $ evt_is_triggered_only evt
+                    evtId = strictText (fromJust (evt_id evt))
                 trigger_pp'd <- evtArg "trigger" evt_trigger pp_script
                 mmtth_pp'd <- mapM pp_mtth (evt_mean_time_to_happen evt)
                 immediate_pp'd <- evtArg "immediate" evt_immediate pp_script
                 return . Right . mconcat $
-                    ["{{Event<!-- ", strictText . fromJust . evt_id $ evt, " -->", line
+                    ["<section begin=", evtId, "/>", line
+                    ,"{{Event", line
                     ,"| version = ", strictText version, line
                     ,"| event_name = ", text (TL.fromStrict . fromJust $ evt_title_loc evt), line
                     ] ++
@@ -205,7 +209,8 @@ pp_event evt =
                     -- option_conditions = no (not implemented yet)
                     ["| options = ", options_pp'd, line
                     ,"| collapse = yes", line
-                    ,"}}"
+                    ,"}}", line
+                    ,"<section end=\"", evtId, "/>"
                     ]
 
     else return $ Left "some required event sections missing"

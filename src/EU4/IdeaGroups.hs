@@ -203,6 +203,7 @@ ppIdeaGroup ig = do
                 Nothing -> return Nothing
                 Just trigger -> Just <$> (imsg2doc =<< ppMany trigger)
             let name_loc = strictText . T.replace " Ideas" "" $ name
+                ig_id = strictText (ig_name ig)
             trads <- case ig_start ig of
                 Just [trad1s, trad2s] -> do
                     trad1 <- imsg2doc . map (first (const 0)) =<< ppOne trad1s
@@ -211,7 +212,8 @@ ppIdeaGroup ig = do
                 Just trads -> return . Left . Just . length $ trads
                 Nothing -> return (Left Nothing)
             return . Right . mconcat $
-                ["{{Idea group", line
+                ["<section begin=", ig_id, "/>", line
+                ,"{{Idea group", line
                 ,"| name = ", name_loc, line
                 ,"| version = ", strictText version, line
                 ,case ig_category ig of
@@ -258,6 +260,7 @@ ppIdeaGroup ig = do
                         ,trigger_pp'd
                         ,line]
                     Nothing -> [])
-                ++ ["}}"]
+                ++ ["}}", line
+                ,"<section end=", ig_id, "/>"]
         (Nothing, _) -> return . Left $ "Idea group " <> name <> " has no bonus"
         (_, n) -> return . Left $ "Idea group " <> name <> " has non-standard number of ideas (" <> T.pack (show n) <> ")"

@@ -81,8 +81,10 @@ pp_decision dec = do
     allow_pp'd  <- pp_script (dec_allow dec)
     effect_pp'd <- pp_script (dec_effect dec)
     mawd_pp'd    <- mapM ((imsg2doc =<<) . ppAiWillDo) (dec_ai_will_do dec)
+    let name = strictText (dec_name dec)
     return . mconcat $
-        ["{{Decision<!-- ", strictText (dec_name dec), " -->", line
+        ["<section begin=", name, "/>", line
+        ,"{{Decision", line
         ,"| version = ", strictText version, line
         ,"| decision_name = ", strictText (dec_name_loc dec), line
         ,maybe mempty
@@ -95,4 +97,6 @@ pp_decision dec = do
         flip (maybe []) mawd_pp'd (\awd_pp'd ->
             ["| comment = AI decision factors:", line
             ,awd_pp'd, line]) ++
-        ["}}"]
+        ["}}", line
+        ,"<section end=", name, "/>"
+        ]
