@@ -55,7 +55,7 @@ ActorGainsModDur who@Text type@Text name@Text days@Double: #{who} gains #{type} 
 ActorGainsModPow who@Text type@Text name@Text pow@Double: #{who} gains #{type} #{iquotes name} (#{colourNumSign True pow} Power)
 ActorGainsModPowDur who@Text type@Text name@Text pow@Double days@Double: #{who} gains #{type} #{iquotes name} (#{colourNumSign True pow} Power) for #{plainNum days} #{plural days "day" "days"}
 HasModifier kind@Text name@Text: Has #{kind} #{iquotes name}
-RemoveModifier kind@Text name@Text: Remove #{kind} ''"#{name}''
+RemoveModifier kind@Text name@Text: Remove #{kind} ''"#{name}"''
 AllOf: All of:
 OurCountry: Our country:
 FROM: FROM:
@@ -171,10 +171,10 @@ Development icon@Text development@Double: #{icon} Development is at least #{roun
 RulerDIP icon@Text amt@Double: Ruler's #{icon} diplomatic skill is at least #{roundNum amt}
 DIPTech icon@Text amt@Double: #{icon} Diplomatic technology is at least #{roundNum amt}
 HordeUnity icon@Text amt@Double: #{icon} Horde unity is at least #{roundNum amt}
-YearlyHordeUnity icon@Text amt@Double: #{icon} #{colourNum True amt} Yearly horde unity
+YearlyHordeUnity icon@Text amt@Double: #{icon} #{colourNumSign True amt} Yearly horde unity
 Karma icon@Text amt@Double: #{icon} Karma is at least #{colourPc True amt}
 Legitimacy icon@Text amt@Double: #{icon} Legitimacy is at least #{roundPc amt}
-YearlyLegitimacy icon@Text amt@Double: #{icon} #{colourPc True amt} Yearly legitimacy
+YearlyLegitimacy icon@Text amt@Double: #{icon} #{colourPcSign True amt} Yearly legitimacy
 RulerMIL icon@Text amt@Double: Ruler's #{icon} military skill is at least #{roundNum amt}
 MILTech icon@Text amt@Double: #{icon} Military technology is at least #{roundNum amt}
 NumAllies icon@Text amt@Double: Has at least #{icon} #{roundNum amt} #{plural amt "ally" "allies"}
@@ -192,7 +192,7 @@ WarExhaustion icon@Text amt@Double: #{icon} War exhaustion is at least #{colourN
 MonthlyWarExhaustion icon@Text amt@Double: #{icon} #{colourNum False amt} Monthly war exhaustion 
 WarScore icon@Text amt@Double: War score is at least #{icon} #{colourPc True amt}
 RepTrad icon@Text amt@Double: #{icon} Republican tradition is at least #{reducedNum roundPc amt}
-YearlyRepTrad icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Yearly republican tradition
+YearlyRepTrad icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Yearly republican tradition
 Inflation icon@Text amt@Double: #{icon} Inflation is at least #{colourPc False amt}
 LocalAutonomy icon@Text amt@Double: #{icon} Local autonomy is at least #{colourPc False amt}
 ManpowerPercentage icon@Text amt@Double: #{icon} Manpower reserves are at least #{reducedNum plainPc amt} of maximum
@@ -287,7 +287,7 @@ ReverseAddOpinionDur what@Text who@Text years@Double: #{who} gains opinion modif
 HasOpinionMod what@Text whom@Text: Has opinion modifier #{iquotes what} towards #{whom}
 RemoveOpinionMod what@Text whom@Text: Lose opinion modifier #{iquotes what} towards #{whom}
 AddTreasury icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} ducats
-AddYearsOfIncome icon@Text amt@Double: #{gainOrLose amt} #{icon} ducats equal to #{colourNum True amt} #{plural amt "year" "years"} of income
+AddYearsOfIncome icon@Text amt@Double: #{gainOrLose amt} #{icon} ducats equal to #{colourNum True amt} #{plural (round amt) "year" "years"} of income
 NewHeir: Gain a new heir
 NewHeirClaim claim@Double: Gain a new heir with claim strength #{plainNum claim}
 NewHeirDynasty flag@Text: Gain a new heir of the same dynasty as #{flag}
