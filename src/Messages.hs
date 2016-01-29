@@ -30,15 +30,15 @@ mkMessage "Script" "l10n" "en"
 type IndentedMessage = (Int, ScriptMessage)
 type IndentedMessages = [IndentedMessage]
 
-messageText :: ScriptMessage -> PP extra Text
+messageText :: Monad m => ScriptMessage -> PPT extra m Text
 messageText msg = do
     langs <- getLangs
     return $ renderMessage Script langs msg
 
-message :: ScriptMessage -> PP extra Doc
+message :: Monad m => ScriptMessage -> PPT extra m Doc
 message msg = strictText <$> messageText msg
 
-imsg2doc :: IndentedMessages -> PP extra Doc
+imsg2doc :: Monad m => IndentedMessages -> PPT extra m Doc
 imsg2doc msgs = vsep <$>
                 mapM (\(i,rm) -> do
                         m <- message rm

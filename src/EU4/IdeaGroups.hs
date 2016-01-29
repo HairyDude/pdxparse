@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
 module EU4.IdeaGroups (
         IdeaGroup (..)
     ,   Idea (..)
@@ -7,8 +7,9 @@ module EU4.IdeaGroups (
     ,   processIdeaGroup
     ) where
 
-import Control.Arrow (first)
+import Control.Arrow (first, (***))
 import Control.Monad
+import Control.Monad.Except
 import Control.Monad.Reader
 
 import Data.Array ((!))
@@ -27,6 +28,8 @@ import qualified Data.Text.Encoding as TE
 
 import Text.Regex.TDFA (Regex)
 import qualified Text.Regex.TDFA as RE
+
+import System.FilePath
 
 import Abstract
 import Doc
@@ -65,31 +68,31 @@ readIdeaGroupTable settings = do
     return . HM.fromList . map (\ig -> (ig_name ig, ig)) $ ideaGroups
 
 readIdeaGroup' :: Settings EU4 -> GenericStatement -> Either Text IdeaGroup
-readIdeaGroup' settings stmt = runReader (readIdeaGroup stmt) settings
+readIdeaGroup' settings stmt = runReaderT (readIdeaGroup stmt) settings
 
-readIdeaGroup :: GenericStatement -> PP EU4 (Either Text IdeaGroup)
-readIdeaGroup (StatementBare _) = return $ Left "bare statement at top level"
+readIdeaGroup :: MonadError Text m => GenericStatement -> PPT EU4 m IdeaGroup
+readIdeaGroup (StatementBare _) = throwError "bare statement at top level"
 readIdeaGroup (Statement (GenericLhs "basic idea group") (GenericRhs right))
     -- This is a fake entry for an idea group that has already been parsed.
     -- Fetch the corresponding basic idea group from settings.
     = do
         groups <- getIdeas
         case HM.lookup right groups of
-            Nothing -> return (Left $ "Idea group not found: " <> right)
-            Just group -> return (Right group)
+            Nothing -> throwError ("Idea group not found: " <> right)
+            Just group -> return group
 readIdeaGroup (Statement left right) = case right of
     CompoundRhs parts -> case left of
-        CustomLhs _ -> return $ Left "internal error: custom lhs"
-        IntLhs _ -> return $ Left "int lhs at top level"
+        CustomLhs _ -> throwError "internal error: custom lhs"
+        IntLhs _ -> throwError "int lhs at top level"
         GenericLhs name -> do
             name_loc <- getGameL10n name
-            Right <$> foldM ideaGroupAddSection
+            foldM ideaGroupAddSection
                         (newIdeaGroup { ig_name = name
                                       , ig_name_loc = name_loc }) parts
 
-    _ -> return $ Left "warning: unknown statement in idea group file"
+    _ -> throwError "warning: unknown statement in idea group file"
 
-ideaGroupAddSection :: IdeaGroup -> GenericStatement -> PP extra IdeaGroup
+ideaGroupAddSection :: Monad m => IdeaGroup -> GenericStatement -> PPT extra m IdeaGroup
 ideaGroupAddSection ig (Statement (GenericLhs label) rhs) =
     case label of
         "category" -> case T.toLower <$> textRhs rhs of
@@ -130,12 +133,10 @@ iconForIdea idea = case iconForIdea' idea of
     Nothing -> mempty
     Just icon -> strictText icon
 
-processIdeaGroup :: GenericStatement -> PP EU4 (Either Text Doc)
-processIdeaGroup stmt = do
-    eig <- readIdeaGroup stmt
-    case eig of
-        Left err -> return (Left err)
-        Right ig -> fmap fixup <$> ppIdeaGroup ig
+processIdeaGroup :: MonadError Text m => GenericStatement -> PPT EU4 m [Either Text (FilePath, Doc)]
+processIdeaGroup stmt = withCurrentFile $ \file -> do
+    ig <- readIdeaGroup stmt
+    (:[]) . Right . ((file </>) *** fixup) <$> ppIdeaGroup ig
 
 -- Do some text substitutions to add 'ideaNicon' args to the idea group
 -- template, and remove/comment out undesirable icon templates.
@@ -172,7 +173,7 @@ fixup = strictText . T.unlines . map (TE.decodeUtf8
             [pre, "idea", nth, "icon = ", iconFileB (fst (matcharr ! 2))
             ,"\n| idea", nth, "effect = ", post]
 
-ppIdeaGroup :: IdeaGroup -> PP EU4 (Either Text Doc)
+ppIdeaGroup :: MonadError Text m => IdeaGroup -> PPT EU4 m (FilePath, Doc)
 ppIdeaGroup ig = do
     version <- asks gameVersion
     let name = ig_name_loc ig
@@ -203,7 +204,9 @@ ppIdeaGroup ig = do
                 Nothing -> return Nothing
                 Just trigger -> Just <$> (imsg2doc =<< ppMany trigger)
             let name_loc = strictText . T.replace " Ideas" "" $ name
-                ig_id = strictText (ig_name ig)
+                ig_id_t = ig_name ig
+                ig_id_s = T.unpack ig_id_t
+                ig_id = strictText ig_id_t
             trads <- case ig_start ig of
                 Just [trad1s, trad2s] -> do
                     trad1 <- imsg2doc . map (first (const 0)) =<< ppOne trad1s
@@ -211,7 +214,7 @@ ppIdeaGroup ig = do
                     return $ Right (trad1, trad2)
                 Just trads -> return . Left . Just . length $ trads
                 Nothing -> return (Left Nothing)
-            return . Right . mconcat $
+            return . (,) ig_id_s . mconcat $
                 ["<section begin=", ig_id, "/>", line
                 ,"{{Idea group", line
                 ,"| name = ", name_loc, line
@@ -262,5 +265,5 @@ ppIdeaGroup ig = do
                     Nothing -> [])
                 ++ ["}}", line
                 ,"<section end=", ig_id, "/>"]
-        (Nothing, _) -> return . Left $ "Idea group " <> name <> " has no bonus"
-        (_, n) -> return . Left $ "Idea group " <> name <> " has non-standard number of ideas (" <> T.pack (show n) <> ")"
+        (Nothing, _) -> throwError $ "Idea group " <> name <> " has no bonus"
+        (_, n) -> throwError $ "Idea group " <> name <> " has non-standard number of ideas (" <> T.pack (show n) <> ")"

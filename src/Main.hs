@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, LambdaCase #-}
 module Main where
 
 import GHC.IO.Encoding
@@ -76,7 +76,9 @@ main = do
     forM_ ["decisions","missions","events","policies","ideagroups"] $ \category -> do
         scripts <- readScripts settings category -- :: [(FilePath, GenericScript)]
 
-        let handler :: GenericStatement -> PP EU4 (Either Text Doc)
+        -- Each handler function returns one Doc, together with an output path,
+        -- for each "unit".
+        let handler :: GenericStatement -> PPT EU4 (Either Text) [Either Text (FilePath, Doc)]
             handler = case category of
                 "decisions" -> processDecisionGroup
                 "missions" -> processMission
@@ -85,33 +87,34 @@ main = do
                 "ideagroups" -> processIdeaGroup
                 _ -> error $ "tried to process strange category \"" ++ category ++ "\""
 
-            results :: PP EU4 [(FilePath, [Either Text Doc])]
-            results = mapM (\(file, script) ->
-                            (,) file <$>
-                                local (\s -> s { currentFile = Just file })
-                                      (mapM handler script))
+            results :: PPT EU4 (Either Text) [(FilePath, [Either Text (FilePath, Doc)])]
+            results = mapM (\(file, script) -> do
+                            result <- local (\s -> s { currentFile = Just file })
+                                            (concatMapM handler script)
+                            return (file, result)
+                        )
                 -- for testing -- comment out for release
 --                . filter (\(file, _) -> file `elem`
 --                    ["common/ideas/00_basic_ideas.txt"
 --                    ])
                 $ scripts
 
-        forM_ (runReader results settings) $ \(path, mesgs) ->
-            forM_ mesgs $ \mesg ->
-                case mesg of
-                    Left err -> do
-                        putStrLn $ "Processing " ++ path ++ " failed: " ++ T.unpack err
-                        return ()
-                    Right output -> do
-                        let destinationFile = "output" </> path
-                            destinationDir  = takeDirectory destinationFile
-                        createDirectoryIfMissing True destinationDir
-                        h <- openFile destinationFile AppendMode
-                        result <- try $
-                            displayIO h (renderPretty 0.9 80 output)
-                        case result of
-                            Right () -> return ()
-                            Left err -> hPutStrLn stderr $
-                                "Error writing " ++ show (err::IOError)
-                        hClose h
+        case (runReaderT results settings) of
+            Left err -> void . putStrLn $ "Failed processing " ++ category ++ ": " ++ T.unpack err
+            Right files -> forM_ files $ \(path, mesgs) -> forM_ mesgs $ \case
+                Left err -> do
+                    putStrLn $ "Processing " ++ path ++ " failed: " ++ T.unpack err
+                    return ()
+                Right (target, output) -> do
+                    let destinationFile = "output" </> target
+                        destinationDir  = takeDirectory destinationFile
+                    createDirectoryIfMissing True destinationDir
+                    h <- openFile destinationFile WriteMode
+                    result <- try $
+                        displayIO h (renderPretty 0.9 80 output)
+                    case result of
+                        Right () -> return ()
+                        Left err -> hPutStrLn stderr $
+                            "Error writing " ++ show (err::IOError)
+                    hClose h
 

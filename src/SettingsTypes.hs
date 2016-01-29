@@ -15,6 +15,7 @@ module SettingsTypes
     , settings
     , setGameL10n
     , PP, PPT
+    , hoistErrors
     , indentUp, indentDown
     , withCurrentIndent, withCurrentIndentZero
     , alsoIndent, alsoIndent'
@@ -83,9 +84,14 @@ setGameL10n settings l10n = settings { gameL10n = l10n }
 type PP extra a = Reader (Settings extra) a -- equal to PPT extra Identity a
 type PPT extra m a = ReaderT (Settings extra) m a
 
+-- Convert a PP wrapping errors into a PP returning Either.
+-- TODO: generalize
+hoistErrors :: Monad m => PPT extra (Either e) a -> PPT extra m (Either e a)
+hoistErrors (ReaderT rd) = return . rd =<< ask
+
 -- Increase current indentation by 1 for the given action.
 -- If there is no current indentation, set it to 1.
-indentUp :: PP extra a -> PP extra a
+indentUp :: Monad m => PPT extra m a -> PPT extra m a
 indentUp go = do
     mindent <- asks currentIndent
     let mindent' = Just (maybe 1 succ mindent)
@@ -93,7 +99,7 @@ indentUp go = do
 
 -- Decrease current indent level by 1 for the given action.
 -- For use where a level of indentation should be skipped.
-indentDown :: PP extra a -> PP extra a
+indentDown :: Monad m => PPT extra m a -> PPT extra m a
 indentDown go = do
     mindent <- asks currentIndent
     let mindent' = Just (maybe 0 pred mindent)
@@ -101,50 +107,51 @@ indentDown go = do
 
 -- | Pass the current indent to the action.
 -- If there is no current indent, set it to 1.
-withCurrentIndent :: (Int -> PP extra a) -> PP extra a
+withCurrentIndent :: Monad m => (Int -> PPT extra m a) -> PPT extra m a
 withCurrentIndent = withCurrentIndentBaseline 1
 
 -- | Pass the current indent to the action.
 -- If there is no current indent, set it to 0.
-withCurrentIndentZero :: (Int -> PP extra a) -> PP extra a
+withCurrentIndentZero :: Monad m => (Int -> PPT extra m a) -> PPT extra m a
 withCurrentIndentZero = withCurrentIndentBaseline 0
 
-withCurrentIndentBaseline :: Int -> (Int -> PP extra a) -> PP extra a
-withCurrentIndentBaseline base go = do
-    mindent <- asks currentIndent
+withCurrentIndentBaseline :: Monad m => Int -> (Int -> PPT extra m a) -> PPT extra m a
+withCurrentIndentBaseline base go =
     local (\s ->
-            if isNothing mindent
+            if isNothing (currentIndent s)
             then s { currentIndent = Just base }
             else s)
+          -- fromJust guaranteed to succeed
           (go . fromJust =<< asks currentIndent)
 
 -- Bundle a value with the current indentation level.
-alsoIndent :: PP extra a -> PP extra (Int, a)
+alsoIndent :: Monad m => PPT extra m a -> PPT extra m (Int, a)
 alsoIndent mx = withCurrentIndent $ \i -> mx >>= \x -> return (i,x)
-alsoIndent' :: a -> PP extra (Int, a)
+alsoIndent' :: Monad m => a -> PPT extra m (Int, a)
 alsoIndent' x = withCurrentIndent $ \i -> return (i,x)
 
-getGameL10n :: Text -> PP extra Text
+getGameL10n :: Monad m => Text -> PPT extra m Text
 getGameL10n key = HM.lookupDefault key key <$> asks gameL10n
 
-getGameL10nDefault :: Text -> Text -> PP extra Text
+getGameL10nDefault :: Monad m => Text -> Text -> PPT extra m Text
 getGameL10nDefault def key = HM.lookupDefault def key <$> asks gameL10n
 
-getGameL10nIfPresent :: Text -> PP extra (Maybe Text)
+getGameL10nIfPresent :: Monad m => Text -> PPT extra m (Maybe Text)
 getGameL10nIfPresent key = HM.lookup key <$> asks gameL10n
 
 -- Pass the current file to the action.
 -- If there is no current file, set it to "(unknown)".
-withCurrentFile :: (String -> PP extra a) -> PP extra a
+withCurrentFile :: Monad m => (String -> PPT extra m a) -> PPT extra m a
 withCurrentFile go = do
     mfile <- asks currentFile
     local (\s -> if isNothing mfile
                     then s { currentFile = Just "(unknown)" }
                     else s)
+          -- fromJust guaranteed to succeed
           (go . fromJust =<< asks currentFile)
 
 -- Get the list of output languages.
-getLangs :: PP extra [Lang]
+getLangs :: Monad m => PPT extra m [Lang]
 getLangs = asks langs
 
 -- Misc. utilities

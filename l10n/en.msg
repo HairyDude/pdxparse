@@ -201,6 +201,7 @@ ChangeGoods icon@Text what@Text: Change province's goods produced to #{icon} #{w
 CreateAdvisor icon@Text what@Text: Gain #{icon} #{what} advisor
 HasIdeaGroup icon@Text what@Text: Has activated #{icon} #{what}
 ProducesGoods icon@Text what@Text: Produces #{icon} #{what}
+EstateExists icon@Text what@Text: #{icon} #{what} estate exists
 HasEstate icon@Text what@Text: Has estate #{icon} #{what}
 AssignToEstate icon@Text what@Text: Assign province to the #{icon} #{what} estate
 RulerIsGeneral icon@Text _what@Text: Ruler is a #{icon} general

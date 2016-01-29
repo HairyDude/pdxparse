@@ -5,6 +5,8 @@ module EU4.Decisions (
 
 import Debug.Trace
 
+import Control.Arrow (first)
+import Control.Monad.Except
 import Control.Monad.Identity
 import Control.Monad.Reader
 
@@ -13,6 +15,8 @@ import Data.Monoid
 
 import Data.Text (Text)
 import qualified Data.Text as T
+
+import System.FilePath (FilePath, (</>))
 
 import Abstract
 import Doc
@@ -33,17 +37,17 @@ data Decision = Decision
 -- Starts off Nothing/empty everywhere, except name (will get filled in immediately).
 newDecision = Decision undefined undefined Nothing [] [] [] Nothing
 
-processDecisionGroup :: GenericStatement -> PP EU4 (Either Text Doc)
+processDecisionGroup :: GenericStatement -> PPT EU4 (Either Text) [Either Text (FilePath, Doc)]
 processDecisionGroup (Statement (GenericLhs left) rhs)
     | left `elem` ["country_decisions", "religion_decisions"]
-    = case rhs of
-        CompoundRhs scr -> fromReaderT $ do
-            decs <- mapM (toReaderT . processDecision) scr
-            return . mconcat . intersperse (mconcat [line, line]) $ decs
-        _ -> return $ Left "unrecognized form for decision block (RHS)"
-processDecisionGroup _ = return $ Left "unrecognized form for decision block (LHS)"
+    = withCurrentFile $ \file -> case rhs of
+        CompoundRhs scr -> forM scr $ \stmt ->
+            (Right . first ((file </>) . T.unpack) <$> processDecision stmt)
+                `catchError` \e -> return (Left e)
+        _ -> throwError "unrecognized form for decision block (RHS)"
+processDecisionGroup _ = throwError "unrecognized form for decision block (LHS)"
 
-processDecision :: GenericStatement -> PP EU4 (Either Text Doc)
+processDecision :: GenericStatement -> PPT EU4 (Either Text) (Text, Doc)
 processDecision (Statement (GenericLhs decName) rhs) = case rhs of
     CompoundRhs parts -> do
         decName_loc <- getGameL10n (decName <> "_title")
@@ -53,11 +57,11 @@ processDecision (Statement (GenericLhs decName) rhs) = case rhs of
                                  , dec_name_loc = decName_loc
                                  , dec_text = decText }
                      parts
-        Right <$> pp_decision dec
-    _ -> return $ Left "unrecognized form for decision (RHS)"
-processDecision _ = return $ Left "unrecognized form for decision (LHS)"
+        (,) decName <$> pp_decision dec
+    _ -> throwError "unrecognized form for decision (RHS)"
+processDecision _ = throwError "unrecognized form for decision (LHS)"
 
-decisionAddSection :: Decision -> GenericStatement -> PP extra Decision
+decisionAddSection :: Monad m => Decision -> GenericStatement -> PPT extra m Decision
 decisionAddSection dec (Statement (GenericLhs sectname) (CompoundRhs scr))
     = case sectname of
         "potential" -> return dec { dec_potential = scr }
@@ -74,7 +78,7 @@ decisionAddSection dec (Statement (GenericLhs "ai_importance") _)
 decisionAddSection dec stmt = trace ("warning: unrecognized decision section: " ++ show stmt) $
                               return dec
 
-pp_decision :: Decision -> PP EU4 Doc
+pp_decision :: Monad m => Decision -> PPT EU4 m Doc
 pp_decision dec = do
     version <- asks gameVersion
     pot_pp'd    <- pp_script (dec_potential dec)
