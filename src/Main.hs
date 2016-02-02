@@ -23,6 +23,7 @@ import System.IO
 import Abstract
 import Doc
 import FileIO
+import Platform
 import Settings
 
 -- Script handlers
@@ -65,8 +66,8 @@ collateBasicIdeaGroups file settings
 
 main :: IO ()
 main = do
-    -- work around Windows' strange defaults
-    setLocaleEncoding utf8
+    -- Do platform-specific initialization
+    initPlatform
 
     -- EU4 mode
     settings <- readSettings (fmap (EU4 []) <$> readIdeaGroupTable)
