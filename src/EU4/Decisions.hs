@@ -87,7 +87,7 @@ pp_decision dec = do
     mawd_pp'd    <- mapM ((imsg2doc =<<) . ppAiWillDo) (dec_ai_will_do dec)
     let name = strictText (dec_name dec)
     return . mconcat $
-        ["<section begin=", name, "/>", line
+        ["<section begin=", name, "/>"
         ,"{{Decision", line
         ,"| version = ", strictText version, line
         ,"| decision_name = ", strictText (dec_name_loc dec), line
@@ -101,6 +101,6 @@ pp_decision dec = do
         flip (maybe []) mawd_pp'd (\awd_pp'd ->
             ["| comment = AI decision factors:", line
             ,awd_pp'd, line]) ++
-        ["}}", line
+        ["}}" -- no line, causes unwanted extra space
         ,"<section end=", name, "/>"
         ]

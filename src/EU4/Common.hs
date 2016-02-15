@@ -306,7 +306,7 @@ ppHandlers = Tr.fromList
         ,("theologian"               , numericIcon "theologian" MsgHasTheologianLevel)
         ,("total_development"        , numericIcon "development" MsgTotalDevelopment)
         ,("total_number_of_cardinals", numericIcon "cardinal" MsgTotalCardinals) -- in the world
-        ,("trade_efficiency"         , numericIcon "trade efficiency" MsgTradeEfficiency)
+        ,("trade_efficiency"         , numericIconBonus "trade efficiency" MsgTradeEfficiency MsgTradeEfficiencyBonus)
         ,("trader"                   , numericIcon "trader" MsgHasTraderLevel)
         ,("treasury"                 , numericIcon "ducats" MsgHasDucats)
         ,("unrest"                   , numericIcon "unrest" MsgUnrest)
@@ -567,7 +567,7 @@ ppHandlers = Tr.fromList
         ,("set_hre_religion"        , withLocAtomIcon MsgSetHREReligion)
         ,("technology_group"        , withLocAtomIcon MsgTechGroup)
         ,("trade_goods"             , withLocAtomIcon MsgProducesGoods)
-        ,("has_estate"              , withLocAtomIconScope MsgEstateExists MsgHasEstate) -- Country scope "estate exists", province "assigned to estate"
+        ,("has_estate"              , withLocAtomIconScope MsgEstateExists MsgHasEstate)
         ,("set_estate"              , withLocAtomIcon MsgAssignToEstate)
         ,("is_monarch_leader"       , withLocAtomAndIcon "ruler general" MsgRulerIsGeneral)
         -- Simple generic statements with flag
@@ -1312,30 +1312,30 @@ addModifier :: Monad m => ScriptMessage -> GenericStatement -> PPT extra m Inden
 addModifier kind stmt@(Statement _ (CompoundRhs scr)) = msgToPP =<<
     let mod = foldl' addModifierLine newModifier scr
     in if isJust (mod_name mod) || isJust (mod_key mod) then do
+        let mkey = mod_key mod
+            mname = mod_name mod
         kind <- messageText kind
         mwho <- maybe (return Nothing) (fmap (Just . doc2text) . flag) (mod_who mod)
-        mname_loc <- maybeM getGameL10n (mod_name mod)
-        mkey_loc <- maybeM getGameL10n (mod_key mod)
+        mname_loc <- maybeM getGameL10n mname
+        mkey_loc <- maybeM getGameL10n mkey
         let mdur = mod_duration mod
+            mname_or_key = maybe mkey Just mname
+            mname_or_key_loc = maybe mkey_loc Just mname_loc
 
-        case (mwho, mname_loc, mkey_loc, mod_power mod, mdur) of
-            (_, Nothing, Nothing, _, _) -> return (preMessage stmt) -- need a name for the mod!
-            (Nothing,  Just name, _,        Nothing,  Nothing)  -> return (MsgGainMod kind name)
-            (Nothing,  Nothing,   Just key, Nothing,  Nothing)  -> return (MsgGainMod kind key)
-            (Nothing,  Just name, _,        Nothing,  Just dur) -> return (MsgGainModDur kind name dur)
-            (Nothing,  Nothing,   Just key, Nothing,  Just dur) -> return (MsgGainModDur kind key dur)
-            (Nothing,  Just name, _,        Just pow, Nothing)  -> return (MsgGainModPow kind name pow)
-            (Nothing,  Nothing,   Just key, Just pow, Nothing)  -> return (MsgGainModPow kind key pow)
-            (Nothing,  Just name, _,        Just pow, Just dur) -> return (MsgGainModPowDur kind name pow dur)
-            (Nothing,  Nothing,   Just key, Just pow, Just dur) -> return (MsgGainModPowDur kind key pow dur)
-            (Just who, Just name, _,        Nothing,  Nothing)  -> return (MsgActorGainsMod who kind name)
-            (Just who, Nothing,   Just key, Nothing,  Nothing)  -> return (MsgActorGainsMod who kind key)
-            (Just who, Just name, _,        Nothing,  Just dur) -> return (MsgActorGainsModDur who kind name dur)
-            (Just who, Nothing,   Just key, Nothing,  Just dur) -> return (MsgActorGainsModDur who kind key dur)
-            (Just who, Just name, _,        Just pow, Nothing)  -> return (MsgActorGainsModPow who kind name pow)
-            (Just who, Nothing,   Just key, Just pow, Nothing)  -> return (MsgActorGainsModPow who kind key pow)
-            (Just who, Just name, _,        Just pow, Just dur) -> return (MsgActorGainsModPowDur who kind name pow dur)
-            (Just who, Nothing,   Just key, Just pow, Just dur) -> return (MsgActorGainsModPowDur who kind key pow dur)
+        return $ case mname_or_key of
+            Just modid ->
+                -- default presented name to mod id
+                let name_loc = fromMaybe modid mname_or_key_loc
+                in case (mwho, mod_power mod, mdur) of
+                    (Nothing,  Nothing,  Nothing)  -> MsgGainMod modid kind name_loc
+                    (Nothing,  Nothing,  Just dur) -> MsgGainModDur modid kind name_loc dur
+                    (Nothing,  Just pow, Nothing)  -> MsgGainModPow modid kind name_loc pow
+                    (Nothing,  Just pow, Just dur) -> MsgGainModPowDur modid kind name_loc pow dur
+                    (Just who, Nothing,  Nothing)  -> MsgActorGainsMod modid who kind name_loc
+                    (Just who, Nothing,  Just dur) -> MsgActorGainsModDur modid who kind name_loc dur
+                    (Just who, Just pow, Nothing)  -> MsgActorGainsModPow modid who kind name_loc pow
+                    (Just who, Just pow, Just dur) -> MsgActorGainsModPowDur modid who kind name_loc pow dur
+            _ -> preMessage stmt -- Must have mod id
     else return (preMessage stmt)
 addModifier _ stmt = preStatement stmt
 

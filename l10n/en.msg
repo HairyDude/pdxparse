@@ -46,14 +46,14 @@ ProvMod: province modifier
 PermanentProvMod: permanent province modifier
 RulerMod: ruler modifier
 TradeMod: trade modifier
-GainMod type@Text name@Text: Gain #{type} #{iquotes name}
-GainModDur type@Text name@Text days@Double: Gain #{type} #{iquotes name} for #{roundNumNoSpace days} #{plural days "day" "days"}
-GainModPow type@Text name@Text pow@Double: Gain #{type} #{iquotes name} (#{colourNumSign True pow} Power)
-GainModPowDur type@Text name@Text pow@Double days@Double: Gain #{type} #{iquotes name} (#{colourNumSign True pow} Power) for #{plainNum days} #{plural days "day" "days"}
-ActorGainsMod who@Text type@Text name@Text: #{who} gains #{type} #{iquotes name}
-ActorGainsModDur who@Text type@Text name@Text days@Double: #{who} gains #{type} #{iquotes name} for #{plainNum days} #{plural days "day" "days"}
-ActorGainsModPow who@Text type@Text name@Text pow@Double: #{who} gains #{type} #{iquotes name} (#{colourNumSign True pow} Power)
-ActorGainsModPowDur who@Text type@Text name@Text pow@Double days@Double: #{who} gains #{type} #{iquotes name} (#{colourNumSign True pow} Power) for #{plainNum days} #{plural days "day" "days"}
+GainMod modid@Text type@Text name@Text: Gain #{type} #{iquotes name} <!-- #{modid} -->
+GainModDur modid@Text type@Text name@Text days@Double: Gain #{type} #{iquotes name} <!-- #{modid} --> for #{roundNumNoSpace days} #{plural days "day" "days"}
+GainModPow modid@Text type@Text name@Text pow@Double: Gain #{type} #{iquotes name} <!-- #{modid} --> (#{colourNumSign True pow} Power)
+GainModPowDur modid@Text type@Text name@Text pow@Double days@Double: Gain #{type} #{iquotes name} <!-- #{modid} --> (#{colourNumSign True pow} Power) for #{plainNum days} #{plural days "day" "days"}
+ActorGainsMod modid@Text who@Text type@Text name@Text: #{who} gains #{type} #{iquotes name} <!-- #{modid} -->
+ActorGainsModDur modid@Text who@Text type@Text name@Text days@Double: #{who} gains #{type} #{iquotes name} <!-- #{modid} --> for #{plainNum days} #{plural days "day" "days"}
+ActorGainsModPow modid@Text who@Text type@Text name@Text pow@Double: #{who} gains #{type} #{iquotes name} <!-- #{modid} --> (#{colourNumSign True pow} Power)
+ActorGainsModPowDur modid@Text who@Text type@Text name@Text pow@Double days@Double: #{who} gains #{type} #{iquotes name} <!-- #{modid} --> (#{colourNumSign True pow} Power) for #{plainNum days} #{plural days "day" "days"}
 HasModifier kind@Text name@Text: Has #{kind} #{iquotes name}
 RemoveModifier kind@Text name@Text: Remove #{kind} ''"#{name}"''
 AllOf: All of:
@@ -276,7 +276,7 @@ Indefinitely: indefinitely
 ForDays days@Double: for #{roundNum days} days
 EstateLoyalty icon@Text who@Text amt@Double: #{icon} #{who} has at least #{plainNum amt} loyalty
 EstateInfluence icon@Text who@Text amt@Double: #{icon} #{who} has at least #{plainNum amt} influence
-AddEstateLoyalty icon@Text who@Text amt@Double: #{icon} #{who} #{gainsOrLoses amt} #{plainNum amt} loyalty
+AddEstateLoyalty icon@Text who@Text amt@Double: #{icon} #{who} #{gainsOrLoses amt} #{colourNum True amt} loyalty
 AddEstateInfluence icon@Text who@Text amt@Double: #{icon} #{who} #{gainsOrLoses amt} #{plainNum amt} influence
 EstateLoyaltyModifier icon@Text who@Text what@Text amt@Double dur@Text: #{icon} #{who} gains loyalty modifier #{iquotes what} (#{colourNum True amt} loyalty) #{dur}
 EstateInfluenceModifier icon@Text who@Text what@Text amt@Double dur@Text: #{icon} #{who} gains influence modifier #{iquotes what} (#{colourNum True amt} influence) #{dur}
@@ -435,7 +435,7 @@ Prestige icon@Text amt@Double: #{icon} Prestige is at least #{colourNumSign True
 YearlyPrestige icon@Text amt@Double: #{icon} #{colourNumSign True amt} Yearly prestige
 MissionaryStrengthVsHeretics icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Missionary strength vs heretics
 CultureConvCost icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign False) amt} Culture conversion cost
-HasOpinion amt@Double whom@Text: Has at least #{colourNumSign True amt} opinion of #{whom}
+HasOpinion amt@Double whom@Text: Opinion of #{whom} is at least #{colourNumSign True amt}
 NormalOrHistoricalNations yn@Bool: #{ifThenElseT yn "Playing" "''Not'' playing"} with normal or historical nations
 IsCustomNation yn@Bool: Is#{ifThenElseT yn "" " ''not''"} playing a custom nation
 ReligionEnabled icon@Text what@Text: The #{icon} #{what} religion is enabled
@@ -453,7 +453,7 @@ RankEmpire: Government rank is {{icon|empire}} Empire<!-- not {{icon|duchy}} Duc
 SetRankDuchy: Set government rank to {{icon|duchy}} Duchy
 SetRankKingdom: Set government rank to {{icon|kingdom}} Kingdom
 SetRankEmpire: Set government rank to {{icon|empire}} Empire
-Overextension icon@Text amt@Double: Has at least #{icon} #{reducedNum plainPc amt} overextension
+Overextension icon@Text amt@Double: #{icon} Overextension is at least #{reducedNum plainPc amt}
 RandomNewWorld yn@Bool: Is#{ifThenElseT yn "" " ''not''"} playing with a Random New World
 IsColonialNation yn@Bool: Is#{ifThenElseT yn "" " ''not''"} a colonial nation
 IsFormerColonialNation yn@Bool: Is#{ifThenElseT yn "" " ''not''"} a former colonial nation
@@ -484,7 +484,8 @@ HasStatesmanLevel icon@Text level@Double: Has a level #{roundNum level} #{icon} 
 NumRoyalMarriages icon@Text amt@Double: Has at least #{icon} #{roundNum amt} royal #{plural amt "marriage" "marriages"}
 IsBankrupt yn@Bool: Is#{ifThenElseT yn "" " ''not''"} bankrupt
 NumColonialSubjects amt@Double: Has at least #{roundNum amt} colonial #{plural amt "subject" "subjects"}
-TradeEfficiency icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} <!-- Has at least #{reducedNum plainPc amt} --> trade efficiency
+TradeEfficiency icon@Text amt@Double: #{icon} Trade efficiency is at least #{reducedNum plainPc amt}
+TradeEfficiencyBonus icon@Text amt@Double: #{icon} #{reducedNum (colourPc True) amt} Trade efficiency
 HasWarTaxes yn@Bool: Has#{ifThenElseT yn "" " ''not''"} raised war taxes
 RevoltPercentage amt@Double: At least #{roundPc amt} of provinces are in revolt
 HasAnyDisaster yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} an ongoing disaster
@@ -538,7 +539,7 @@ WasForceConverted yn@Bool: Was#{ifThenElseT yn "" " ''not''"} force converted
 FemaleEmperorAllowed yn@Bool: The Emperor may#{ifThenElseT yn "" " ''not''"} be female
 ImperialAuthority icon@Text amt@Double: #{icon} Imperial Authority is at least #{roundNum amt}
 HasFemaleHeir yn@Bool: #{ifThenElseT yn "Has" "Does ''not'' have"} a female heir
-Piety icon@Text amt@Double: Has at least #{icon} #{reducedNum (colourPcSign True) amt} piety
+Piety icon@Text amt@Double: #{icon} Piety is at least #{reducedNum (colourPcSign True) amt}
 IsInTutorial yn@Bool: Is#{ifThenElseT yn "" " ''not''"} in the tutorial
 GainFervor icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} fervor
 GainChurchPower icon@Text amt@Double: #{gainOrLose amt} #{icon} #{colourNum True amt} church power
