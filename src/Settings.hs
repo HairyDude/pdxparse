@@ -8,12 +8,16 @@ module Settings (
 import Data.Maybe
 
 import Data.Char (toLower)
+import Data.List (intersperse)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Version as V
 
 import Data.Yaml
 
+import System.Console.GetOpt
 import System.Directory
+import System.Environment
 import System.Exit
 import System.IO
 import qualified System.Info
@@ -72,13 +76,35 @@ platform = case map toLower System.Info.os of
         | otherwise                -> Unknown
 {-# INLINE platform #-}
 
--- | Read the settings and localization files. If we can't, abort.
+opts :: [OptDescr CLArgs]
+opts =
+    [ Option ['p'] ["paths"]   (NoArg Paths)   "show location of configuration files"
+    , Option ['v'] ["version"] (NoArg Version) "show version information"
+    ]
+
+-- | Process command-line arguments, then read the settings and localization
+-- files. If we can't, abort.
 --
 -- The argument is an action to run after all other settings have been
 -- initialized, in order to get extra information.
 readSettings :: (Settings () -> IO a) -> IO (Settings a)
 readSettings getExtra = do
+    (opts, nonopts, errs) <- getOpt Permute opts <$> getArgs
+    when (not (null errs)) $ do
+        forM_ errs $ \err -> putStrLn err
+        exitFailure
+
     settingsFile <- getDataFileName "settings.yml"
+
+    -- Check if info args were specified. If so, honour them, then exit.
+    when (Paths `elem` opts || Version `elem` opts) $ do
+        when (Version `elem` opts) $
+            let V.Version branch _ = version
+            in putStrLn $ "pdxparse " ++ concat (intersperse "." (map show branch))
+        when (Paths `elem` opts) $
+            putStrLn $ "Settings file is at " ++ settingsFile
+        exitSuccess
+
     result <- decodeFileEither settingsFile
     case result of
         Right settingsIn -> do
@@ -104,6 +130,9 @@ readSettings getExtra = do
                             , game = gameI settingsIn
                             , language = languageI settingsIn
                             , gameVersion = T.pack (gameVersionI settingsIn)
+                            , settingsFile = settingsFile
+                            , clargs = opts
+                            , filesToProcess = nonopts
                             , currentFile = Nothing
                             , currentIndent = Nothing }
             game_l10n <- readL10n provisionalSettings
@@ -113,3 +142,5 @@ readSettings getExtra = do
         Left exc -> do
             hPutStrLn stderr $ "Couldn't parse settings: " ++ show exc
             exitFailure
+
+

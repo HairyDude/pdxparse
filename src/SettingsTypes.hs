@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module SettingsTypes
     ( L10n
+    , CLArgs (..)
     , Settings
         -- Export everything EXCEPT L10n
         ( steamDir
@@ -8,6 +9,9 @@ module SettingsTypes
         , game
         , language
         , gameVersion
+        , settingsFile
+        , clargs
+        , filesToProcess
         , currentFile
         , currentIndent
         , info
@@ -44,6 +48,12 @@ import qualified Data.HashMap.Strict as HM
 
 type L10n = HashMap Text Text
 
+-- Command line arguments.
+data CLArgs
+    = Paths
+    | Version
+    deriving (Show, Eq)
+
 data Settings a = Settings {
         steamDir    :: FilePath
     ,   steamApps   :: FilePath
@@ -52,6 +62,9 @@ data Settings a = Settings {
     ,   gameVersion :: Text
     ,   gameL10n    :: L10n
     ,   langs       :: [Lang]
+    ,   settingsFile :: FilePath
+    ,   clargs      :: [CLArgs]
+    ,   filesToProcess :: [FilePath]
     -- Local state
     ,   currentFile :: Maybe FilePath
     ,   currentIndent :: Maybe Int
@@ -65,16 +78,19 @@ instance Functor Settings where
 -- All undefined/Nothing settings, except langs.
 settings :: a -> Settings a
 settings x = Settings
-    { steamDir = undefined
-    , steamApps = undefined
-    , game = undefined
-    , language = undefined
-    , gameVersion = undefined
-    , gameL10n = undefined
-    , currentFile = Nothing
-    , currentIndent = Nothing
-    , langs = ["en"]
-    , info = x
+    { steamDir       = error "steamDir not defined"
+    , steamApps      = error "steamApps not defined"
+    , game           = error "game not defined"
+    , language       = error "language not defined"
+    , gameVersion    = error "gameVersion not defined"
+    , gameL10n       = error "gameL10n not defined"
+    , currentFile    = error "currentFile not defined"
+    , currentIndent  = error "currentIndent not defined"
+    , langs          = ["en"]
+    , settingsFile   = error "settingsFile not defined"
+    , clargs         = []
+    , filesToProcess = []
+    , info           = x
     }
 
 setGameL10n :: Settings a -> L10n -> Settings a
