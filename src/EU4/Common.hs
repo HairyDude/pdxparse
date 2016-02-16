@@ -7,7 +7,7 @@ module EU4.Common (
     ,   IdeaTable
     ,   iconKey, iconFile, iconFileB
     ,   AIWillDo (..), AIModifier (..)
-    ,   Scope, EU4 (..), eu4
+    ,   Scope (..), EU4 (..), eu4
     ,   scope, getCurrentScope
     ,   getIdeas
     ,   ppAiWillDo, ppAiMod

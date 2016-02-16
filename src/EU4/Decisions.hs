@@ -81,9 +81,9 @@ decisionAddSection dec stmt = trace ("warning: unrecognized decision section: " 
 pp_decision :: Monad m => Decision -> PPT EU4 m Doc
 pp_decision dec = do
     version <- asks gameVersion
-    pot_pp'd    <- pp_script (dec_potential dec)
-    allow_pp'd  <- pp_script (dec_allow dec)
-    effect_pp'd <- pp_script (dec_effect dec)
+    pot_pp'd    <- scope Country (pp_script (dec_potential dec))
+    allow_pp'd  <- scope Country (pp_script (dec_allow dec))
+    effect_pp'd <- scope Country (pp_script (dec_effect dec))
     mawd_pp'd    <- mapM ((imsg2doc =<<) . ppAiWillDo) (dec_ai_will_do dec)
     let name = strictText (dec_name dec)
     return . mconcat $
