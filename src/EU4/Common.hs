@@ -901,9 +901,9 @@ withLocAtom _ stmt = preStatement stmt
 
 -- RHS is a localizable atom and we need a second one (passed to message as
 -- first arg).
-withLocAtom2 :: Monad m => ScriptMessage -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PPT extra m IndentedMessages
+withLocAtom2 :: Monad m => ScriptMessage -> (Text -> Text -> Text -> ScriptMessage) -> GenericStatement -> PPT extra m IndentedMessages
 withLocAtom2 inMsg msg (Statement _ (textRhs -> Just key))
-    = msgToPP =<< msg <$> messageText inMsg <*> getGameL10n key
+    = msgToPP =<< msg <$> pure key <*> messageText inMsg <*> getGameL10n key
 withLocAtom2 _ _ stmt = preStatement stmt
 
 withLocAtomAndIcon :: Monad m => Text -> (Text -> Text -> ScriptMessage) -> GenericStatement -> PPT extra m IndentedMessages

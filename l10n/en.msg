@@ -54,8 +54,8 @@ ActorGainsMod modid@Text who@Text type@Text name@Text: #{who} gains #{type} #{iq
 ActorGainsModDur modid@Text who@Text type@Text name@Text days@Double: #{who} gains #{type} #{iquotes name} <!-- #{modid} --> for #{plainNum days} #{plural days "day" "days"}
 ActorGainsModPow modid@Text who@Text type@Text name@Text pow@Double: #{who} gains #{type} #{iquotes name} <!-- #{modid} --> (#{colourNumSign True pow} Power)
 ActorGainsModPowDur modid@Text who@Text type@Text name@Text pow@Double days@Double: #{who} gains #{type} #{iquotes name} <!-- #{modid} --> (#{colourNumSign True pow} Power) for #{plainNum days} #{plural days "day" "days"}
-HasModifier kind@Text name@Text: Has #{kind} #{iquotes name}
-RemoveModifier kind@Text name@Text: Remove #{kind} ''"#{name}"''
+HasModifier modid@Text kind@Text name@Text: Has #{kind} #{iquotes name} <!-- #{modid} -->
+RemoveModifier modid@Text kind@Text name@Text: Remove #{kind} ''"#{name}"'' <!-- #{modid} -->
 AllOf: All of:
 OurCountry: Our country:
 FROM: FROM:
