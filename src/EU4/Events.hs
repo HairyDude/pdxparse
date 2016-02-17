@@ -1,6 +1,9 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module EU4.Events (
-        processEvent
+        Event (..)
     ) where
 
 import Prelude hiding (mapM)
@@ -20,6 +23,8 @@ import Data.Traversable
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HM
 
 import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>), (</>))
 import qualified Text.PrettyPrint.Leijen.Text as PP
@@ -28,14 +33,16 @@ import System.FilePath
 
 import Abstract
 import EU4.Common
+import EU4.Feature
 import Messages
 import SettingsTypes
 
 -- Object that accumulates info about an event.
 data Event = Event
-    {   evt_id :: Maybe Text -- event id
+    {   evt_id :: Text -- event id -- required!
     ,   evt_title :: Maybe Text -- event title l10n key
     ,   evt_title_loc :: Maybe Text -- localized event title
+    ,   evt_path :: FilePath
     ,   evt_desc :: Maybe Text -- event description l10n key
     ,   evt_desc_loc :: Maybe Text -- localized event description
     ,   evt_picture :: Maybe Text -- event picture
@@ -53,26 +60,36 @@ data Option = Option
     ,   opt_effects :: Maybe GenericScript
     } deriving (Show)
 -- Starts off Nothing everywhere.
-newEvent = Event Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+newEvent = Event undefined Nothing Nothing undefined Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 newOption = Option Nothing Nothing Nothing Nothing Nothing
 
-processEvent :: MonadError Text m => GenericStatement -> PPT EU4 m [Either Text (FilePath, Doc)]
-processEvent (StatementBare _) = throwError "bare statement at top level"
-processEvent (Statement left right) = fmap (:[]) . withCurrentFile $ \file -> case right of
+instance Feature EU4 Event where
+    emptyFeature = newEvent
+    featureDirectory _ = "events"
+    featurePath = evt_path
+    readFeatures = readEvent
+    loadFeature = loadEvent
+    getFeatures _ eu4 = events eu4
+    ppFeature = ppEvent
+
+readEvent :: MonadError Text m => GenericStatement -> PPT EU4 m [Either Text (Maybe Event)]
+readEvent (StatementBare _) = throwError "bare statement at top level"
+readEvent (Statement left right) = fmap (:[]) . withCurrentFile $ \file -> case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
         GenericLhs _ -> hoistErrors
-            (first (file </>) <$> (pp_event =<< foldM eventAddSection newEvent parts))
+            ((\evt -> Just evt { evt_path = file </> T.unpack (evt_id evt) }) <$>
+                foldM eventAddSection newEvent parts)
 
-    _ -> return $ Right (file </> "administrivia", PP.empty)
+    _ -> return $ Right Nothing
 
 eventAddSection :: MonadError Text m => Event -> GenericStatement -> PPT extra m Event
 eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file ->
     case label of
         "id" -> case (textRhs rhs, floatRhs rhs) of
-            (Just tid, _) -> return evt { evt_id = Just tid }
-            (_, Just nid) -> return evt { evt_id = Just (T.pack $ show (nid::Int)) }
+            (Just tid, _) -> return evt { evt_id = tid }
+            (_, Just nid) -> return evt { evt_id = T.pack $ show (nid::Int) }
             _ -> throwError $ "bad id in " <> T.pack file <> ": " <> T.pack (show rhs)
         "title" -> case textRhs rhs of
             Just title -> do
@@ -150,12 +167,15 @@ optionAddEffect :: Monad m => Maybe GenericScript -> GenericStatement -> PPT ext
 optionAddEffect Nothing stmt = optionAddEffect (Just []) stmt
 optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 
+loadEvent :: Event -> EU4 -> EU4
+loadEvent ev tab@(EU4 { events = evs })
+    = tab { events = HM.insert (evt_id ev) ev evs }
+
 -- Pretty-print an event, or fail.
-pp_event :: forall m. MonadError Text m => Event -> PPT EU4 m (FilePath, Doc)
-pp_event evt = case (evt_id evt
-                    ,evt_title_loc evt
-                    ,evt_options evt) of
-    (Just eid, Just title_loc, Just options)
+ppEvent :: forall m. MonadError Text m => Event -> PPT EU4 m Doc
+ppEvent evt = case (evt_title_loc evt,
+                    evt_options evt) of
+    (Just title_loc, Just options)
         | (isJust (evt_is_triggered_only evt) ||
            isJust (evt_mean_time_to_happen evt)) -> do
         -- Valid event
@@ -173,11 +193,11 @@ pp_event evt = case (evt_id evt
                             ,line])
                     (field evt)
             isTriggeredOnly = fromMaybe False $ evt_is_triggered_only evt
-            evtId = strictText eid
+            evtId = strictText (evt_id evt)
         trigger_pp'd <- evtArg "trigger" evt_trigger pp_script
         mmtth_pp'd <- mapM pp_mtth (evt_mean_time_to_happen evt)
         immediate_pp'd <- evtArg "immediate" evt_immediate pp_script
-        return . (,) (T.unpack eid) . mconcat $
+        return . mconcat $
             ["<section begin=", evtId, "/>", line
             ,"{{Event", line
             ,"| version = ", strictText version, line

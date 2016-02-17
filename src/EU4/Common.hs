@@ -4,10 +4,10 @@ module EU4.Common (
     ,   pp_mtth
     ,   ppOne
     ,   ppMany
-    ,   IdeaTable
     ,   iconKey, iconFile, iconFileB
     ,   AIWillDo (..), AIModifier (..)
-    ,   Scope (..), EU4 (..), eu4
+    ,   Scope (..)
+    ,   EU4 (..), eu4
     ,   scope, getCurrentScope
     ,   getIdeas
     ,   ppAiWillDo, ppAiMod
@@ -53,7 +53,11 @@ import Localization
 import Messages
 import MessageTools (plural)
 import EU4.SuperCommon
+import {-# SOURCE #-} EU4.Decisions
+import {-# SOURCE #-} EU4.Events
 import {-# SOURCE #-} EU4.IdeaGroups
+import {-# SOURCE #-} EU4.Missions
+import {-# SOURCE #-} EU4.Policies
 
 data Scope
     = Country
@@ -71,14 +75,24 @@ isGeographic Geographic = True
 isGeographic Bonus = False
 
 -- State
-type IdeaTable = HashMap Text IdeaGroup
 data EU4 = EU4
     { scopeStack :: [Scope]
-    , ideas :: IdeaTable
+    , decisions :: Table Decision
+    , events :: Table Event
+    , ideaGroups :: Table IdeaGroup
+    , missions :: Table Mission
+    , policies :: Table Policy
     }
 
 eu4 :: EU4
-eu4 = EU4 { ideas = HM.empty, scopeStack = [] }
+eu4 = EU4 {
+        scopeStack = []
+    ,   decisions = HM.empty
+    ,   events = HM.empty
+    ,   ideaGroups = HM.empty
+    ,   missions = HM.empty
+    ,   policies = HM.empty
+    }
 
 scope :: Monad m => Scope -> PPT EU4 m a -> PPT EU4 m a
 scope s = local (\r ->
@@ -89,8 +103,8 @@ scope s = local (\r ->
 getCurrentScope :: Monad m => PPT EU4 m (Maybe Scope)
 getCurrentScope = asks (listToMaybe . scopeStack . info)
 
-getIdeas :: Monad m => PPT EU4 m IdeaTable
-getIdeas = asks (ideas . info)
+getIdeas :: Monad m => PPT EU4 m (Table IdeaGroup)
+getIdeas = asks (ideaGroups . info)
 
 -- no particular order from here... TODO: organize this!
 

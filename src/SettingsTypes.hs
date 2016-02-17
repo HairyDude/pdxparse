@@ -1,3 +1,6 @@
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE MonadComprehensions #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 module SettingsTypes
     ( L10n
@@ -12,6 +15,7 @@ module SettingsTypes
         , settingsFile
         , clargs
         , filesToProcess
+        , verbose
         , currentFile
         , currentIndent
         , info
@@ -19,6 +23,8 @@ module SettingsTypes
     , settings
     , setGameL10n
     , PP, PPT
+    , Table
+    , readerToState
     , hoistErrors
     , indentUp, indentDown
     , withCurrentIndent, withCurrentIndentZero
@@ -26,6 +32,7 @@ module SettingsTypes
     , getGameL10n
     , getGameL10nDefault
     , getGameL10nIfPresent
+    , setCurrentFile 
     , withCurrentFile
     , getLangs
     , unfoldM, concatMapM 
@@ -34,13 +41,16 @@ module SettingsTypes
 
 import Debug.Trace
 
+import Control.Monad.Except (MonadError)
 import Control.Monad.Identity (runIdentity)
 import Control.Monad.Reader
+import Control.Monad.State
 
 import Data.Foldable (fold)
 import Data.Maybe
 
 import Data.Text (Text)
+import Text.PrettyPrint.Leijen.Text (Doc)
 import Text.Shakespeare.I18N (Lang)
 
 import Data.HashMap.Strict (HashMap)
@@ -52,24 +62,26 @@ type L10n = HashMap Text Text
 data CLArgs
     = Paths
     | Version
+    | Verbose
     deriving (Show, Eq)
 
 data Settings a = Settings {
-        steamDir    :: FilePath
-    ,   steamApps   :: FilePath
-    ,   game        :: String
-    ,   language    :: String
-    ,   gameVersion :: Text
-    ,   gameL10n    :: L10n
-    ,   langs       :: [Lang]
-    ,   settingsFile :: FilePath
-    ,   clargs      :: [CLArgs]
-    ,   filesToProcess :: [FilePath]
+        steamDir        :: FilePath
+    ,   steamApps       :: FilePath
+    ,   game            :: String
+    ,   language        :: String
+    ,   gameVersion     :: Text
+    ,   gameL10n        :: L10n
+    ,   langs           :: [Lang]
+    ,   settingsFile    :: FilePath
+    ,   clargs          :: [CLArgs]
+    ,   filesToProcess  :: [FilePath]
+    ,   verbose         :: Bool
     -- Local state
-    ,   currentFile :: Maybe FilePath
-    ,   currentIndent :: Maybe Int
+    ,   currentFile     :: Maybe FilePath
+    ,   currentIndent   :: Maybe Int
     -- Extra information
-    ,   info :: a
+    ,   info            :: a
     } deriving (Show)
 
 instance Functor Settings where
@@ -90,6 +102,7 @@ settings x = Settings
     , settingsFile   = error "settingsFile not defined"
     , clargs         = []
     , filesToProcess = []
+    , verbose        = False
     , info           = x
     }
 
@@ -97,13 +110,18 @@ setGameL10n :: Settings a -> L10n -> Settings a
 setGameL10n settings l10n = settings { gameL10n = l10n }
 
 -- Pretty-printing monad, and its transformer version
-type PP extra a = Reader (Settings extra) a -- equal to PPT extra Identity a
-type PPT extra m a = ReaderT (Settings extra) m a
+type PP extra = Reader (Settings extra) -- equal to PPT extra Identity a
+type PPT extra m = ReaderT (Settings extra) m
+
+type Table = HashMap Text
 
 -- Convert a PP wrapping errors into a PP returning Either.
 -- TODO: generalize
 hoistErrors :: Monad m => PPT extra (Either e) a -> PPT extra m (Either e a)
 hoistErrors (ReaderT rd) = return . rd =<< ask
+
+readerToState :: Monad m => (s -> t) -> ReaderT t m a -> StateT s m a
+readerToState f (ReaderT r) = StateT $ \s -> r (f s) >>= \x -> return (x, s)
 
 -- Increase current indentation by 1 for the given action.
 -- If there is no current indentation, set it to 1.
@@ -154,6 +172,9 @@ getGameL10nDefault def key = HM.lookupDefault def key <$> asks gameL10n
 
 getGameL10nIfPresent :: Monad m => Text -> PPT extra m (Maybe Text)
 getGameL10nIfPresent key = HM.lookup key <$> asks gameL10n
+
+setCurrentFile :: Monad m => String -> PPT extra m a -> PPT extra m a
+setCurrentFile f = local (\s -> s { currentFile = Just f })
 
 -- Pass the current file to the action.
 -- If there is no current file, set it to "(unknown)".

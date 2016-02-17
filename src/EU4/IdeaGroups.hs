@@ -1,10 +1,9 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
 module EU4.IdeaGroups (
         IdeaGroup (..)
     ,   Idea (..)
-    ,   readIdeaGroup'
-    ,   readIdeaGroupTable
-    ,   processIdeaGroup
     ) where
 
 import Control.Arrow (first, (***))
@@ -34,6 +33,7 @@ import System.FilePath
 import Abstract
 import Doc
 import EU4.Common
+import EU4.Feature
 import EU4.SuperCommon
 import FileIO
 import Messages
@@ -43,6 +43,7 @@ import SettingsTypes
 data IdeaGroup = IdeaGroup
     {   ig_name :: Text
     ,   ig_name_loc :: Text
+    ,   ig_path :: FilePath
     ,   ig_category :: Maybe MonarchPower
     ,   ig_start :: Maybe GenericScript
     ,   ig_bonus :: Maybe GenericScript
@@ -58,39 +59,46 @@ data Idea = Idea
     } deriving (Show)
 
 -- Starts off Nothing everywhere, except name (will get filled in immediately).
-newIdeaGroup = IdeaGroup undefined undefined Nothing Nothing Nothing Nothing False [] Nothing
+newIdeaGroup = IdeaGroup
+    {   ig_name = error "ig_name undefined"
+    ,   ig_name_loc = error "ig_name_loc undefined"
+    ,   ig_path = error "ig_path undefined"
+    ,   ig_category = Nothing
+    ,   ig_start = Nothing
+    ,   ig_bonus = Nothing
+    ,   ig_trigger = Nothing
+    ,   ig_free = error "ig_free undefined" -- don't know what this means
+    ,   ig_ideas = []
+    ,   ig_ai_will_do = Nothing
+    }
 
-readIdeaGroupTable :: Settings () -> IO IdeaTable
-readIdeaGroupTable settings = do
-    ideaGroupScripts <- readScript settings (buildPath settings "common/ideas/00_basic_ideas.txt")
-    let (errs, ideaGroups) = partitionEithers $ map (readIdeaGroup' (const eu4 <$> settings)) ideaGroupScripts
-    forM_ errs $ \err -> hPutStrLn stderr $ "Warning while parsing idea groups: " ++ T.unpack err
-    return . HM.fromList . map (\ig -> (ig_name ig, ig)) $ ideaGroups
-
-readIdeaGroup' :: Settings EU4 -> GenericStatement -> Either Text IdeaGroup
-readIdeaGroup' settings stmt = runReaderT (readIdeaGroup stmt) settings
+instance Feature EU4 IdeaGroup where
+    emptyFeature = newIdeaGroup
+    featureDirectory _ = "common" </> "ideas"
+    featurePath = ig_path
+    readFeatures = readIdeaGroup'
+    loadFeature = loadIdeaGroup
+    getFeatures _ eu4 = ideaGroups eu4
+    ppFeature = fmap fixup . ppIdeaGroup
 
 readIdeaGroup :: MonadError Text m => GenericStatement -> PPT EU4 m IdeaGroup
 readIdeaGroup (StatementBare _) = throwError "bare statement at top level"
-readIdeaGroup (Statement (GenericLhs "basic idea group") (GenericRhs right))
-    -- This is a fake entry for an idea group that has already been parsed.
-    -- Fetch the corresponding basic idea group from settings.
-    = do
-        groups <- getIdeas
-        case HM.lookup right groups of
-            Nothing -> throwError ("Idea group not found: " <> right)
-            Just group -> return group
 readIdeaGroup (Statement left right) = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
-        GenericLhs name -> do
+        GenericLhs name -> withCurrentFile $ \file -> do
             name_loc <- getGameL10n name
             foldM ideaGroupAddSection
-                        (newIdeaGroup { ig_name = name
-                                      , ig_name_loc = name_loc }) parts
+                  (newIdeaGroup { ig_name = name
+                                , ig_name_loc = name_loc
+                                , ig_path = file </> T.unpack name })
+                  parts
 
     _ -> throwError "warning: unknown statement in idea group file"
+
+readIdeaGroup' :: MonadError Text m => GenericStatement -> PPT EU4 m [Either Text (Maybe IdeaGroup)]
+readIdeaGroup' stmt = (:[]) . Right . Just <$> readIdeaGroup stmt
 
 ideaGroupAddSection :: Monad m => IdeaGroup -> GenericStatement -> PPT extra m IdeaGroup
 ideaGroupAddSection ig (Statement (GenericLhs label) rhs) =
@@ -122,6 +130,10 @@ ideaGroupAddSection ig (Statement (GenericLhs label) rhs) =
             _               -> return ig
 ideaGroupAddSection ig  _ = return ig
 
+loadIdeaGroup :: IdeaGroup -> EU4 -> EU4
+loadIdeaGroup ig tab@EU4 { ideaGroups = igs }
+    = tab { ideaGroups = HM.insert (ig_name ig) ig igs }
+
 -- Pick an icon for the idea, based on the first of its effects.
 iconForIdea' :: Idea -> Maybe Text
 iconForIdea' idea = case idea_effects idea of
@@ -132,11 +144,6 @@ iconForIdea :: Idea -> Doc
 iconForIdea idea = case iconForIdea' idea of
     Nothing -> mempty
     Just icon -> strictText icon
-
-processIdeaGroup :: MonadError Text m => GenericStatement -> PPT EU4 m [Either Text (FilePath, Doc)]
-processIdeaGroup stmt = withCurrentFile $ \file -> do
-    ig <- readIdeaGroup stmt
-    (:[]) . Right . ((file </>) *** fixup) <$> ppIdeaGroup ig
 
 -- Do some text substitutions to add 'ideaNicon' args to the idea group
 -- template, and remove/comment out undesirable icon templates.
@@ -173,7 +180,7 @@ fixup = strictText . T.unlines . map (TE.decodeUtf8
             [pre, "idea", nth, "icon = ", iconFileB (fst (matcharr ! 2))
             ,"\n| idea", nth, "effect = ", post]
 
-ppIdeaGroup :: MonadError Text m => IdeaGroup -> PPT EU4 m (FilePath, Doc)
+ppIdeaGroup :: MonadError Text m => IdeaGroup -> PPT EU4 m Doc
 ppIdeaGroup ig = do
     version <- asks gameVersion
     let name = ig_name_loc ig
@@ -205,7 +212,6 @@ ppIdeaGroup ig = do
                 Just trigger -> Just <$> (imsg2doc =<< ppMany trigger)
             let name_loc = strictText . T.replace " Ideas" "" $ name
                 ig_id_t = ig_name ig
-                ig_id_s = T.unpack ig_id_t
                 ig_id = strictText ig_id_t
             trads <- case ig_start ig of
                 Just [trad1s, trad2s] -> do
@@ -214,7 +220,7 @@ ppIdeaGroup ig = do
                     return $ Right (trad1, trad2)
                 Just trads -> return . Left . Just . length $ trads
                 Nothing -> return (Left Nothing)
-            return . (,) ig_id_s . mconcat $
+            return . mconcat $
                 ["<section begin=", ig_id, "/>", line
                 ,"{{Idea group", line
                 ,"| name = ", name_loc, line

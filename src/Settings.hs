@@ -79,16 +79,14 @@ platform = case map toLower System.Info.os of
 opts :: [OptDescr CLArgs]
 opts =
     [ Option ['p'] ["paths"]   (NoArg Paths)   "show location of configuration files"
-    , Option ['v'] ["version"] (NoArg Version) "show version information"
+    , Option []    ["version"] (NoArg Version) "show version information"
+    , Option ['v'] ["verbose"] (NoArg Verbose) "verbose feedback"
     ]
 
 -- | Process command-line arguments, then read the settings and localization
 -- files. If we can't, abort.
---
--- The argument is an action to run after all other settings have been
--- initialized, in order to get extra information.
-readSettings :: (Settings () -> IO a) -> IO (Settings a)
-readSettings getExtra = do
+readSettings :: IO (Settings ())
+readSettings = do
     (opts, nonopts, errs) <- getOpt Permute opts <$> getArgs
     when (not (null errs)) $ do
         forM_ errs $ \err -> putStrLn err
@@ -133,12 +131,11 @@ readSettings getExtra = do
                             , settingsFile = settingsFile
                             , clargs = opts
                             , filesToProcess = nonopts
+                            , verbose = Verbose `elem` opts
                             , currentFile = Nothing
                             , currentIndent = Nothing }
             game_l10n <- readL10n provisionalSettings
-            let provisionalSettings' = provisionalSettings `setGameL10n` game_l10n
-            extraInfo <- getExtra provisionalSettings'
-            return provisionalSettings' { info = extraInfo }
+            return (provisionalSettings `setGameL10n` game_l10n)
         Left exc -> do
             hPutStrLn stderr $ "Couldn't parse settings: " ++ show exc
             exitFailure

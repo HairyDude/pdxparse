@@ -1,6 +1,8 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 module EU4.Decisions (
-        processDecisionGroup
+        Decision (..)
     ) where
 
 import Debug.Trace
@@ -11,6 +13,8 @@ import Control.Monad.Identity
 import Control.Monad.Reader
 
 import Data.List
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HM
 import Data.Monoid
 
 import Data.Text (Text)
@@ -23,11 +27,13 @@ import Doc
 import Messages
 import SettingsTypes
 import EU4.Common
+import EU4.Feature
 
 -- Object that accumulates info about a decision.
 data Decision = Decision
     {   dec_name :: Text
     ,   dec_name_loc :: Text
+    ,   dec_path :: FilePath
     ,   dec_text :: Maybe Text
     ,   dec_potential :: GenericScript
     ,   dec_allow :: GenericScript
@@ -35,29 +41,38 @@ data Decision = Decision
     ,   dec_ai_will_do :: Maybe AIWillDo
     } deriving (Show)
 -- Starts off Nothing/empty everywhere, except name (will get filled in immediately).
-newDecision = Decision undefined undefined Nothing [] [] [] Nothing
+newDecision = Decision undefined undefined undefined Nothing [] [] [] Nothing
 
-processDecisionGroup :: GenericStatement -> PPT EU4 (Either Text) [Either Text (FilePath, Doc)]
-processDecisionGroup (Statement (GenericLhs left) rhs)
+instance Feature EU4 Decision where
+    emptyFeature = newDecision
+    featureDirectory _ = "decisions"
+    featurePath = dec_path
+    readFeatures = readDecisionGroup
+    loadFeature = loadDecision
+    getFeatures _ eu4 = decisions eu4
+    ppFeature = pp_decision
+
+readDecisionGroup :: MonadError Text m => GenericStatement -> PPT EU4 m [Either Text (Maybe Decision)]
+readDecisionGroup (Statement (GenericLhs left) rhs)
     | left `elem` ["country_decisions", "religion_decisions"]
-    = withCurrentFile $ \file -> case rhs of
+    = case rhs of
         CompoundRhs scr -> forM scr $ \stmt ->
-            (Right . first ((file </>) . T.unpack) <$> processDecision stmt)
+            (Right . Just <$> processDecision stmt)
                 `catchError` \e -> return (Left e)
         _ -> throwError "unrecognized form for decision block (RHS)"
-processDecisionGroup _ = throwError "unrecognized form for decision block (LHS)"
+readDecisionGroup _ = throwError "unrecognized form for decision block (LHS)"
 
-processDecision :: GenericStatement -> PPT EU4 (Either Text) (Text, Doc)
+processDecision :: MonadError Text m => GenericStatement -> PPT EU4 m Decision
 processDecision (Statement (GenericLhs decName) rhs) = case rhs of
-    CompoundRhs parts -> do
+    CompoundRhs parts -> withCurrentFile $ \file -> do
         decName_loc <- getGameL10n (decName <> "_title")
         decText <- getGameL10nIfPresent (decName <> "_desc")
-        dec <- foldM decisionAddSection
-                     newDecision { dec_name = decName
-                                 , dec_name_loc = decName_loc
-                                 , dec_text = decText }
-                     parts
-        (,) decName <$> pp_decision dec
+        foldM decisionAddSection
+              newDecision { dec_name = decName
+                          , dec_name_loc = decName_loc
+                          , dec_path = file </> T.unpack decName
+                          , dec_text = decText }
+              parts
     _ -> throwError "unrecognized form for decision (RHS)"
 processDecision _ = throwError "unrecognized form for decision (LHS)"
 
@@ -77,6 +92,10 @@ decisionAddSection dec (Statement (GenericLhs "ai_importance") _)
           return dec
 decisionAddSection dec stmt = trace ("warning: unrecognized decision section: " ++ show stmt) $
                               return dec
+
+loadDecision :: Decision -> EU4 -> EU4
+loadDecision dec tab@EU4 { decisions = decs }
+    = tab { decisions = HM.insert (dec_name dec) dec decs }
 
 pp_decision :: Monad m => Decision -> PPT EU4 m Doc
 pp_decision dec = do
