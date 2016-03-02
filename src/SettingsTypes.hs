@@ -2,11 +2,13 @@
 module SettingsTypes
     ( L10n
     , CLArgs (..)
+    , Game (..)
     , Settings
         -- Export everything EXCEPT L10n
         ( steamDir
         , steamApps
         , game
+        , gameName
         , language
         , gameVersion
         , settingsFile
@@ -42,6 +44,7 @@ import Data.Maybe
 
 import Data.Text (Text)
 import Text.Shakespeare.I18N (Lang)
+import Data.Yaml
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
@@ -54,11 +57,22 @@ data CLArgs
     | Version
     deriving (Show, Eq)
 
+data Game
+    = GameEU4
+    | GameVic2
+    deriving (Show, Eq)
+
+instance FromJSON Game where
+    parseJSON (String "Europa Universalis IV") = return GameEU4
+    parseJSON (String "Victoria 2") = return GameVic2
+    parseJSON _ = fail "unknown game"
+
 data Settings a = Settings {
         steamDir    :: FilePath
     ,   steamApps   :: FilePath
-    ,   game        :: String
     ,   language    :: String
+    ,   game        :: Game
+    ,   gameName    :: Text
     ,   gameVersion :: Text
     ,   gameL10n    :: L10n
     ,   langs       :: [Lang]
@@ -80,8 +94,9 @@ settings :: a -> Settings a
 settings x = Settings
     { steamDir       = error "steamDir not defined"
     , steamApps      = error "steamApps not defined"
-    , game           = error "game not defined"
     , language       = error "language not defined"
+    , game           = error "game not defined"
+    , gameName       = error "gameName not defined"
     , gameVersion    = error "gameVersion not defined"
     , gameL10n       = error "gameL10n not defined"
     , currentFile    = error "currentFile not defined"

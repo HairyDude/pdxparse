@@ -36,7 +36,8 @@ data SettingsInput = SettingsInput {
         steamDriveI  :: Maybe String
     ,   steamDirI    :: Maybe FilePath
     ,   steamAppsI   :: Maybe FilePath
-    ,   gameI        :: String
+    ,   gameI        :: Game
+    ,   gameNameI    :: Text
     ,   languageI    :: String
     ,   gameVersionI :: String
     } deriving (Show)
@@ -50,7 +51,8 @@ instance FromJSON SettingsInput where
                             <$> liftM (fmap T.unpack) (o' .:? "steam_drive")
                             <*> liftM (fmap T.unpack) (o' .:? "steam_dir")
                             <*> liftM (fmap T.unpack) (o' .:? "steam_apps")
-                            <*> liftM T.unpack (o' .: "game")
+                            <*> o' .: "game" -- gameI :: Game
+                            <*> o' .: "game" -- gameNameI :: Text
                             <*> liftM T.unpack (o' .: "language")
                             <*> liftM T.unpack (o' .: "version")
             _ -> fail "bad settings file"
@@ -128,6 +130,7 @@ readSettings getExtra = do
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
                             , game = gameI settingsIn
+                            , gameName = gameNameI settingsIn
                             , language = languageI settingsIn
                             , gameVersion = T.pack (gameVersionI settingsIn)
                             , settingsFile = settingsFile

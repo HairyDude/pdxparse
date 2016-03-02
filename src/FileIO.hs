@@ -10,6 +10,7 @@ import Data.ByteString (ByteString)
 import qualified Data.ByteString as B
 
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Text.Encoding.Error (UnicodeException)
 import qualified Data.Text.Encoding as TE
 
@@ -33,4 +34,4 @@ readFileRetry path = do
         Left _ -> return $ TE.decodeLatin1 raw
 
 buildPath :: Settings a -> FilePath -> FilePath
-buildPath settings path = steamDir settings </> steamApps settings </> game settings </> path
+buildPath settings path = steamDir settings </> steamApps settings </> T.unpack (gameName settings) </> path
