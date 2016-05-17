@@ -8,6 +8,7 @@ module SettingsTypes
         , steamApps
         , game
         , language
+        , languageS
         , gameVersion
         , settingsFile
         , clargs
@@ -46,7 +47,7 @@ import Text.Shakespeare.I18N (Lang)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
-type L10n = HashMap Text Text
+import Yaml
 
 -- Command line arguments.
 data CLArgs
@@ -58,7 +59,8 @@ data Settings a = Settings {
         steamDir    :: FilePath
     ,   steamApps   :: FilePath
     ,   game        :: String
-    ,   language    :: String
+    ,   language    :: Text
+    ,   languageS   :: String -- for FilePaths
     ,   gameVersion :: Text
     ,   gameL10n    :: L10n
     ,   langs       :: [Lang]
@@ -82,6 +84,7 @@ settings x = Settings
     , steamApps      = error "steamApps not defined"
     , game           = error "game not defined"
     , language       = error "language not defined"
+    , languageS      = error "languageS not defined"
     , gameVersion    = error "gameVersion not defined"
     , gameL10n       = error "gameL10n not defined"
     , currentFile    = error "currentFile not defined"
@@ -146,14 +149,17 @@ alsoIndent mx = withCurrentIndent $ \i -> mx >>= \x -> return (i,x)
 alsoIndent' :: Monad m => a -> PPT extra m (Int, a)
 alsoIndent' x = withCurrentIndent $ \i -> return (i,x)
 
+getCurrentLang :: Monad m => PPT extra m L10nLang
+getCurrentLang = HM.lookupDefault HM.empty <$> asks language <*> asks gameL10n
+
 getGameL10n :: Monad m => Text -> PPT extra m Text
-getGameL10n key = HM.lookupDefault key key <$> asks gameL10n
+getGameL10n key = content <$> HM.lookupDefault (LocEntry 0 key) key <$> getCurrentLang
 
 getGameL10nDefault :: Monad m => Text -> Text -> PPT extra m Text
-getGameL10nDefault def key = HM.lookupDefault def key <$> asks gameL10n
+getGameL10nDefault def key = content <$> HM.lookupDefault (LocEntry 0 def) key <$> getCurrentLang
 
 getGameL10nIfPresent :: Monad m => Text -> PPT extra m (Maybe Text)
-getGameL10nIfPresent key = HM.lookup key <$> asks gameL10n
+getGameL10nIfPresent key = fmap content <$> HM.lookup key <$> getCurrentLang
 
 -- Pass the current file to the action.
 -- If there is no current file, set it to "(unknown)".

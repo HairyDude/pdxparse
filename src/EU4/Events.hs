@@ -35,9 +35,7 @@ import SettingsTypes
 data Event = Event
     {   evt_id :: Maybe Text -- event id
     ,   evt_title :: Maybe Text -- event title l10n key
-    ,   evt_title_loc :: Maybe Text -- localized event title
     ,   evt_desc :: Maybe Text -- event description l10n key
-    ,   evt_desc_loc :: Maybe Text -- localized event description
     ,   evt_picture :: Maybe Text -- event picture
     ,   evt_trigger :: Maybe GenericScript
     ,   evt_is_triggered_only :: Maybe Bool
@@ -47,14 +45,13 @@ data Event = Event
     } deriving (Show)
 data Option = Option
     {   opt_name :: Maybe Text
-    ,   opt_name_loc :: Maybe Text
     ,   opt_trigger :: Maybe GenericScript
     ,   opt_ai_chance :: Maybe GenericScript
     ,   opt_effects :: Maybe GenericScript
     } deriving (Show)
 -- Starts off Nothing everywhere.
-newEvent = Event Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
-newOption = Option Nothing Nothing Nothing Nothing Nothing
+newEvent = Event Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+newOption = Option Nothing Nothing Nothing Nothing
 
 processEvent :: MonadError Text m => GenericStatement -> PPT EU4 m [Either Text (FilePath, Doc)]
 processEvent (StatementBare _) = throwError "bare statement at top level"
@@ -77,14 +74,12 @@ eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file
         "title" -> case textRhs rhs of
             Just title -> do
                 t_loc <- getGameL10nIfPresent title
-                return evt { evt_title = Just title
-                           , evt_title_loc = t_loc }
+                return evt { evt_title = Just title }
             _ -> throwError $ "bad title in " <> T.pack file
         "desc" -> case textRhs rhs of
             Just desc -> do
                 desc_loc <- getGameL10nIfPresent desc
-                return evt { evt_desc = Just desc
-                           , evt_desc_loc = desc_loc }
+                return evt { evt_desc = Just desc }
             _ -> throwError "bad desc"
         "picture" -> case textRhs rhs of
             Just pic -> return evt { evt_picture = Just pic }
@@ -127,8 +122,7 @@ optionAddStatement opt stmt@(Statement (GenericLhs label) rhs) =
     case label of
         "name" -> case textRhs rhs of
             Just name ->
-                (\name_loc -> opt { opt_name = Just name
-                                  , opt_name_loc = name_loc })
+                (\name_loc -> opt { opt_name = Just name })
                 <$> getGameL10nIfPresent name
             _ -> error "bad option name"
         "ai_chance" -> case rhs of
@@ -153,14 +147,16 @@ optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 -- Pretty-print an event, or fail.
 pp_event :: forall m. MonadError Text m => Event -> PPT EU4 m (FilePath, Doc)
 pp_event evt = case (evt_id evt
-                    ,evt_title_loc evt
+                    ,evt_title evt
                     ,evt_options evt) of
-    (Just eid, Just title_loc, Just options)
+    (Just eid, Just title, Just options)
         | (isJust (evt_is_triggered_only evt) ||
            isJust (evt_mean_time_to_happen evt)) -> do
         -- Valid event
         version <- asks gameVersion
         (conditional, options_pp'd) <- pp_options options
+        titleLoc <- getGameL10n title
+        descLoc <- getGameL10n `mapM` evt_desc evt
         let evtArg :: Text -> (Event -> Maybe a) -> (a -> PPT extra m Doc) -> PPT extra m [Doc]
             evtArg fieldname field fmt
                 = maybe (return [])
@@ -181,13 +177,13 @@ pp_event evt = case (evt_id evt
             ["<section begin=", evtId, "/>", line
             ,"{{Event", line
             ,"| version = ", strictText version, line
-            ,"| event_name = ", text (TL.fromStrict title_loc), line
+            ,"| event_name = ", strictText titleLoc, line
             ] ++
             maybe [] (\desc ->
                         ["| event_text = "
                         ,text . TL.fromStrict . nl2br $ desc
                         ,line])
-                      (evt_desc_loc evt) ++
+                      descLoc ++
             -- For triggered only events, mean_time_to_happen is not
             -- really mtth but instead describes weight modifiers, for
             -- scripts that trigger them with a probability based on a
@@ -214,7 +210,13 @@ pp_event evt = case (evt_id evt
             ,"<section end=", evtId, "/>"
             ]
 
-    _ -> throwError "some required event sections missing"
+    (Nothing, _, _) -> throwError "evt_id missing"
+    (Just eid, Nothing, _) ->
+        throwError ("title missing for event id " <> eid)
+    (Just eid, _, Nothing) ->
+        throwError ("options missing for event id " <> eid)
+    (Just eid, _, _) ->
+        throwError ("is_triggered_only and mean_time_to_happen missing for event id " <> eid)
 
 pp_options :: MonadError Text m => [Option] -> PPT EU4 m (Bool, Doc)
 pp_options opts = do
@@ -223,27 +225,29 @@ pp_options opts = do
     return (triggered, mconcat . (line:) . intersperse line $ options_pp'd)
 
 pp_option :: MonadError Text m => Bool -> Option -> PPT EU4 m Doc
-pp_option triggered opt = case opt_name_loc opt of
-    -- NB: some options have no effect, e.g. start of Peasants' War.
-    Just name_loc ->
-        let mtrigger = opt_trigger opt
-        in do
-            effects_pp'd <- pp_script (fromMaybe [] (opt_effects opt))
-            mtrigger_pp'd <- sequence (pp_script <$> mtrigger)
-            return . mconcat $
-                ["{{Option\n"
-                ,"| option_text = ", strictText name_loc, line
-                ,"| effect =", line, effects_pp'd, line]
-                ++ (if triggered then
-                        maybe
-                            ["| trigger = Always enabled:", line] -- no trigger
-                        (\trigger_pp'd ->
-                            ["| trigger = Enabled if:", line -- trigger
-                            ,trigger_pp'd, line]
-                        ) mtrigger_pp'd
-                    else [])
-                ++
-                -- 1 = no
-                ["}}"
-                ]
-    Nothing -> throwError $ "some required option sections missing - dumping: " <> T.pack (show opt)
+pp_option triggered opt = do
+    optNameLoc <- getGameL10n `mapM` opt_name opt
+    case optNameLoc of
+        -- NB: some options have no effect, e.g. start of Peasants' War.
+        Just name_loc ->
+            let mtrigger = opt_trigger opt
+            in do
+                effects_pp'd <- pp_script (fromMaybe [] (opt_effects opt))
+                mtrigger_pp'd <- sequence (pp_script <$> mtrigger)
+                return . mconcat $
+                    ["{{Option\n"
+                    ,"| option_text = ", strictText name_loc, line
+                    ,"| effect =", line, effects_pp'd, line]
+                    ++ (if triggered then
+                            maybe
+                                ["| trigger = Always enabled:", line] -- no trigger
+                            (\trigger_pp'd ->
+                                ["| trigger = Enabled if:", line -- trigger
+                                ,trigger_pp'd, line]
+                            ) mtrigger_pp'd
+                        else [])
+                    ++
+                    -- 1 = no
+                    ["}}"
+                    ]
+        Nothing -> throwError $ "some required option sections missing - dumping: " <> T.pack (show opt)

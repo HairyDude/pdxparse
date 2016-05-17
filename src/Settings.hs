@@ -6,6 +6,7 @@ module Settings (
     ) where
 
 import Data.Maybe
+import Data.Monoid
 
 import Data.Char (toLower)
 import Data.List (intersperse)
@@ -37,7 +38,7 @@ data SettingsInput = SettingsInput {
     ,   steamDirI    :: Maybe FilePath
     ,   steamAppsI   :: Maybe FilePath
     ,   gameI        :: String
-    ,   languageI    :: String
+    ,   languageI    :: Text
     ,   gameVersionI :: String
     } deriving (Show)
 -- Settings is defined in SettingsTypes
@@ -51,7 +52,7 @@ instance FromJSON SettingsInput where
                             <*> liftM (fmap T.unpack) (o' .:? "steam_dir")
                             <*> liftM (fmap T.unpack) (o' .:? "steam_apps")
                             <*> liftM T.unpack (o' .: "game")
-                            <*> liftM T.unpack (o' .: "language")
+                            <*> (o' .: "language")
                             <*> liftM T.unpack (o' .: "version")
             _ -> fail "bad settings file"
     parseJSON _ = fail "bad settings file"
@@ -124,11 +125,13 @@ readSettings getExtra = do
                                       </> fromMaybe "Program Files (x86)" (steamDirI settingsIn)
                     Unknown -> fail $ "Unknown platform: " ++ System.Info.os
             let steamAppsCanonicalized = fromMaybe "Steam/steamapps/common" (steamAppsI settingsIn)
+                lang = languageI settingsIn
                 provisionalSettings = (settings ())
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
                             , game = gameI settingsIn
-                            , language = languageI settingsIn
+                            , language = "l_" <> lang
+                            , languageS = "l_" <> T.unpack lang
                             , gameVersion = T.pack (gameVersionI settingsIn)
                             , settingsFile = settingsFile
                             , clargs = opts

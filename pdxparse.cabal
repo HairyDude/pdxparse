@@ -37,8 +37,10 @@ executable pdxparse
                        MessageTools,
                        Messages,
                        Paths_pdxparse,
+                       Platform,
                        Settings,
-                       SettingsTypes
+                       SettingsTypes,
+                       Yaml
 
   other-extensions:    FlexibleContexts,
                        FlexibleInstances,
