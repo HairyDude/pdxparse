@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes #-}
 module QQ (
-        scr     -- :: QuasiQuoter
+        pdx     -- :: QuasiQuoter
     ) where
 
 {-
@@ -13,36 +13,32 @@ module QQ (
     In an expression:
         $foo => foo is a bare_word (Also makes sense on LHS)
             e.g. if foo = "bar", then
-                [scr|foo = $bar|] => foo = bar
+                [pdx|foo = $bar|] => foo = bar
         %foo => foo is the relevant script type
             e.g. if foo = GenericRhs "foo", then
-                [scr|%foo|] => type error
-                [scr|bar = %foo|] => bar = foo
-                [scr|foo = %(case foo of GenericRhs s -> StringRhs (s <> "bar"))|]
+                [pdx|%foo|] => type error
+                [pdx|bar = %foo|] => bar = foo
+                [pdx|foo = %(case foo of GenericRhs s -> StringRhs (s <> "bar"))|]
                     => foo = "foobar"
         ?foo => "<contents of foo>" (foo :: Text)
-            e.g. if foo = "foo", [scr|foo = ?foo|] => foo = "foo"
+            e.g. if foo = "foo", [pdx|foo = ?foo|] => foo = "foo"
         !foo => foo is an Int
-            e.g. if foo = 23, [scr|foo = !foo|] => foo = 23
+            e.g. if foo = 23, [pdx|foo = !foo|] => foo = 23
         @foo => foo is a compound RHS
-            e.g. if foo = [scr1, scr2],
-                [scr|foo = @foo|] => foo = { %scr1 %scr2 }
+            e.g. if foo = [pdx1, scr2],
+                [pdx|foo = @foo|] => foo = { %scr1 %scr2 }
 
     In a pattern:
         on the LHS or RHS:
             @foo => foo is bound as the relevant script type
-                e.g. [scr|@foo|] => foo :: GenericScript
-                     [scr|foo = @foo|] => foo :: GenericRhs
+                e.g. [pdx|@foo|] => foo :: GenericScript
+                     [pdx|foo = @foo|] => foo :: GenericRhs
             $foo => foo :: Text, matches a bare_word
+            ?foo => foo :: Text, matches a "string" /or/ a bare_word
+                                 (goes through textRhs)
         on the RHS only:
-            !foo => foo :: Int, matches an integer
+            !foo => foo :: Int, matches a number (goes through floatRhs)
             [foo] => foo :: GenericScript, matches a compound
-
-    Note that it's not possible to make a simple pattern that matches either a
-    string or a bare_word. For that case, you need to use textRhs in a pattern
-    guard:
-        case statement of
-            [scr|foo = @rfoo|] | Just foo <- textRhs rfoo -> ...
 
 -}
 
@@ -63,6 +59,8 @@ import Instances.TH.Lift ()
 import Language.Haskell.Exts.QQ
 import Language.Haskell.Meta
 
+import Debug.Trace
+
 import Abstract
 
 -----------------
@@ -70,11 +68,11 @@ import Abstract
 -----------------
 
 data StExp
-    = ExpHsDirect String
-    | ExpHsGeneric String
-    | ExpHsString String
-    | ExpHsInt String
-    | ExpHsCompound String
+    = ExpHsDirect String    -- %foo => foo :: GenericLhs etc.
+    | ExpHsGeneric String   -- $foo => Generic[LR]hs foo
+    | ExpHsString String    -- ?foo => StringRhs foo
+    | ExpHsInt String       -- !foo => IntRhs foo
+    | ExpHsCompound String  -- @foo => CompoundRhs foo
     deriving (Show, Eq, Ord)
     -- TODO: dates
 type StExpL = StExp
@@ -82,6 +80,7 @@ type StExpR = StExp
 
 e_lhs :: Parser StExpL
 e_lhs = ExpHsGeneric . T.unpack <$> (Ap.string "$" *> haskell)
+    <|> ExpHsDirect  . T.unpack <$> (Ap.string "%" *> haskell)
 
 e_rhs :: Parser StExpR
 e_rhs = ExpHsDirect   . T.unpack <$> (Ap.string "%" *> haskell)
@@ -111,8 +110,8 @@ haskell_parens = T.concat <$> sequence
     ,Ap.string ")"
     ]
 
-scr_e :: String -> Q Exp
-scr_e s = case Ap.parseOnly (Ap.skipSpace *> statement e_lhs e_rhs <* Ap.skipSpace) (fromString s) of
+pdx_e :: String -> Q Exp
+pdx_e s = case Ap.parseOnly (Ap.skipSpace *> statement e_lhs e_rhs <* Ap.skipSpace) (fromString s) of
                 Left _ -> error "invalid statement (expression)"
                 Right e -> prostmt2stmt e
 
@@ -126,6 +125,7 @@ mkHsVal con s = case parseExp s of
 
 lhs2exp :: Lhs StExpL -> Q Exp
 lhs2exp (CustomLhs (ExpHsGeneric s)) = mkHsVal 'GenericLhs s
+lhs2exp (CustomLhs (ExpHsDirect s)) = varE (mkName s)
 lhs2exp (CustomLhs _) = fail "BUG: invalid lhs"
 lhs2exp other = [| other |]
 
@@ -148,61 +148,88 @@ rhs2exp other = [| other |]
 -- Patterns --
 --------------
 
-scr_p :: String -> Q Pat
-scr_p s = case Ap.parseOnly (Ap.skipSpace *> statement p_lhs p_rhs <* Ap.skipSpace) (fromString s) of
+pdx_p :: String -> Q Pat
+pdx_p s = case Ap.parseOnly (Ap.skipSpace *> statement p_lhs p_rhs <* Ap.skipSpace) (fromString s) of
                 Left _ -> error "invalid statement (pattern)"
-                Right propat -> return $ propat2pat propat
+                Right propat -> propat2pat propat
 
 data StPat
-    = PatVar String         -- @foo => (variable) foo
-    | PatSomeGeneric String -- ?foo => GenericLhs foo
-    | PatSomeInt String     -- !foo => IntRhs foo (Only makes sense on RHS)
-    | PatCompound String    -- [foo] -> CompoundRhs
+    = PatHs String          -- %foo => (pattern) foo
+    | PatStringlike String  -- ?foo => (textRhs -> foo) (Only makes sense on RHS)
+    | PatStringOrNum String -- ?!foo => (floatOrTextRhs -> foo) (Only makes sense on RHS)
+    | PatSomeGeneric String -- $foo => GenericLhs foo
+    | PatSomeInt String     -- !foo => (floatRhs -> foo) (Only makes sense on RHS)
+    | PatCompound String    -- @foo => CompoundRhs
     deriving (Show, Eq, Ord)
 type StPatL = StPat
 type StPatR = StPat
 
 p_lhs :: Parser StPatL
-p_lhs = (PatVar         . T.unpack) <$> (Ap.string "@"  *> ident)
-    <|> (PatSomeGeneric . T.unpack) <$> (Ap.string "$"  *> ident)
+p_lhs = (PatHs          . T.unpack) <$> (Ap.string "%"  *> haskell)
+    <|> (PatSomeGeneric . T.unpack) <$> (Ap.string "$"  *> haskell)
 p_rhs :: Parser StPatR
-p_rhs = (PatSomeInt     . T.unpack) <$> (Ap.string "!" *> ident)
-    <|> (PatCompound    . T.unpack) <$> (Ap.string "[" *> ident <* Ap.string "]")
+p_rhs = (PatSomeInt     . T.unpack) <$> (Ap.string "!" *> haskell)
+    <|> (PatStringOrNum . T.unpack) <$> (Ap.string "?!" *> haskell)
+    <|> (PatStringlike  . T.unpack) <$> (Ap.string "?" *> haskell)
+    <|> (PatCompound    . T.unpack) <$> (Ap.string "@" *> haskell)
     <|> p_lhs
 
-propat2pat :: Statement StPatL StPatR -> Pat
-propat2pat (Statement lhs op rhs) = ConP 'Statement [lhs2pat lhs, op2pat op, rhs2pat rhs]
+propat2pat :: Statement StPatL StPatR -> Q Pat
+propat2pat (Statement lhs op rhs) = [p| Statement $(lhs2pat lhs) $(op2pat op) $(rhs2pat rhs) |]
+{-
+propat2pat (Statement lhs op rhs) = do
+    left <- lhs2pat lhs
+    opr <- op2pat op
+    right <- rhs2pat rhs
+    return $ ConP 'Statement [left, opr, right]
+-}
 
-lhs2pat :: Lhs StPatL -> Pat
+lhs2pat :: Lhs StPatL -> Q Pat
 lhs2pat lhs = case lhs of
     -- @foo => any lhs, stored in a variable foo
-    CustomLhs (PatVar id) -> VarP (mkName id)
+    CustomLhs (PatHs hpat) -> case parsePat hpat of
+        Right pat -> return pat
+        Left err -> fail ("couldn't parse pattern: " ++ err)
     -- ?foo => generic lhs, name stored in a variable foo
     --  e.g. ?color = yes => Statement (GenericLhs color) (GenericRhs "yes")
-    CustomLhs (PatSomeGeneric id) -> ConP 'GenericLhs [VarP (mkName id)]
+    CustomLhs (PatSomeGeneric id) -> conP 'GenericLhs [varP (mkName id)]
     -- not supported in LHS
     CustomLhs (PatSomeInt _) -> error "int pattern not supported on LHS"
     CustomLhs (PatCompound _) -> error "compound pattern not supported on LHS"
-    GenericLhs id -> ConP 'GenericLhs [LitP (stringL (T.unpack id))]
+    GenericLhs id -> conP 'GenericLhs [litP (stringL (T.unpack id))]
 
-op2pat :: Operator -> Pat
-op2pat OpEq = ConP 'OpEq []
-op2pat OpLT = ConP 'OpLT []
-op2pat OpGT = ConP 'OpGT []
+op2pat :: Operator -> Q Pat
+op2pat OpEq = [p| OpEq |]
+op2pat OpLT = [p| OpLT |]
+op2pat OpGT = [p| OpGT |]
 
-rhs2pat :: Rhs StPatL StPatR -> Pat
+rhs2pat :: Rhs StPatL StPatR -> Q Pat
 rhs2pat rhs = case rhs of
     -- @foo => any rhs, stored in a variable foo
-    CustomRhs (PatVar id) -> VarP (mkName id)
+    CustomRhs (PatHs id)
+        | id == "_" -> wildP
+        | otherwise -> varP (mkName id)
     -- ?foo => generic rhs, name stored in a variable foo
     --  e.g. color = ?color => Statement (GenericLhs "color") (GenericRhs color)
-    CustomRhs (PatSomeGeneric id) -> ConP 'GenericRhs [VarP (mkName id)]
-    CustomRhs (PatSomeInt id) -> ConP 'IntRhs [VarP (mkName id)]
-    CustomRhs (PatCompound id) -> ConP 'CompoundRhs [VarP (mkName id)]
-    GenericRhs id -> ConP 'GenericRhs [LitP (stringL (T.unpack id))]
-    StringRhs  str -> ConP 'StringRhs [LitP (stringL (T.unpack str))]
-    IntRhs     int  -> ConP 'IntRhs    [LitP (integerL (fromIntegral int))]
-    CompoundRhs stmts -> ConP 'CompoundRhs (map propat2pat stmts)
+    CustomRhs (PatStringlike patS) -> case parsePat patS of
+        Right pat -> viewP [| textRhs |] [p| Just $(return pat) |]
+        Left  err -> fail ("couldn't parse string pattern: " ++ err)
+    CustomRhs (PatStringOrNum patS) -> case parsePat patS of
+        Right pat -> viewP [| floatOrTextRhs |] (return pat)
+        Left  err -> fail ("couldn't parse string pattern: " ++ err)
+    CustomRhs (PatSomeGeneric patS) -> case parsePat patS of
+        Right pat -> [p| GenericRhs $(return pat) |]
+        Left  err -> fail ("couldn't parse generic pattern: " ++ err)
+    CustomRhs (PatSomeInt patS) -> case parsePat patS of
+        Right pat -> viewP [| floatRhs |] [p| Just $(return pat) |]
+        Left  err -> fail ("couldn't parse integer pattern: " ++ err)
+    CustomRhs (PatCompound patS) -> case parsePat patS of
+        Right pat -> [p| CompoundRhs $(return pat) |]
+        Left  err -> fail ("couldn't parse compound pattern: " ++ err)
+    GenericRhs id     -> [p| GenericRhs  $(litP  (stringL (T.unpack id))) |]
+    StringRhs  str    -> [p| StringRhs   $(litP  (stringL (T.unpack str))) |]
+    IntRhs     int    -> [p| IntRhs      $(litP  (integerL (fromIntegral int))) |]
+    CompoundRhs stmts -> [p| CompoundRhs $(listP (map propat2pat stmts)) |]
 
 ---------------------
 -- The quasiquoter --
@@ -210,16 +237,16 @@ rhs2pat rhs = case rhs of
 
 TL.deriveLiftMany [''Lhs, ''Rhs, ''Operator, ''Date, ''Statement, ''StPat, ''StExp]
 
-scr :: QuasiQuoter
-scr = QuasiQuoter {
-            quoteExp = scr_e
-        ,   quotePat = scr_p
-        ,   quoteType = scr_t
-        ,   quoteDec = scr_d
+pdx :: QuasiQuoter
+pdx = QuasiQuoter {
+            quoteExp  = pdx_e
+        ,   quotePat  = pdx_p
+        ,   quoteType = pdx_t
+        ,   quoteDec  = pdx_d
         }
 
-scr_t :: String -> Q Type
-scr_t = error "quasiquoting statements in type context not supported"
+pdx_t :: String -> Q Type
+pdx_t = error "quasiquoting statements in type context not supported"
 
-scr_d :: String -> Q [Dec]
-scr_d = error "quasiquoting statements in declaration context not supported"
+pdx_d :: String -> Q [Dec]
+pdx_d = error "quasiquoting statements in declaration context not supported"
