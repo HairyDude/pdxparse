@@ -6,6 +6,7 @@ module Abstract (
     ,   GenericScript
     ,   Lhs (..)
     ,   GenericLhs
+    ,   Operator (..)
     ,   Rhs (..)
     ,   GenericRhs
     ,   Date (..)
@@ -31,7 +32,8 @@ module Abstract (
     terminal is separated by enough whitespace to distinguish it from adjacent
     ones):
 
-        statement ::= ident | ident "=" rhs
+        statement ::= ident | ident separator rhs
+        separator ::= "=" | "<" | ">"
         rhs ::= ident | string | compound_rhs
         compound_rhs ::= "{" statements "}"
         statements ::= statement | statement statements
@@ -72,9 +74,23 @@ import SettingsTypes
 -- sides and one for right-hand sides.
 data Statement lhs rhs
         = StatementBare (Lhs lhs)
-        | Statement (Lhs lhs) (Rhs lhs rhs)
+        | Statement (Lhs lhs) Operator (Rhs lhs rhs)
     deriving (Eq, Ord, Show, Read)
 type GenericStatement = Statement () ()
+
+data Operator
+    = OpEq -- "=", the most common
+    | OpLT -- "<"
+    | OpGT -- ">"
+    deriving (Eq, Ord, Show, Read)
+
+showOp :: Operator -> Text
+showOp OpEq = "="
+showOp OpLT = "<"
+showOp OpGT = ">"
+
+showOpD :: Operator -> Doc
+showOpD = strictText . showOp
 
 -- lhs ::= some_custom_lhs | ident
 -- Type of statement left-hand sides (the part before the '=').
@@ -109,7 +125,7 @@ data Date = Date { year :: Int, month :: Int, day :: Int }
 
 -- A very common type of statement
 s_yes :: Text -> Statement lhs rhs
-s_yes tok = Statement (GenericLhs tok) (GenericRhs "yes")
+s_yes tok = Statement (GenericLhs tok) OpEq (GenericRhs "yes")
 
 -- | Class for painlessly getting the type of number we want out of a value
 -- that might have parsed as something else.
@@ -155,6 +171,8 @@ skipSpace = Ap.skipMany
 comment :: Parser ()
 comment = Ap.char '#' >> restOfLine >> return ()
 
+-- Parse the entire rest of the line, and also consume any number of following
+-- blank lines.
 restOfLine :: Parser Text
 restOfLine = (Ap.many1' Ap.endOfLine >> return T.empty)
          <|> (T.cons <$> Ap.anyChar <*> restOfLine)
@@ -206,8 +224,8 @@ escapedChar = ("0" *> return '\0')
 statement :: Parser lhs -> Parser rhs -> Parser (Statement lhs rhs)
 statement customLhs customRhs
     = Statement <$> lhs customLhs
-                -- TODO: permit bare statements (no = and RHS)
-                <*  (skipSpace >> Ap.char '=' >> skipSpace)
+                -- TODO: permit bare statements (no operator and RHS)
+                <*> (skipSpace *> operator <* skipSpace)
                 <*> rhs customLhs customRhs
     <?> "statement"
 
@@ -220,6 +238,12 @@ lhs custom = CustomLhs <$> custom
          <|> GenericLhs <$> ident
          <|> IntLhs <$> Ap.decimal
     <?> "statement LHS"
+
+operator :: Parser Operator
+operator = Ap.string "=" *> pure OpEq
+       <|> Ap.string "<" *> pure OpLT
+       <|> Ap.string ">" *> pure OpGT
+   <?> "operator"
 
 rhs :: Parser lhs -> Parser rhs -> Parser (Rhs lhs rhs)
 rhs customLhs customRhs
@@ -267,8 +291,8 @@ script2doc customLhs customRhs
 statement2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Statement lhs rhs -> Doc
 statement2doc customLhs _ (StatementBare lhs)
     = lhs2doc customLhs lhs
-statement2doc customLhs customRhs (Statement lhs rhs)
-    = lhs2doc customLhs lhs <++> text "=" <++> rhs2doc customLhs customRhs rhs
+statement2doc customLhs customRhs (Statement lhs op rhs)
+    = lhs2doc customLhs lhs <++> showOpD op <++> rhs2doc customLhs customRhs rhs
 
 lhs2doc :: (lhs -> Doc) -> Lhs lhs -> Doc
 lhs2doc customLhs (CustomLhs lhs) = customLhs lhs

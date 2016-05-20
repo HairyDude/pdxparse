@@ -38,7 +38,7 @@ data Decision = Decision
 newDecision = Decision undefined undefined Nothing [] [] [] Nothing
 
 processDecisionGroup :: GenericStatement -> PPT EU4 (Either Text) [Either Text (FilePath, Doc)]
-processDecisionGroup (Statement (GenericLhs left) rhs)
+processDecisionGroup (Statement (GenericLhs left) OpEq rhs)
     | left `elem` ["country_decisions", "religion_decisions"]
     = withCurrentFile $ \file -> case rhs of
         CompoundRhs scr -> forM scr $ \stmt ->
@@ -48,7 +48,7 @@ processDecisionGroup (Statement (GenericLhs left) rhs)
 processDecisionGroup _ = throwError "unrecognized form for decision block (LHS)"
 
 processDecision :: GenericStatement -> PPT EU4 (Either Text) (Text, Doc)
-processDecision (Statement (GenericLhs decName) rhs) = case rhs of
+processDecision (Statement (GenericLhs decName) OpEq rhs) = case rhs of
     CompoundRhs parts -> do
         decName_loc <- getGameL10n (decName <> "_title")
         decText <- getGameL10nIfPresent (decName <> "_desc")
@@ -62,7 +62,7 @@ processDecision (Statement (GenericLhs decName) rhs) = case rhs of
 processDecision _ = throwError "unrecognized form for decision (LHS)"
 
 decisionAddSection :: Monad m => Decision -> GenericStatement -> PPT extra m Decision
-decisionAddSection dec (Statement (GenericLhs sectname) (CompoundRhs scr))
+decisionAddSection dec (Statement (GenericLhs sectname) OpEq (CompoundRhs scr))
     = case sectname of
         "potential" -> return dec { dec_potential = scr }
         "allow" -> return dec { dec_allow = scr }
@@ -70,9 +70,9 @@ decisionAddSection dec (Statement (GenericLhs sectname) (CompoundRhs scr))
         "ai_will_do" -> return dec { dec_ai_will_do = Just (aiWillDo scr) }
         _ -> trace ("warning: unrecognized decision section: " ++ T.unpack sectname) $
              return dec
-decisionAddSection dec (Statement (GenericLhs "major") _)
+decisionAddSection dec (Statement (GenericLhs "major") OpEq _)
         = return dec -- currently no field in the template for this
-decisionAddSection dec (Statement (GenericLhs "ai_importance") _)
+decisionAddSection dec (Statement (GenericLhs "ai_importance") OpEq _)
         = trace "notice: ai_importance not yet implemented" $
           return dec
 decisionAddSection dec stmt = trace ("warning: unrecognized decision section: " ++ show stmt) $

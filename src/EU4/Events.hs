@@ -55,7 +55,7 @@ newOption = Option Nothing Nothing Nothing Nothing
 
 processEvent :: MonadError Text m => GenericStatement -> PPT EU4 m [Either Text (FilePath, Doc)]
 processEvent (StatementBare _) = throwError "bare statement at top level"
-processEvent (Statement left right) = fmap (:[]) . withCurrentFile $ \file -> case right of
+processEvent (Statement left OpEq right) = fmap (:[]) . withCurrentFile $ \file -> case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
@@ -65,7 +65,7 @@ processEvent (Statement left right) = fmap (:[]) . withCurrentFile $ \file -> ca
     _ -> return $ Right (file </> "administrivia", PP.empty)
 
 eventAddSection :: MonadError Text m => Event -> GenericStatement -> PPT extra m Event
-eventAddSection evt (Statement (GenericLhs label) rhs) = withCurrentFile $ \file ->
+eventAddSection evt (Statement (GenericLhs label) OpEq rhs) = withCurrentFile $ \file ->
     case label of
         "id" -> case (textRhs rhs, floatRhs rhs) of
             (Just tid, _) -> return evt { evt_id = Just tid }
@@ -118,7 +118,7 @@ addOption (Just opts) opt = do
     return $ Just (opts ++ [opt])
 
 optionAddStatement :: Monad m => Option -> GenericStatement -> PPT extra m Option
-optionAddStatement opt stmt@(Statement (GenericLhs label) rhs) =
+optionAddStatement opt stmt@(Statement (GenericLhs label) OpEq rhs) =
     case label of
         "name" -> case textRhs rhs of
             Just name ->

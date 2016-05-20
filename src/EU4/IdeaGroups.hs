@@ -72,7 +72,7 @@ readIdeaGroup' settings stmt = runReaderT (readIdeaGroup stmt) settings
 
 readIdeaGroup :: MonadError Text m => GenericStatement -> PPT EU4 m IdeaGroup
 readIdeaGroup (StatementBare _) = throwError "bare statement at top level"
-readIdeaGroup (Statement (GenericLhs "basic idea group") (GenericRhs right))
+readIdeaGroup (Statement (GenericLhs "basic idea group") OpEq (GenericRhs right))
     -- This is a fake entry for an idea group that has already been parsed.
     -- Fetch the corresponding basic idea group from settings.
     = do
@@ -80,7 +80,7 @@ readIdeaGroup (Statement (GenericLhs "basic idea group") (GenericRhs right))
         case HM.lookup right groups of
             Nothing -> throwError ("Idea group not found: " <> right)
             Just group -> return group
-readIdeaGroup (Statement left right) = case right of
+readIdeaGroup (Statement left OpEq right) = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
@@ -93,7 +93,7 @@ readIdeaGroup (Statement left right) = case right of
     _ -> throwError "warning: unknown statement in idea group file"
 
 ideaGroupAddSection :: Monad m => IdeaGroup -> GenericStatement -> PPT extra m IdeaGroup
-ideaGroupAddSection ig (Statement (GenericLhs label) rhs) =
+ideaGroupAddSection ig (Statement (GenericLhs label) OpEq rhs) =
     case label of
         "category" -> case T.toLower <$> textRhs rhs of
             Just "adm" -> return ig { ig_category = Just Administrative }
@@ -125,7 +125,7 @@ ideaGroupAddSection ig  _ = return ig
 -- Pick an icon for the idea, based on the first of its effects.
 iconForIdea' :: Idea -> Maybe Text
 iconForIdea' idea = case idea_effects idea of
-    (Statement (GenericLhs eff) _:_) -> iconKey eff
+    (Statement (GenericLhs eff) OpEq _:_) -> iconKey eff
     _ -> Nothing
 
 iconForIdea :: Idea -> Doc

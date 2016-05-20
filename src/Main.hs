@@ -62,7 +62,7 @@ readScripts settings category =
 collateBasicIdeaGroups :: FilePath -> Settings EU4 -> (FilePath, GenericScript)
 collateBasicIdeaGroups file settings
     = (file,
-       map (\key -> Statement (GenericLhs "basic idea group") (GenericRhs key))
+       map (\key -> Statement (GenericLhs "basic idea group") OpEq (GenericRhs key))
            (HM.keys . ideas . info $ settings)) -- If this blows up, we can't continue anyway.
 
 main :: IO ()
