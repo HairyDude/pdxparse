@@ -21,6 +21,8 @@ module Abstract (
     -- Parsing
     ,   readScript
     ,   genericStatement
+    ,   statement
+    ,   ident
     ) where
 
 {-
