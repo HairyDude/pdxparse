@@ -1,11 +1,11 @@
 {-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes #-}
 module QQ (
-        stmt    -- :: QuasiQuoter
+        scr     -- :: QuasiQuoter
     ) where
 
 {-
 
-    The stmt quasiquoter allows literal scripts to substitute for the script
+    The scr quasiquoter allows literal scripts to substitute for the script
     data structures. To interpolate or bind variables, it uses the following
     syntax. (foo is either a variable name or a parenthesised Haskell
     expression.)
@@ -13,26 +13,26 @@ module QQ (
     In an expression:
         $foo => foo is a bare_word (Also makes sense on LHS)
             e.g. if foo = "bar", then
-                [stmt|foo = $bar|] => foo = bar
+                [scr|foo = $bar|] => foo = bar
         %foo => foo is the relevant script type
             e.g. if foo = GenericRhs "foo", then
-                [stmt|%foo|] => type error
-                [stmt|bar = %foo|] => bar = foo
-                [stmt|foo = %(case foo of GenericRhs s -> StringRhs (s <> "bar"))|]
+                [scr|%foo|] => type error
+                [scr|bar = %foo|] => bar = foo
+                [scr|foo = %(case foo of GenericRhs s -> StringRhs (s <> "bar"))|]
                     => foo = "foobar"
         ?foo => "<contents of foo>" (foo :: Text)
-            e.g. if foo = "foo", [stmt|foo = ?foo|] => foo = "foo"
+            e.g. if foo = "foo", [scr|foo = ?foo|] => foo = "foo"
         !foo => foo is an Int
-            e.g. if foo = 23, [stmt|foo = !foo|] => foo = 23
+            e.g. if foo = 23, [scr|foo = !foo|] => foo = 23
         @foo => foo is a compound RHS
-            e.g. if foo = [stmt1, stmt2],
-                [stmt|foo = @foo|] => foo = { %stmt1 %stmt2 }
+            e.g. if foo = [scr1, scr2],
+                [scr|foo = @foo|] => foo = { %scr1 %scr2 }
 
     In a pattern:
         on the LHS or RHS:
             @foo => foo is bound as the relevant script type
-                e.g. [stmt|@foo|] => foo :: GenericScript
-                     [stmt|foo = @foo|] => foo :: GenericRhs
+                e.g. [scr|@foo|] => foo :: GenericScript
+                     [scr|foo = @foo|] => foo :: GenericRhs
             $foo => foo :: Text, matches a bare_word
         on the RHS only:
             !foo => foo :: Int, matches an integer
@@ -42,7 +42,7 @@ module QQ (
     string or a bare_word. For that case, you need to use textRhs in a pattern
     guard:
         case statement of
-            [stmt|foo = @rfoo|] | Just foo <- textRhs rfoo -> ...
+            [scr|foo = @rfoo|] | Just foo <- textRhs rfoo -> ...
 
 -}
 
@@ -111,8 +111,8 @@ haskell_parens = T.concat <$> sequence
     ,Ap.string ")"
     ]
 
-stmt_e :: String -> Q Exp
-stmt_e s = case Ap.parseOnly (Ap.skipSpace *> statement e_lhs e_rhs <* Ap.skipSpace) (fromString s) of
+scr_e :: String -> Q Exp
+scr_e s = case Ap.parseOnly (Ap.skipSpace *> statement e_lhs e_rhs <* Ap.skipSpace) (fromString s) of
                 Left _ -> error "invalid statement (expression)"
                 Right e -> prostmt2stmt e
 
@@ -148,8 +148,8 @@ rhs2exp other = [| other |]
 -- Patterns --
 --------------
 
-stmt_p :: String -> Q Pat
-stmt_p s = case Ap.parseOnly (Ap.skipSpace *> statement p_lhs p_rhs <* Ap.skipSpace) (fromString s) of
+scr_p :: String -> Q Pat
+scr_p s = case Ap.parseOnly (Ap.skipSpace *> statement p_lhs p_rhs <* Ap.skipSpace) (fromString s) of
                 Left _ -> error "invalid statement (pattern)"
                 Right propat -> return $ propat2pat propat
 
@@ -210,16 +210,16 @@ rhs2pat rhs = case rhs of
 
 TL.deriveLiftMany [''Lhs, ''Rhs, ''Operator, ''Date, ''Statement, ''StPat, ''StExp]
 
-stmt :: QuasiQuoter
-stmt = QuasiQuoter {
-            quoteExp = stmt_e
-        ,   quotePat = stmt_p
-        ,   quoteType = stmt_t
-        ,   quoteDec = stmt_d
+scr :: QuasiQuoter
+scr = QuasiQuoter {
+            quoteExp = scr_e
+        ,   quotePat = scr_p
+        ,   quoteType = scr_t
+        ,   quoteDec = scr_d
         }
 
-stmt_t :: String -> Q Type
-stmt_t = error "quasiquoting statements in type context not supported"
+scr_t :: String -> Q Type
+scr_t = error "quasiquoting statements in type context not supported"
 
-stmt_d :: String -> Q [Dec]
-stmt_d = error "quasiquoting statements in declaration context not supported"
+scr_d :: String -> Q [Dec]
+scr_d = error "quasiquoting statements in declaration context not supported"
