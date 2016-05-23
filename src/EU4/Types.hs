@@ -1,16 +1,27 @@
+{-# LANGUAGE OverloadedStrings #-}
 module EU4.Types (
-        EU4Scope (..)
+        MonarchPower (..)
+    ,   EU4Scope (..)
     ,   IdeaGroup (..)
     ,   Idea (..)
     ,   IdeaTable
     ,   EU4 (..)
+    ,   AIWillDo (..)
+    ,   AIModifier (..)
+    ,   aiWillDo
     ) where
 
+import Data.List (foldl')
 import Data.Text (Text)
+import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
 
 import Abstract
-import EU4.SuperCommon
+
+data MonarchPower = Administrative
+                  | Diplomatic
+                  | Military
+    deriving (Show, Eq, Ord)
 
 data EU4Scope
     = EU4Country
@@ -45,3 +56,39 @@ data EU4 = EU4
     , ideas :: IdeaTable
     } deriving (Show)
 
+-- AI decision factors
+
+data AIWillDo = AIWillDo
+    {   awd_base :: Maybe Double
+    ,   awd_modifiers :: [AIModifier]
+    } deriving (Show)
+data AIModifier = AIModifier
+    {   aim_factor :: Maybe Double
+    ,   aim_triggers :: GenericScript
+    } deriving (Show)
+newAIWillDo = AIWillDo Nothing []
+newAIModifier = AIModifier Nothing []
+
+aiWillDo :: GenericScript -> AIWillDo
+aiWillDo = foldl' aiWillDoAddSection newAIWillDo
+aiWillDoAddSection :: AIWillDo -> GenericStatement -> AIWillDo
+aiWillDoAddSection awd (Statement (GenericLhs left) OpEq right) = case T.toLower left of
+    "factor" -> case floatRhs right of
+        Just fac -> awd { awd_base = Just fac }
+        _        -> awd
+    "modifier" -> case right of
+        CompoundRhs scr -> awd { awd_modifiers = awd_modifiers awd ++ [awdModifier scr] }
+        _               -> awd
+    _ -> awd
+aiWillDoAddSection awd _ = awd
+
+awdModifier :: GenericScript -> AIModifier
+awdModifier = foldl' awdModifierAddSection newAIModifier
+awdModifierAddSection :: AIModifier -> GenericStatement -> AIModifier
+awdModifierAddSection aim stmt@(Statement (GenericLhs left) OpEq right) = case T.toLower left of
+    "factor" -> case floatRhs right of
+        Just fac -> aim { aim_factor = Just fac }
+        Nothing  -> aim
+    _ -> -- the rest of the statements are just the conditions.
+        aim { aim_triggers = aim_triggers aim ++ [stmt] }
+awdModifierAddSection aim _ = aim

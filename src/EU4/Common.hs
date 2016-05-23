@@ -4,14 +4,13 @@ module EU4.Common (
     ,   pp_mtth
     ,   ppOne
     ,   ppMany
-    ,   IdeaTable
     ,   iconKey, iconFile, iconFileB
     ,   AIWillDo (..), AIModifier (..)
     ,   EU4Scope (..), EU4 (..), eu4
     ,   scope, getCurrentEU4Scope
     ,   getIdeas
     ,   ppAiWillDo, ppAiMod
-    ,   module EU4.SuperCommon
+    ,   module EU4.Types
     ) where
 
 import Prelude hiding (sequence, mapM)
@@ -53,7 +52,6 @@ import Localization
 import Messages
 import MessageTools (plural)
 import QQ
-import EU4.SuperCommon
 import EU4.Types
 
 isGeographic :: EU4Scope -> Bool
