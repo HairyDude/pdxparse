@@ -12,5 +12,5 @@ import Abstract
 import Doc
 import SettingsTypes
 
-processPolicy :: MonadError Text m => GenericStatement -> PPT extra m [Either Text (FilePath, Doc)]
+processPolicy :: MonadError Text m => GenericStatement -> PPT m [Either Text (FilePath, Doc)]
 processPolicy _ = throwError "not implemented"

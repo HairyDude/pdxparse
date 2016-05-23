@@ -34,43 +34,28 @@ import System.FilePath
 import Abstract
 import Doc
 import EU4.Common
-import EU4.SuperCommon
+import EU4.Types
+--import EU4.SuperCommon
 import FileIO
 import Messages
 import SettingsTypes
 
--- Object that accumulates info about an idea group.
-data IdeaGroup = IdeaGroup
-    {   ig_name :: Text
-    ,   ig_name_loc :: Text
-    ,   ig_category :: Maybe MonarchPower
-    ,   ig_start :: Maybe GenericScript
-    ,   ig_bonus :: Maybe GenericScript
-    ,   ig_trigger :: Maybe GenericScript
-    ,   ig_free :: Bool -- don't know what this means
-    ,   ig_ideas :: [Idea]
-    ,   ig_ai_will_do :: Maybe AIWillDo
-    } deriving (Show)
-data Idea = Idea
-    {   idea_name :: Text
-    ,   idea_name_loc :: Text
-    ,   idea_effects :: GenericScript
-    } deriving (Show)
-
 -- Starts off Nothing everywhere, except name (will get filled in immediately).
 newIdeaGroup = IdeaGroup undefined undefined Nothing Nothing Nothing Nothing False [] Nothing
 
-readIdeaGroupTable :: Settings () -> IO IdeaTable
+readIdeaGroupTable :: Settings -> IO IdeaTable
 readIdeaGroupTable settings = do
     ideaGroupScripts <- readScript settings (buildPath settings "common/ideas/00_basic_ideas.txt")
-    let (errs, ideaGroups) = partitionEithers $ map (readIdeaGroup' (const eu4 <$> settings)) ideaGroupScripts
+    let (errs, ideaGroups) = partitionEithers $
+            map (readIdeaGroup' settings)
+                ideaGroupScripts
     forM_ errs $ \err -> hPutStrLn stderr $ "Warning while parsing idea groups: " ++ T.unpack err
     return . HM.fromList . map (\ig -> (ig_name ig, ig)) $ ideaGroups
 
-readIdeaGroup' :: Settings EU4 -> GenericStatement -> Either Text IdeaGroup
+readIdeaGroup' :: Settings -> GenericStatement -> Either Text IdeaGroup
 readIdeaGroup' settings stmt = runReaderT (readIdeaGroup stmt) settings
 
-readIdeaGroup :: MonadError Text m => GenericStatement -> PPT EU4 m IdeaGroup
+readIdeaGroup :: MonadError Text m => GenericStatement -> PPT m IdeaGroup
 readIdeaGroup (StatementBare _) = throwError "bare statement at top level"
 readIdeaGroup (Statement (GenericLhs "basic idea group") OpEq (GenericRhs right))
     -- This is a fake entry for an idea group that has already been parsed.
@@ -92,7 +77,7 @@ readIdeaGroup (Statement left OpEq right) = case right of
 
     _ -> throwError "warning: unknown statement in idea group file"
 
-ideaGroupAddSection :: Monad m => IdeaGroup -> GenericStatement -> PPT extra m IdeaGroup
+ideaGroupAddSection :: Monad m => IdeaGroup -> GenericStatement -> PPT m IdeaGroup
 ideaGroupAddSection ig (Statement (GenericLhs label) OpEq rhs) =
     case label of
         "category" -> case T.toLower <$> textRhs rhs of
@@ -133,7 +118,7 @@ iconForIdea idea = case iconForIdea' idea of
     Nothing -> mempty
     Just icon -> strictText icon
 
-processIdeaGroup :: MonadError Text m => GenericStatement -> PPT EU4 m [Either Text (FilePath, Doc)]
+processIdeaGroup :: MonadError Text m => GenericStatement -> PPT m [Either Text (FilePath, Doc)]
 processIdeaGroup stmt = withCurrentFile $ \file -> do
     ig <- readIdeaGroup stmt
     (:[]) . Right . ((file </>) *** fixup) <$> ppIdeaGroup ig
@@ -173,7 +158,7 @@ fixup = strictText . T.unlines . map (TE.decodeUtf8
             [pre, "idea", nth, "icon = ", iconFileB (fst (matcharr ! 2))
             ,"\n| idea", nth, "effect = ", post]
 
-ppIdeaGroup :: MonadError Text m => IdeaGroup -> PPT EU4 m (FilePath, Doc)
+ppIdeaGroup :: MonadError Text m => IdeaGroup -> PPT m (FilePath, Doc)
 ppIdeaGroup ig = do
     version <- asks gameVersion
     let name = ig_name_loc ig

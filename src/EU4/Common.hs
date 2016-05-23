@@ -7,8 +7,8 @@ module EU4.Common (
     ,   IdeaTable
     ,   iconKey, iconFile, iconFileB
     ,   AIWillDo (..), AIModifier (..)
-    ,   Scope (..), EU4 (..), eu4
-    ,   scope, getCurrentScope
+    ,   EU4Scope (..), EU4 (..), eu4
+    ,   scope, getCurrentEU4Scope
     ,   getIdeas
     ,   ppAiWillDo, ppAiMod
     ,   module EU4.SuperCommon
@@ -54,48 +54,41 @@ import Messages
 import MessageTools (plural)
 import QQ
 import EU4.SuperCommon
-import {-# SOURCE #-} EU4.IdeaGroups
+import EU4.Types
 
-data Scope
-    = Country
-    | Province
-    | TradeNode
-    | Geographic -- area, etc.
-    | Bonus
-    deriving (Show, Eq, Ord, Enum, Bounded)
-
-isGeographic :: Scope -> Bool
-isGeographic Country = False
-isGeographic Province = True
-isGeographic TradeNode = True
-isGeographic Geographic = True
-isGeographic Bonus = False
-
--- State
-type IdeaTable = HashMap Text IdeaGroup
-data EU4 = EU4
-    { scopeStack :: [Scope]
-    , ideas :: IdeaTable
-    }
+isGeographic :: EU4Scope -> Bool
+isGeographic EU4Country = False
+isGeographic EU4Province = True
+isGeographic EU4TradeNode = True
+isGeographic EU4Geographic = True
+isGeographic EU4Bonus = False
 
 eu4 :: EU4
 eu4 = EU4 { ideas = HM.empty, scopeStack = [] }
 
-scope :: Monad m => Scope -> PPT EU4 m a -> PPT EU4 m a
+scope :: Monad m => EU4Scope -> PPT m a -> PPT m a
 scope s = local (\r ->
-    let oldinfo = info r
-    in  r { info = oldinfo { scopeStack = s : scopeStack oldinfo } })
+    let oldgame = game r
+        oldeu4 = gEU4 oldgame
+        oldstack = scopeStack oldeu4
+    in  r {
+            game = oldgame {
+                gEU4 = oldeu4 {
+                    scopeStack = s : oldstack
+                }
+            }
+        })
 
 -- Get current scope, if there is one.
-getCurrentScope :: Monad m => PPT EU4 m (Maybe Scope)
-getCurrentScope = asks (listToMaybe . scopeStack . info)
+getCurrentEU4Scope :: Monad m => PPT m (Maybe EU4Scope)
+getCurrentEU4Scope = asks (listToMaybe . scopeStack . gEU4 . game)
 
-getIdeas :: Monad m => PPT EU4 m IdeaTable
-getIdeas = asks (ideas . info)
+getIdeas :: Monad m => PPT m IdeaTable
+getIdeas = asks (ideas . gEU4 . game)
 
 -- no particular order from here... TODO: organize this!
 
-msgToPP :: Monad m => ScriptMessage -> PPT extra m IndentedMessages
+msgToPP :: Monad m => ScriptMessage -> PPT m IndentedMessages
 msgToPP msg = (:[]) <$> alsoIndent' msg
 
 isTag :: Text -> Bool
@@ -110,19 +103,19 @@ isPronoun s = T.map toLower s `S.member` pronouns where
         ,"controller"
         ]
 
-pp_script :: Monad m => GenericScript -> PPT EU4 m Doc
+pp_script :: Monad m => GenericScript -> PPT m Doc
 pp_script [] = return "(Nothing)"
 pp_script script = imsg2doc =<< ppMany script
 
 -- Get the localization for a province ID, if available.
-getProvLoc :: Monad m => Int -> PPT extra m Text
+getProvLoc :: Monad m => Int -> PPT m Text
 getProvLoc n =
     let provid_t = T.pack (show n)
     in getGameL10nDefault provid_t ("PROV" <> provid_t)
 
 
 -- Emit flag template if the argument is a tag.
-flag :: Monad m => Text -> PPT extra m Doc
+flag :: Monad m => Text -> PPT m Doc
 flag name =
     if isTag name
         then template "flag" . (:[]) <$> getGameL10n name
@@ -132,7 +125,7 @@ flag name =
                 -- Suggestions of a description for FROM are welcome.
                 _ -> strictText name
 
-flagText :: Monad m => Text -> PPT extra m Text
+flagText :: Monad m => Text -> PPT m Text
 flagText = fmap doc2text . flag
 
 -- Emit icon template.
@@ -141,7 +134,7 @@ icon what = template "icon" [HM.lookupDefault what what scriptIconTable, "28px"]
 iconText :: Text -> Text
 iconText = doc2text . icon
 
-plainMsg :: Monad m => Text -> PPT extra m IndentedMessages
+plainMsg :: Monad m => Text -> PPT m IndentedMessages
 plainMsg msg = (:[]) <$> (alsoIndent' . MsgUnprocessed $ msg)
 
 -- Surround a doc in a <pre> element.
@@ -157,20 +150,20 @@ preMessage = MsgUnprocessed
             . PP.renderPretty 0.8 80
             . pre_statement
 
-preStatement :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+preStatement :: Monad m => GenericStatement -> PPT m IndentedMessages
 preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
 
 -- Text version
 pre_statement' :: GenericStatement -> Text
 pre_statement' = doc2text . pre_statement
 
-ppMany :: Monad m => GenericScript -> PPT EU4 m IndentedMessages
+ppMany :: Monad m => GenericScript -> PPT m IndentedMessages
 ppMany scr = indentUp (concat <$> mapM ppOne scr)
 
 -- Table of handlers for statements.
 -- Dispatch on strings is /much/ quicker using a lookup table than a
 -- huge case statement, which uses (==) on each one in turn.
-ppHandlers :: Monad m => Trie (GenericStatement -> PPT EU4 m IndentedMessages)
+ppHandlers :: Monad m => Trie (GenericStatement -> PPT m IndentedMessages)
 ppHandlers = Tr.fromList
         -- Statements where RHS is irrelevant (usually "yes")
         [("add_cardinal"           , const (msgToPP MsgAddCardinal))
@@ -452,47 +445,47 @@ ppHandlers = Tr.fromList
         -- There is a semantic distinction between "all" and "every",
         -- namely that the former means "this is true for all <type>" while
         -- the latter means "do this for every <type>."
-        ,("all_country" {- sic -}   , scope Country   . compoundMessage MsgAllCountries)
-        ,("all_owned_province"      , scope Province  . compoundMessage MsgEveryOwnedProvince)
-        ,("any_active_trade_node"   , scope TradeNode . compoundMessage MsgAnyActiveTradeNode)
-        ,("any_ally"                , scope Country   . compoundMessage MsgAnyAlly)
-        ,("any_core_country"        , scope Country   . compoundMessage MsgAnyCoreCountry) -- province scope
-        ,("any_country"             , scope Country   . compoundMessage MsgAnyCountry)
-        ,("any_enemy_country"       , scope Country   . compoundMessage MsgAnyEnemyCountry)
-        ,("any_known_country"       , scope Country   . compoundMessage MsgAnyKnownCountry)
-        ,("any_neighbor_country"    , scope Country   . compoundMessage MsgAnyNeighborCountry)
-        ,("any_neighbor_province"   , scope Province  . compoundMessage MsgAnyNeighborProvince)
-        ,("any_owned_province"      , scope Province  . compoundMessage MsgAnyOwnedProvince)
-        ,("any_rival_country"       , scope Country   . compoundMessage MsgAnyRival)
-        ,("any_subject_country"     , scope Country   . compoundMessage MsgAnySubject)
-        ,("capital_scope"           , scope Province  . compoundMessage MsgCapital)
-        ,("colonial_parent"         , scope Country   . compoundMessage MsgColonialParent)
-        ,("controller"              , scope Country   . compoundMessage MsgController)
-        ,("emperor"                 , scope Country   . compoundMessage MsgEmperor)
-        ,("every_country"           , scope Country   . compoundMessage MsgEveryCountry)
-        ,("every_enemy_country"     , scope Country   . compoundMessage MsgEveryEnemyCountry)
-        ,("every_known_country"     , scope Country   . compoundMessage MsgEveryKnownCountry)
-        ,("every_neighbor_country"  , scope Country   . compoundMessage MsgEveryNeighborCountry)
-        ,("every_neighbor_province" , scope Province  . compoundMessage MsgEveryNeighborProvince)
-        ,("every_owned_province"    , scope Province  . compoundMessage MsgEveryOwnedProvince)
-        ,("every_province"          , scope Province  . compoundMessage MsgEveryProvince)
-        ,("every_rival_country"     , scope Country   . compoundMessage MsgEveryRival)
-        ,("every_subject_country"   , scope Country   . compoundMessage MsgEverySubject)
-        ,("hidden_effect"           ,                   compoundMessage MsgHiddenEffect)
-        ,("if"                      ,                   compoundMessage MsgIf) -- always needs editing
-        ,("limit"                   ,                   compoundMessage MsgLimit) -- always needs editing
-        ,("owner"                   , scope Country   . compoundMessage MsgOwner)
-        ,("random_active_trade_node", scope TradeNode . compoundMessage MsgRandomActiveTradeNode)
-        ,("random_ally"             , scope Country   . compoundMessage MsgRandomAlly)
-        ,("random_core_country"     , scope Country   . compoundMessage MsgRandomCoreCountry)
-        ,("random_country"          , scope Country   . compoundMessage MsgRandomCountry)
-        ,("random_known_country"    , scope Country   . compoundMessage MsgRandomKnownCountry)
-        ,("random_list"             ,                   compoundMessage MsgRandom)
-        ,("random_neighbor_country" , scope Country   . compoundMessage MsgRandomNeighborCountry)
-        ,("random_neighbor_province", scope Province  . compoundMessage MsgRandomNeighborProvince)
-        ,("random_owned_province"   , scope Province  . compoundMessage MsgRandomOwnedProvince)
-        ,("random_province"         , scope Province  . compoundMessage MsgRandomProvince)
-        ,("random_rival_country"    , scope Country   . compoundMessage MsgRandomRival)
+        ,("all_country" {- sic -}   , scope EU4Country   . compoundMessage MsgAllCountries)
+        ,("all_owned_province"      , scope EU4Province  . compoundMessage MsgEveryOwnedProvince)
+        ,("any_active_trade_node"   , scope EU4TradeNode . compoundMessage MsgAnyActiveTradeNode)
+        ,("any_ally"                , scope EU4Country   . compoundMessage MsgAnyAlly)
+        ,("any_core_country"        , scope EU4Country   . compoundMessage MsgAnyCoreCountry) -- province scope
+        ,("any_country"             , scope EU4Country   . compoundMessage MsgAnyCountry)
+        ,("any_enemy_country"       , scope EU4Country   . compoundMessage MsgAnyEnemyCountry)
+        ,("any_known_country"       , scope EU4Country   . compoundMessage MsgAnyKnownCountry)
+        ,("any_neighbor_country"    , scope EU4Country   . compoundMessage MsgAnyNeighborCountry)
+        ,("any_neighbor_province"   , scope EU4Province  . compoundMessage MsgAnyNeighborProvince)
+        ,("any_owned_province"      , scope EU4Province  . compoundMessage MsgAnyOwnedProvince)
+        ,("any_rival_country"       , scope EU4Country   . compoundMessage MsgAnyRival)
+        ,("any_subject_country"     , scope EU4Country   . compoundMessage MsgAnySubject)
+        ,("capital_scope"           , scope EU4Province  . compoundMessage MsgCapital)
+        ,("colonial_parent"         , scope EU4Country   . compoundMessage MsgColonialParent)
+        ,("controller"              , scope EU4Country   . compoundMessage MsgController)
+        ,("emperor"                 , scope EU4Country   . compoundMessage MsgEmperor)
+        ,("every_country"           , scope EU4Country   . compoundMessage MsgEveryCountry)
+        ,("every_enemy_country"     , scope EU4Country   . compoundMessage MsgEveryEnemyCountry)
+        ,("every_known_country"     , scope EU4Country   . compoundMessage MsgEveryKnownCountry)
+        ,("every_neighbor_country"  , scope EU4Country   . compoundMessage MsgEveryNeighborCountry)
+        ,("every_neighbor_province" , scope EU4Province  . compoundMessage MsgEveryNeighborProvince)
+        ,("every_owned_province"    , scope EU4Province  . compoundMessage MsgEveryOwnedProvince)
+        ,("every_province"          , scope EU4Province  . compoundMessage MsgEveryProvince)
+        ,("every_rival_country"     , scope EU4Country   . compoundMessage MsgEveryRival)
+        ,("every_subject_country"   , scope EU4Country   . compoundMessage MsgEverySubject)
+        ,("hidden_effect"           ,                      compoundMessage MsgHiddenEffect)
+        ,("if"                      ,                      compoundMessage MsgIf) -- always needs editing
+        ,("limit"                   ,                      compoundMessage MsgLimit) -- always needs editing
+        ,("owner"                   , scope EU4Country   . compoundMessage MsgOwner)
+        ,("random_active_trade_node", scope EU4TradeNode . compoundMessage MsgRandomActiveTradeNode)
+        ,("random_ally"             , scope EU4Country   . compoundMessage MsgRandomAlly)
+        ,("random_core_country"     , scope EU4Country   . compoundMessage MsgRandomCoreCountry)
+        ,("random_country"          , scope EU4Country   . compoundMessage MsgRandomCountry)
+        ,("random_known_country"    , scope EU4Country   . compoundMessage MsgRandomKnownCountry)
+        ,("random_list"             ,                      compoundMessage MsgRandom)
+        ,("random_neighbor_country" , scope EU4Country   . compoundMessage MsgRandomNeighborCountry)
+        ,("random_neighbor_province", scope EU4Province  . compoundMessage MsgRandomNeighborProvince)
+        ,("random_owned_province"   , scope EU4Province  . compoundMessage MsgRandomOwnedProvince)
+        ,("random_province"         , scope EU4Province  . compoundMessage MsgRandomProvince)
+        ,("random_rival_country"    , scope EU4Country   . compoundMessage MsgRandomRival)
         -- Random
         ,("random", random)
         -- Simple generic statements (RHS is a localizable atom)
@@ -534,7 +527,7 @@ ppHandlers = Tr.fromList
         ,("infantry"           , withFlagOrProvince MsgInfantrySpawnsCountry MsgInfantrySpawnsProvince)
         ,("remove_core"        , withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince)
         -- RHS is a flag or province id, but the statement's meaning depends on the scope
-        ,("has_discovered"     , withFlagOrProvinceScope MsgHasDiscovered MsgDiscoveredBy) -- scope sensitive
+        ,("has_discovered"     , withFlagOrProvinceEU4Scope MsgHasDiscovered MsgDiscoveredBy) -- scope sensitive
         -- RHS is an advisor ID (TODO: parse advisor files)
         ,("advisor_exists"     , numeric MsgAdvisorExists)
         ,("is_advisor_employed", numeric MsgAdvisorIsEmployed)
@@ -568,7 +561,7 @@ ppHandlers = Tr.fromList
         ,("set_hre_religion"        , withLocAtomIcon MsgSetHREReligion)
         ,("technology_group"        , withLocAtomIcon MsgTechGroup)
         ,("trade_goods"             , withLocAtomIcon MsgProducesGoods)
-        ,("has_estate"              , withLocAtomIconScope MsgEstateExists MsgHasEstate)
+        ,("has_estate"              , withLocAtomIconEU4Scope MsgEstateExists MsgHasEstate)
         ,("set_estate"              , withLocAtomIcon MsgAssignToEstate)
         ,("is_monarch_leader"       , withLocAtomAndIcon "ruler general" MsgRulerIsGeneral)
         -- Simple generic statements with flag
@@ -716,7 +709,7 @@ ppHandlers = Tr.fromList
         ,("define_heir"                  , defineHeir)
         ,("build_to_forcelimit"          , buildToForcelimit)
         ,("check_variable"               , textValue "which" "value" MsgCheckVariable MsgCheckVariable tryLoc)
-        ,("country_event"                , scope Country . triggerEvent MsgCountryEvent)
+        ,("country_event"                , scope EU4Country . triggerEvent MsgCountryEvent)
         ,("declare_war_with_cb"          , declareWarWithCB)
         ,("define_advisor"               , defineAdvisor)
         ,("define_ruler"                 , defineRuler)
@@ -729,7 +722,7 @@ ppHandlers = Tr.fromList
         ,("has_estate_influence_modifier", hasEstateInfluenceModifier)
         ,("has_opinion"                  , hasOpinion)
         ,("has_opinion_modifier"         , opinion MsgHasOpinionMod (\what who _years -> MsgHasOpinionMod what who))
-        ,("province_event"               , scope Province . triggerEvent MsgProvinceEvent)
+        ,("province_event"               , scope EU4Province . triggerEvent MsgProvinceEvent)
         ,("remove_opinion"               , opinion MsgRemoveOpinionMod (\what who _years -> MsgRemoveOpinionMod what who))
         ,("religion_years"               , religionYears)
         ,("reverse_add_casus_belli"      , addCB False)
@@ -757,7 +750,7 @@ ppHandlers = Tr.fromList
         ,("tooltip"       , const (plainMsg "(explanatory tooltip - delete this line)"))
         ]
 
-ppOne :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+ppOne :: Monad m => GenericStatement -> PPT m IndentedMessages
 ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
     GenericLhs label -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
         Just handler -> handler stmt
@@ -805,7 +798,7 @@ data MTTHModifier = MTTHModifier
         } deriving Show
 newMTTH = MTTH Nothing Nothing Nothing []
 newMTTHMod = MTTHModifier Nothing []
-pp_mtth :: Monad m => GenericScript -> PPT EU4 m Doc
+pp_mtth :: Monad m => GenericScript -> PPT m Doc
 pp_mtth scr
     = pp_mtth' $ foldl' addField newMTTH scr
     where
@@ -878,7 +871,7 @@ pp_mtth scr
 --------------------------------
 
 compound :: Monad m =>
-    Text -> GenericStatement -> PPT EU4 m IndentedMessages
+    Text -> GenericStatement -> PPT m IndentedMessages
 compound header [pdx| %_ = @scr |]
     = withCurrentIndent $ \_ -> do -- force indent level at least 1
         headerMsg <- plainMsg (header <> ":")
@@ -887,7 +880,7 @@ compound header [pdx| %_ = @scr |]
 compound _ stmt = preStatement stmt
 
 compoundMessage :: Monad m =>
-    ScriptMessage -> GenericStatement -> PPT EU4 m IndentedMessages
+    ScriptMessage -> GenericStatement -> PPT m IndentedMessages
 compoundMessage header [pdx| %_ = @scr |]
     = withCurrentIndent $ \i -> do
         script_pp'd <- ppMany scr
@@ -898,7 +891,7 @@ compoundMessage _ stmt = preStatement stmt
 withLocAtom :: Monad m =>
     (Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 withLocAtom msg [pdx| %_ = ?key |]
     = msgToPP =<< msg <$> getGameL10n key
 withLocAtom _ stmt = preStatement stmt
@@ -909,7 +902,7 @@ withLocAtom2 :: Monad m =>
     ScriptMessage
         -> (Text -> Text -> Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 withLocAtom2 inMsg msg [pdx| %_ = ?key |]
     = msgToPP =<< msg <$> pure key <*> messageText inMsg <*> getGameL10n key
 withLocAtom2 _ _ stmt = preStatement stmt
@@ -918,7 +911,7 @@ withLocAtomAndIcon :: Monad m =>
     Text
         -> (Text -> Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 withLocAtomAndIcon iconkey msg [pdx| %_ = $key |]
     = do what <- getGameL10n key
          msgToPP $ msg (iconText iconkey) what
@@ -927,26 +920,26 @@ withLocAtomAndIcon _ _ stmt = preStatement stmt
 withLocAtomIcon :: Monad m =>
     (Text -> Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 withLocAtomIcon msg stmt@[pdx| %_ = $key |]
     = withLocAtomAndIcon key msg stmt
 withLocAtomIcon _ stmt = preStatement stmt
 
-withLocAtomIconScope :: Monad m =>
+withLocAtomIconEU4Scope :: Monad m =>
     (Text -> Text -> ScriptMessage)
         -> (Text -> Text -> ScriptMessage)
-        -> GenericStatement -> PPT EU4 m IndentedMessages
-withLocAtomIconScope countrymsg provincemsg stmt = do
-    scope <- getCurrentScope
+        -> GenericStatement -> PPT m IndentedMessages
+withLocAtomIconEU4Scope countrymsg provincemsg stmt = do
+    scope <- getCurrentEU4Scope
     case scope of
-        Just Country -> withLocAtomIcon countrymsg stmt
-        Just Province -> withLocAtomIcon provincemsg stmt
+        Just EU4Country -> withLocAtomIcon countrymsg stmt
+        Just EU4Province -> withLocAtomIcon provincemsg stmt
         _ -> preStatement stmt -- others don't make sense
 
 withProvince :: Monad m =>
     (Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 withProvince msg [pdx| %lhs = !id |]
     = withLocAtom msg [pdx| %lhs = $(T.pack ("PROV" <> show (id::Int))) |]
 withProvince _ stmt = preStatement stmt
@@ -962,7 +955,7 @@ withNonlocAtom2 :: Monad m =>
     ScriptMessage
         -> (Text -> Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 withNonlocAtom2 submsg msg [pdx| %_ = ?text |] = do
     extratext <- messageText submsg
     msgToPP $ msg extratext text
@@ -1036,7 +1029,7 @@ iconOrFlag :: Monad m =>
     (Text -> Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 iconOrFlag iconmsg flagmsg [pdx| %_ = $name |] = msgToPP =<< do
     nflag <- flag name -- laziness means this might not get evaluated
     if isTag name || isPronoun name
@@ -1049,7 +1042,7 @@ tagOrProvince :: Monad m =>
     (Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 tagOrProvince tagmsg provmsg stmt@[pdx| %_ = ?!eobject |]
     = msgToPP =<< case eobject of
             Just (Right tag) -> do -- is a tag
@@ -1067,7 +1060,7 @@ tagOrProvince _ _ stmt = preStatement stmt
 numeric :: Monad m =>
     (Double -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 numeric msg [pdx| %_ = !n |] = msgToPP $ msg n
 numeric _ stmt = plainMsg $ pre_statement' stmt
 
@@ -1075,7 +1068,7 @@ numericOrTag :: Monad m =>
     (Double -> ScriptMessage)
         -> (Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 numericOrTag numMsg tagMsg stmt@[pdx| %_ = %rhs |] = msgToPP =<<
     case floatRhs rhs of
         Just n -> return $ numMsg n
@@ -1090,7 +1083,7 @@ numericOrTag _ _ stmt = preStatement stmt
 withFlag :: Monad m =>
     (Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 withFlag msg [pdx| %_ = $who |] = msgToPP =<< do
     whoflag <- flag who
     return . msg . doc2text $ whoflag
@@ -1099,7 +1092,7 @@ withFlag _ stmt = plainMsg $ pre_statement' stmt
 withBool :: Monad m =>
     (Bool -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 withBool msg stmt = do
     fullmsg <- withBool' msg stmt
     maybe (preStatement stmt)
@@ -1109,7 +1102,7 @@ withBool msg stmt = do
 withBool' :: Monad m =>
     (Bool -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m (Maybe IndentedMessages)
+        -> PPT m (Maybe IndentedMessages)
 withBool' msg [pdx| %_ = ?yn |] | T.map toLower yn `elem` ["yes","no","false"]
     = fmap Just . msgToPP $ case T.toCaseFold yn of
         "yes" -> msg True
@@ -1123,7 +1116,7 @@ withFlagOrBool :: Monad m =>
     (Bool -> ScriptMessage)
         -> (Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 withFlagOrBool bmsg _ [pdx| %_ = yes |] = msgToPP (bmsg True)
 withFlagOrBool bmsg _ [pdx| %_ = no  |]  = msgToPP (bmsg False)
 withFlagOrBool _ tmsg stmt = withFlag tmsg stmt
@@ -1132,7 +1125,7 @@ numericIcon :: Monad m =>
     Text
         -> (Text -> Double -> ScriptMessage)
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 numericIcon the_icon msg [pdx| %_ = !amt |]
     = msgToPP $ msg (iconText the_icon) amt
 numericIcon _ _ stmt = plainMsg $ pre_statement' stmt
@@ -1142,16 +1135,16 @@ numericIconBonus :: Monad m =>
         -> (Text -> Double -> ScriptMessage)
         -> (Text -> Double -> ScriptMessage)
         -> GenericStatement
-        -> PPT EU4 m IndentedMessages
+        -> PPT m IndentedMessages
 numericIconBonus the_icon plainmsg yearlymsg [pdx| %_ = !amt |]
     = do
-        mscope <- getCurrentScope
+        mscope <- getCurrentEU4Scope
         let icont = iconText the_icon
             yearly = msgToPP $ yearlymsg icont amt
         case mscope of
             Nothing -> yearly -- ideas / bonuses
             Just scope -> case scope of
-                Bonus -> yearly
+                EU4Bonus -> yearly
                 _ -> -- act as though it's country for all others
                     msgToPP $ plainmsg icont amt
 numericIconBonus _ _ _ stmt = plainMsg $ pre_statement' stmt
@@ -1183,7 +1176,7 @@ numericIconBonus _ _ _ stmt = plainMsg $ pre_statement' stmt
 -- localization string, it gets wrapped in a tt element instead.
 
 -- convenience synonym
-tryLoc :: Monad m => Text -> PPT extra m (Maybe Text)
+tryLoc :: Monad m => Text -> PPT m (Maybe Text)
 tryLoc = getGameL10nIfPresent
 
 data TextValue = TextValue
@@ -1196,8 +1189,8 @@ textValue :: forall extra m. Monad m =>
         -> Text                                      -- ^ Label for "how much"
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value < 1
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value >= 1
-        -> (Text -> PPT extra m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
-        -> GenericStatement -> PPT extra m IndentedMessages
+        -> (Text -> PPT m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
+        -> GenericStatement -> PPT m IndentedMessages
 textValue whatlabel vallabel smallmsg bigmsg loc stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_tv (foldl' addLine newTV scr)
     where
@@ -1207,7 +1200,7 @@ textValue whatlabel vallabel smallmsg bigmsg loc stmt@[pdx| %_ = @scr |]
         addLine tv [pdx| $label = !val |] | label == vallabel
             = tv { tv_value = Just val }
         addLine nor _ = nor
-        pp_tv :: TextValue -> PPT extra m ScriptMessage
+        pp_tv :: TextValue -> PPT m ScriptMessage
         pp_tv tv = case (tv_what tv, tv_value tv) of
             (Just what, Just value) -> do
                 mwhat_loc <- loc what
@@ -1231,8 +1224,8 @@ textAtom :: forall extra m. Monad m =>
     Text -- ^ Label for "what"
         -> Text -- ^ Label for atom
         -> (Text -> Text -> Text -> ScriptMessage) -- ^ Message constructor
-        -> (Text -> PPT extra m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
-        -> GenericStatement -> PPT extra m IndentedMessages
+        -> (Text -> PPT m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
+        -> GenericStatement -> PPT m IndentedMessages
 textAtom whatlabel atomlabel msg loc stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_ta (foldl' addLine newTA scr)
     where
@@ -1244,7 +1237,7 @@ textAtom whatlabel atomlabel msg loc stmt@[pdx| %_ = @scr |]
             | label == atomlabel
             = ta { ta_atom = Just at }
         addLine nor _ = nor
-        pp_ta :: TextAtom -> PPT extra m ScriptMessage
+        pp_ta :: TextAtom -> PPT m ScriptMessage
         pp_ta ta = case (ta_what ta, ta_atom ta) of
             (Just what, Just atom) -> do
                 mwhat_loc <- loc what
@@ -1259,7 +1252,7 @@ textAtom _ _ _ _ stmt = preStatement stmt
 -- Most of the code for this is in EU4.SuperCommon and re-exported here,
 -- because EU4.IdeaGroups needs them. But only EU4.Common needs output
 -- functions.
-ppAiWillDo :: Monad m => AIWillDo -> PPT EU4 m IndentedMessages
+ppAiWillDo :: Monad m => AIWillDo -> PPT m IndentedMessages
 ppAiWillDo (AIWillDo mbase mods) = do
     mods_pp'd <- fold <$> traverse ppAiMod mods
     let baseWtMsg = case mbase of
@@ -1268,7 +1261,7 @@ ppAiWillDo (AIWillDo mbase mods) = do
     iBaseWtMsg <- msgToPP baseWtMsg
     return $ iBaseWtMsg ++ mods_pp'd
 
-ppAiMod :: Monad m => AIModifier -> PPT EU4 m IndentedMessages
+ppAiMod :: Monad m => AIModifier -> PPT m IndentedMessages
 ppAiMod (AIModifier (Just multiplier) triggers) = do
     triggers_pp'd <- ppMany triggers
     case triggers_pp'd of
@@ -1318,7 +1311,7 @@ data FactionInfluence = FactionInfluence {
     ,   influence :: Maybe Double
     }
 newInfluence = FactionInfluence Nothing Nothing
-factionInfluence :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+factionInfluence :: Monad m => GenericStatement -> PPT m IndentedMessages
 factionInfluence stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_influence (foldl' addField newInfluence scr)
     where
@@ -1335,7 +1328,7 @@ factionInfluence stmt@[pdx| %_ = @scr |]
         addField inf _ = inf -- unknown statement
 factionInfluence stmt = preStatement stmt
 
-factionInPower :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+factionInPower :: Monad m => GenericStatement -> PPT m IndentedMessages
 factionInPower [pdx| %_ = ?fac |] | Just facKey <- fac_iconkey fac
     = do fac_loc <- getGameL10n fac
          msgToPP $ MsgFactionInPower (iconText facKey) fac_loc
@@ -1363,7 +1356,7 @@ addModifierLine apm _ = apm -- e.g. hidden = yes
 maybeM :: Monad m => (a -> m b) -> Maybe a -> m (Maybe b)
 maybeM f = maybe (return Nothing) (liftM Just . f)
 
-addModifier :: Monad m => ScriptMessage -> GenericStatement -> PPT extra m IndentedMessages
+addModifier :: Monad m => ScriptMessage -> GenericStatement -> PPT m IndentedMessages
 addModifier kind stmt@(Statement _ OpEq (CompoundRhs scr)) = msgToPP =<<
     let mod = foldl' addModifierLine newModifier scr
     in if isJust (mod_name mod) || isJust (mod_key mod) then do
@@ -1398,7 +1391,7 @@ addModifier _ stmt = preStatement stmt
 
 -- "add_core = <n>" in country scope means "Gain core on <localize PROVn>"
 -- "add_core = <tag>" in province scope means "<localize tag> gains core"
-addCore :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+addCore :: Monad m => GenericStatement -> PPT m IndentedMessages
 addCore (Statement _ OpEq (textRhs -> Just tag)) = msgToPP =<< do -- tag
     tagflag <- flagText tag
     return $ MsgTagGainsCore tagflag
@@ -1420,7 +1413,7 @@ newAddOpinion = AddOpinion Nothing Nothing Nothing
 opinion :: Monad m =>
     (Text -> Text -> ScriptMessage)
         -> (Text -> Text -> Double -> ScriptMessage)
-        -> GenericStatement -> PPT extra m IndentedMessages
+        -> GenericStatement -> PPT m IndentedMessages
 opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_add_opinion (foldl' addLine newAddOpinion scr)
     where
@@ -1445,7 +1438,7 @@ data HasOpinion = HasOpinion
         }
 newHasOpinion = HasOpinion Nothing Nothing
 hasOpinion :: forall extra m. Monad m =>
-    GenericStatement -> PPT extra m IndentedMessages
+    GenericStatement -> PPT m IndentedMessages
 hasOpinion stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_hasOpinion (foldl' addLine newHasOpinion scr)
     where
@@ -1453,7 +1446,7 @@ hasOpinion stmt@(Statement _ OpEq (CompoundRhs scr))
         addLine hop [pdx| who   = ?who |] = hop { hop_who = Just who }
         addLine hop [pdx| value = !val |] = hop { hop_value = Just val }
         addLine hop _ = trace "warning: unrecognized has_opinion clause" hop
-        pp_hasOpinion :: HasOpinion -> PPT extra m ScriptMessage
+        pp_hasOpinion :: HasOpinion -> PPT m ScriptMessage
         pp_hasOpinion hop = case (hop_who hop, hop_value hop) of
             (Just who, Just value) -> do
                 who_flag <- flag who
@@ -1526,7 +1519,7 @@ newSpawnRebels = SpawnRebels Nothing Nothing Nothing False Nothing Nothing
 spawnRebels :: forall extra m. Monad m =>
     Maybe Text
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
     spawnRebels' Nothing (Statement _ OpEq (CompoundRhs scr))
         = pp_spawnRebels $ foldl' addLine newSpawnRebels scr
@@ -1543,7 +1536,7 @@ spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
     addLine op [pdx| leader = ?name |] = op { sr_leader = Just name }
     addLine op _ = op
 
-    pp_spawnRebels :: SpawnRebels -> PPT extra m ScriptMessage
+    pp_spawnRebels :: SpawnRebels -> PPT m ScriptMessage
     pp_spawnRebels reb
         = case rebelSize reb of
             Just size -> do
@@ -1573,13 +1566,13 @@ spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
                             progressText
             _ -> return $ preMessage stmt
 
-hasSpawnedRebels :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+hasSpawnedRebels :: Monad m => GenericStatement -> PPT m IndentedMessages
 hasSpawnedRebels [pdx| %_ = $rtype |]
     | Just (rtype_loc, rtype_iconkey) <- HM.lookup rtype rebel_loc
       = msgToPP $ MsgRebelsHaveRisen (iconText rtype_iconkey) rtype_loc
 hasSpawnedRebels stmt = preStatement stmt
 
-canSpawnRebels :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+canSpawnRebels :: Monad m => GenericStatement -> PPT m IndentedMessages
 canSpawnRebels [pdx| %_ = $rtype |]
     | Just (rtype_loc, rtype_iconkey) <- HM.lookup rtype rebel_loc
       = msgToPP (MsgProvinceHasRebels (iconText rtype_iconkey) rtype_loc)
@@ -1596,11 +1589,11 @@ newTriggerEvent = TriggerEvent Nothing Nothing Nothing
 triggerEvent :: forall extra m. Monad m =>
     ScriptMessage
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 triggerEvent evtType stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_trigger_event =<< foldM addLine newTriggerEvent scr
     where
-        addLine :: TriggerEvent -> GenericStatement -> PPT extra m TriggerEvent
+        addLine :: TriggerEvent -> GenericStatement -> PPT m TriggerEvent
         addLine evt [pdx| id = $id |]
             = (\t_loc -> evt { e_id = Just id, e_title_loc = t_loc })
               . msum
@@ -1615,7 +1608,7 @@ triggerEvent evtType stmt@[pdx| %_ = @scr |]
         addLine evt [pdx| days = %rhs |]
             = return evt { e_days = floatRhs rhs }
         addLine evt _ = return evt
-        pp_trigger_event :: TriggerEvent -> PPT extra m ScriptMessage
+        pp_trigger_event :: TriggerEvent -> PPT m ScriptMessage
         pp_trigger_event evt = do
             evtType_t <- messageText evtType
             case e_id evt of
@@ -1629,7 +1622,7 @@ triggerEvent _ stmt = preStatement stmt
 
 -- Specific values
 
-gainManpower :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+gainManpower :: Monad m => GenericStatement -> PPT m IndentedMessages
 gainManpower [pdx| %_ = !amt |] = msgToPP =<<
     let mpicon = iconText "manpower"
     in if abs (amt::Double) < 1
@@ -1652,10 +1645,10 @@ newAddCB = AddCB Nothing Nothing Nothing Nothing Nothing
 addCB :: forall extra m. Monad m =>
     Bool -- ^ True for add_casus_belli, False for reverse_add_casus_belli
         -> GenericStatement
-        -> PPT extra m IndentedMessages
+        -> PPT m IndentedMessages
 addCB direct stmt@[pdx| %_ = @scr |]
     = msgToPP . pp_add_cb =<< foldM addLine newAddCB scr where
-        addLine :: AddCB -> GenericStatement -> PPT extra m AddCB
+        addLine :: AddCB -> GenericStatement -> PPT m AddCB
         addLine acb [pdx| target = $target |]
             = (\target_loc -> acb
                   { acb_target = Just target
@@ -1686,7 +1679,7 @@ addCB _ stmt = preStatement stmt
 
 -- Random
 
-random :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+random :: Monad m => GenericStatement -> PPT m IndentedMessages
 random stmt@[pdx| %_ = @scr |]
     | (front, back) <- break
                         (\stmt -> case stmt of 
@@ -1716,10 +1709,10 @@ data DefineAdvisor = DefineAdvisor
     }
 newDefineAdvisor = DefineAdvisor Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
-defineAdvisor :: forall extra m. Monad m => GenericStatement -> PPT extra m IndentedMessages
+defineAdvisor :: forall extra m. Monad m => GenericStatement -> PPT m IndentedMessages
 defineAdvisor stmt@[pdx| %_ = @scr |]
     = msgToPP . pp_define_advisor =<< foldM addLine newDefineAdvisor scr where
-        addLine :: DefineAdvisor -> GenericStatement -> PPT extra m DefineAdvisor
+        addLine :: DefineAdvisor -> GenericStatement -> PPT m DefineAdvisor
         addLine da [pdx| $lhs = %rhs |] = case T.map toLower lhs of
             "type" ->
                 let mthe_type = case rhs of
@@ -1840,7 +1833,7 @@ data DefineRuler = DefineRuler
     }
 newDefineRuler = DefineRuler False Nothing Nothing Nothing Nothing Nothing False Nothing Nothing Nothing False Nothing
 
-defineRuler :: forall extra m. Monad m => GenericStatement -> PPT extra m IndentedMessages
+defineRuler :: forall extra m. Monad m => GenericStatement -> PPT m IndentedMessages
 defineRuler [pdx| %_ = @scr |]
     = pp_define_ruler $ foldl' addLine newDefineRuler scr where
         addLine :: DefineRuler -> GenericStatement -> DefineRuler
@@ -1868,7 +1861,7 @@ defineRuler [pdx| %_ = @scr |]
             "attach_leader" -> dr { dr_attach_leader = textRhs rhs }
             _ -> dr
         addLine dr _ = dr
-        pp_define_ruler :: DefineRuler -> PPT extra m IndentedMessages
+        pp_define_ruler :: DefineRuler -> PPT m IndentedMessages
         pp_define_ruler    DefineRuler { dr_rebel = True } = msgToPP MsgRebelLeaderRuler
         pp_define_ruler dr@DefineRuler { dr_regency = regency, dr_attach_leader = mleader } = do
             body <- indentUp (unfoldM pp_define_ruler_attrib dr)
@@ -1878,7 +1871,7 @@ defineRuler [pdx| %_ = @scr |]
                 liftA2 (++)
                     (msgToPP (maybe (MsgNewRulerAttribs regency) (MsgNewRulerLeaderAttribs regency) mleader))
                     (pure body)
-        pp_define_ruler_attrib :: DefineRuler -> PPT extra m (Maybe (IndentedMessage, DefineRuler))
+        pp_define_ruler_attrib :: DefineRuler -> PPT m (Maybe (IndentedMessage, DefineRuler))
         -- "Named <foo>"
         pp_define_ruler_attrib dr@DefineRuler { dr_name = Just name } = do
             [msg] <- msgToPP (MsgNewRulerName name)
@@ -1920,7 +1913,7 @@ data BuildToForcelimit = BuildToForcelimit
     }
 newBuildToForcelimit = BuildToForcelimit Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
-buildToForcelimit :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+buildToForcelimit :: Monad m => GenericStatement -> PPT m IndentedMessages
 buildToForcelimit stmt@[pdx| %_ = @scr |]
     = msgToPP . pp_build_to_forcelimit $ foldl' addLine newBuildToForcelimit scr where
         addLine :: BuildToForcelimit -> GenericStatement -> BuildToForcelimit
@@ -1982,7 +1975,7 @@ data DeclareWarWithCB = DeclareWarWithCB
     }
 newDeclareWarWithCB = DeclareWarWithCB Nothing Nothing
 
-declareWarWithCB :: forall extra m. Monad m => GenericStatement -> PPT extra m IndentedMessages
+declareWarWithCB :: forall extra m. Monad m => GenericStatement -> PPT m IndentedMessages
 declareWarWithCB stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_declare_war_with_cb (foldl' addLine newDeclareWarWithCB scr) where
         addLine :: DeclareWarWithCB -> GenericStatement -> DeclareWarWithCB
@@ -1992,7 +1985,7 @@ declareWarWithCB stmt@[pdx| %_ = @scr |]
                 "casus_belli" -> dwcb { dwcb_cb  = Just rhs }
                 _ -> dwcb
         addLine dwcb _ = dwcb
-        pp_declare_war_with_cb :: DeclareWarWithCB -> PPT extra m ScriptMessage
+        pp_declare_war_with_cb :: DeclareWarWithCB -> PPT m ScriptMessage
         pp_declare_war_with_cb dwcb
               = case (dwcb_who dwcb, dwcb_cb dwcb) of
                 (Just who, Just cb) -> do
@@ -2004,7 +1997,7 @@ declareWarWithCB stmt = preStatement stmt
 
 -- DLC
 
-hasDlc :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+hasDlc :: Monad m => GenericStatement -> PPT m IndentedMessages
 hasDlc [pdx| %_ = ?dlc |]
     = msgToPP $ MsgHasDLC dlc_icon dlc
     where
@@ -2027,7 +2020,7 @@ data EstateInfluenceModifier = EstateInfluenceModifier {
     ,   eim_modifier :: Maybe Text
     }
 newEIM = EstateInfluenceModifier Nothing Nothing
-hasEstateInfluenceModifier :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+hasEstateInfluenceModifier :: Monad m => GenericStatement -> PPT m IndentedMessages
 hasEstateInfluenceModifier stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_eim (foldl' addField newEIM scr)
     where
@@ -2051,12 +2044,12 @@ data AddEstateInfluenceModifier = AddEstateInfluenceModifier {
     } deriving Show
 newAddEstateInfluenceModifier = AddEstateInfluenceModifier Nothing Nothing Nothing Nothing
 
-timeOrIndef :: Monad m => Double -> PPT extra m Text
+timeOrIndef :: Monad m => Double -> PPT m Text
 timeOrIndef n = if n < 0 then messageText MsgIndefinitely else messageText (MsgForDays n)
 
 estateInfluenceModifier :: forall extra m. Monad m =>
     (Text -> Text -> Text -> Double -> Text -> ScriptMessage)
-        -> GenericStatement -> PPT extra m IndentedMessages
+        -> GenericStatement -> PPT m IndentedMessages
 estateInfluenceModifier msg stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_eim (foldl' addLine newAddEstateInfluenceModifier scr)
     where
@@ -2066,7 +2059,7 @@ estateInfluenceModifier msg stmt@[pdx| %_ = @scr |]
         addLine aeim [pdx| influence = !influence |] = aeim { aeim_influence = Just influence }
         addLine aeim [pdx| duration  = !duration  |] = aeim { aeim_duration = Just duration }
         addLine aeim _ = aeim
-        pp_eim :: AddEstateInfluenceModifier -> PPT extra m ScriptMessage
+        pp_eim :: AddEstateInfluenceModifier -> PPT m ScriptMessage
         pp_eim aeim
             = case (aeim_estate aeim, aeim_desc aeim, aeim_influence aeim, aeim_duration aeim) of
                 (Just estate, Just desc, Just influence, Just duration) -> do
@@ -2080,7 +2073,7 @@ estateInfluenceModifier _ stmt = preStatement stmt
 
 -- Trigger switch
 
-triggerSwitch :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+triggerSwitch :: Monad m => GenericStatement -> PPT m IndentedMessages
 -- A trigger switch must be of the form
 -- trigger_switch = {
 --  on_trigger = <statement lhs>
@@ -2114,7 +2107,7 @@ data Heir = Heir
         ,   heir_age :: Maybe Double
         }
 newHeir = Heir Nothing Nothing Nothing
-defineHeir :: forall extra m. Monad m => GenericStatement -> PPT extra m IndentedMessages
+defineHeir :: forall extra m. Monad m => GenericStatement -> PPT m IndentedMessages
 defineHeir [pdx| %_ = @scr |]
     = msgToPP =<< pp_heir (foldl' addLine newHeir scr)
     where
@@ -2123,7 +2116,7 @@ defineHeir [pdx| %_ = @scr |]
         addLine heir [pdx| claim   = !claim   |] = heir { heir_claim = Just claim }
         addLine heir [pdx| age     = !age     |] = heir { heir_age = Just age }
         addLine heir _ = heir
-        pp_heir :: Heir -> PPT extra m ScriptMessage
+        pp_heir :: Heir -> PPT m ScriptMessage
         pp_heir heir = do
             dynasty_flag <- fmap doc2text <$> maybeM flag (heir_dynasty heir)
             case (heir_age heir, dynasty_flag, heir_claim heir) of
@@ -2140,7 +2133,7 @@ defineHeir stmt = preStatement stmt
 -- Holy Roman Empire
 
 -- Assume 1 <= n <= 8
-hreReformLoc :: Monad m => Int -> PPT extra m Text
+hreReformLoc :: Monad m => Int -> PPT m Text
 hreReformLoc n = getGameL10n $ case n of
     1 -> "reichsreform_title"
     2 -> "reichsregiment_title"
@@ -2152,7 +2145,7 @@ hreReformLoc n = getGameL10n $ case n of
     8 -> "renovatio_title"
     _ -> error "called hreReformLoc with n < 1 or n > 8"
 
-hreReformLevel :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+hreReformLevel :: Monad m => GenericStatement -> PPT m IndentedMessages
 hreReformLevel [pdx| %_ = !level |] | level >= 0, level <= 8
     = if level == 0
         then msgToPP MsgNoHREReforms
@@ -2161,7 +2154,7 @@ hreReformLevel stmt = preStatement stmt
 
 -- Religion
 
-religionYears :: Monad m => GenericStatement -> PPT extra m IndentedMessages
+religionYears :: Monad m => GenericStatement -> PPT m IndentedMessages
 religionYears [pdx| %_ = { $rel = !years } |]
     = do
         let rel_icon = iconText rel
@@ -2171,7 +2164,7 @@ religionYears stmt = preStatement stmt
 
 -- Government
 
-govtRank :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+govtRank :: Monad m => GenericStatement -> PPT m IndentedMessages
 govtRank [pdx| %_ = !level |]
     = case level :: Int of
         1 -> msgToPP MsgRankDuchy -- unlikely, but account for it anyway
@@ -2180,7 +2173,7 @@ govtRank [pdx| %_ = !level |]
         _ -> error "impossible: govtRank matched an invalid rank number"
 govtRank stmt = preStatement stmt
 
-setGovtRank :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+setGovtRank :: Monad m => GenericStatement -> PPT m IndentedMessages
 setGovtRank [pdx| %_ = !level |] | level `elem` [1..3]
     = case level :: Int of
         1 -> msgToPP MsgSetRankDuchy
@@ -2193,7 +2186,7 @@ numProvinces :: Monad m =>
     Text
         -> (Text -> Text -> Double -> ScriptMessage)
         -> GenericStatement
-        -> PPT EU4 m IndentedMessages
+        -> PPT m IndentedMessages
 numProvinces iconKey msg [pdx| $what = !amt |] = do
     what_loc <- getGameL10n what
     msgToPP (msg (iconText iconKey) what_loc amt)
@@ -2203,20 +2196,20 @@ withFlagOrProvince :: Monad m =>
     (Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT EU4 m IndentedMessages
+        -> PPT m IndentedMessages
 withFlagOrProvince countryMsg _ stmt@[pdx| %_ = ?_ |]
     = withFlag countryMsg stmt
 withFlagOrProvince _ provinceMsg stmt@[pdx| %_ = !(_ :: Double) |]
     = withProvince provinceMsg stmt
 withFlagOrProvince _ _ stmt = preStatement stmt
 
-withFlagOrProvinceScope :: Monad m =>
+withFlagOrProvinceEU4Scope :: Monad m =>
     (Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT EU4 m IndentedMessages
-withFlagOrProvinceScope countryMsg geogMsg stmt = do
-    mscope <- getCurrentScope
+        -> PPT m IndentedMessages
+withFlagOrProvinceEU4Scope countryMsg geogMsg stmt = do
+    mscope <- getCurrentEU4Scope
     -- If no scope, assume country.
     if fromMaybe False (isGeographic <$> mscope) then
         -- RHS is tag or pronoun - "Has been discovered by <whom>"
@@ -2226,14 +2219,14 @@ withFlagOrProvinceScope countryMsg geogMsg stmt = do
         -- Current usages (i.e. has_discovered) treat them all the same.
         withFlagOrProvince countryMsg countryMsg stmt
 
-tradeMod :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+tradeMod :: Monad m => GenericStatement -> PPT m IndentedMessages
 tradeMod stmt@[pdx| %_ = ?_ |]
     = withLocAtom2 MsgTradeMod MsgHasModifier stmt
 tradeMod stmt@[pdx| %_ = @_ |]
     = textAtom "who" "name" MsgHasTradeModifier (fmap Just . flagText) stmt
 tradeMod stmt = preStatement stmt
 
-isMonth :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+isMonth :: Monad m => GenericStatement -> PPT m IndentedMessages
 isMonth [pdx| %_ = !(num :: Int) |] | num >= 1, num <= 12
     = do
         month_loc <- getGameL10n $ case num of
@@ -2253,22 +2246,22 @@ isMonth [pdx| %_ = !(num :: Int) |] | num >= 1, num <= 12
         msgToPP $ MsgIsMonth month_loc
 isMonth stmt = preStatement stmt
 
-range :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+range :: Monad m => GenericStatement -> PPT m IndentedMessages
 range stmt@[pdx| %_ = !(_ :: Double) |]
     = numericIcon "colonial range" MsgGainColonialRange stmt
 range stmt = withFlag MsgIsInColonialRange stmt
 
-area :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+area :: Monad m => GenericStatement -> PPT m IndentedMessages
 area stmt@[pdx| %_ = @_ |] = compoundMessage MsgArea stmt
 area stmt                  = withLocAtom MsgAreaIs stmt
 
 -- Currently dominant_culture only appears in decisions/Cultural.txt
 -- (dominant_culture = capital).
-dominantCulture :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+dominantCulture :: Monad m => GenericStatement -> PPT m IndentedMessages
 dominantCulture [pdx| %_ = capital |] = msgToPP MsgCapitalCultureDominant
 dominantCulture stmt = preStatement stmt
 
-customTriggerTooltip :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+customTriggerTooltip :: Monad m => GenericStatement -> PPT m IndentedMessages
 customTriggerTooltip [pdx| %_ = @scr |]
     -- ignore the custom tooltip
     = let rest = flip filter scr $ \stmt -> case stmt of
@@ -2277,7 +2270,7 @@ customTriggerTooltip [pdx| %_ = @scr |]
       in indentDown $ ppMany rest
 customTriggerTooltip stmt = preStatement stmt
 
-piety :: Monad m => GenericStatement -> PPT EU4 m IndentedMessages
+piety :: Monad m => GenericStatement -> PPT m IndentedMessages
 piety stmt@[pdx| %_ = !amt |]
     = numericIcon (case amt `compare` (0::Double) of
         LT -> "lack of piety"
@@ -2292,7 +2285,7 @@ piety stmt = preStatement stmt
 hasIdea :: Monad m =>
     (Text -> Int -> ScriptMessage)
         -> GenericStatement
-        -> PPT EU4 m IndentedMessages
+        -> PPT m IndentedMessages
 hasIdea msg stmt@[pdx| $lhs = !n |] | n >= 1, n <= 7 = do
     groupTable <- getIdeas
     let mideagroup = HM.lookup lhs groupTable

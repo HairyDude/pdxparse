@@ -37,7 +37,7 @@ data Decision = Decision
 -- Starts off Nothing/empty everywhere, except name (will get filled in immediately).
 newDecision = Decision undefined undefined Nothing [] [] [] Nothing
 
-processDecisionGroup :: GenericStatement -> PPT EU4 (Either Text) [Either Text (FilePath, Doc)]
+processDecisionGroup :: GenericStatement -> PPT (Either Text) [Either Text (FilePath, Doc)]
 processDecisionGroup (Statement (GenericLhs left) OpEq rhs)
     | left `elem` ["country_decisions", "religion_decisions"]
     = withCurrentFile $ \file -> case rhs of
@@ -47,7 +47,7 @@ processDecisionGroup (Statement (GenericLhs left) OpEq rhs)
         _ -> throwError "unrecognized form for decision block (RHS)"
 processDecisionGroup _ = throwError "unrecognized form for decision block (LHS)"
 
-processDecision :: GenericStatement -> PPT EU4 (Either Text) (Text, Doc)
+processDecision :: GenericStatement -> PPT (Either Text) (Text, Doc)
 processDecision (Statement (GenericLhs decName) OpEq rhs) = case rhs of
     CompoundRhs parts -> do
         decName_loc <- getGameL10n (decName <> "_title")
@@ -61,7 +61,7 @@ processDecision (Statement (GenericLhs decName) OpEq rhs) = case rhs of
     _ -> throwError "unrecognized form for decision (RHS)"
 processDecision _ = throwError "unrecognized form for decision (LHS)"
 
-decisionAddSection :: Monad m => Decision -> GenericStatement -> PPT extra m Decision
+decisionAddSection :: Monad m => Decision -> GenericStatement -> PPT m Decision
 decisionAddSection dec (Statement (GenericLhs sectname) OpEq (CompoundRhs scr))
     = case sectname of
         "potential" -> return dec { dec_potential = scr }
@@ -78,12 +78,12 @@ decisionAddSection dec (Statement (GenericLhs "ai_importance") OpEq _)
 decisionAddSection dec stmt = trace ("warning: unrecognized decision section: " ++ show stmt) $
                               return dec
 
-pp_decision :: Monad m => Decision -> PPT EU4 m Doc
+pp_decision :: Monad m => Decision -> PPT m Doc
 pp_decision dec = do
     version <- asks gameVersion
-    pot_pp'd    <- scope Country (pp_script (dec_potential dec))
-    allow_pp'd  <- scope Country (pp_script (dec_allow dec))
-    effect_pp'd <- scope Country (pp_script (dec_effect dec))
+    pot_pp'd    <- scope EU4Country (pp_script (dec_potential dec))
+    allow_pp'd  <- scope EU4Country (pp_script (dec_allow dec))
+    effect_pp'd <- scope EU4Country (pp_script (dec_effect dec))
     mawd_pp'd    <- mapM ((imsg2doc =<<) . ppAiWillDo) (dec_ai_will_do dec)
     let name = strictText (dec_name dec)
     return . mconcat $

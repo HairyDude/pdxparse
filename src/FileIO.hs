@@ -19,6 +19,8 @@ import System.IO
 
 import qualified Data.Attoparsec.Text as Ap
 
+import Debug.Trace
+
 import Abstract
 import SettingsTypes
 
@@ -36,18 +38,18 @@ readFileRetry path = do
         Right result -> return result
         Left _ -> return $ TE.decodeLatin1 raw
 
-buildPath :: Settings a -> FilePath -> FilePath
-buildPath settings path = steamDir settings </> steamApps settings </> game settings </> path
+buildPath :: Settings -> FilePath -> FilePath
+buildPath settings path = steamDir settings </> steamApps settings </> gameFolder settings </> path
 
 -------------------------------
 -- Reading scripts from file --
 -------------------------------
 
-readScript :: Settings a -> FilePath -> IO GenericScript
+readScript :: Settings -> FilePath -> IO GenericScript
 readScript settings file = do
     let filepath = buildPath settings file
     contents <- readFileRetry filepath
-    case Ap.parseOnly (Ap.skipSpace >> genericScript) contents of
+    case Ap.parseOnly (skipSpace >> genericScript) contents of
         Right result -> return result
         Left error -> do
             putStrLn $ "Couldn't parse " ++ file ++ ": " ++ error

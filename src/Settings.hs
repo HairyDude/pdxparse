@@ -30,6 +30,7 @@ import Control.Monad
 import Localization
 import SettingsTypes
 import Paths_pdxparse
+import qualified EU4.Settings as EU4
 
 -- intermediate structure. Maybe values don't need to be present in the
 -- settings file.
@@ -88,8 +89,8 @@ opts =
 --
 -- The argument is an action to run after all other settings have been
 -- initialized, in order to get extra information.
-readSettings :: (Settings () -> IO a) -> IO (Settings a)
-readSettings getExtra = do
+readSettings :: IO Settings
+readSettings = do
     (opts, nonopts, errs) <- getOpt Permute opts <$> getArgs
     when (not (null errs)) $ do
         forM_ errs $ \err -> putStrLn err
@@ -126,10 +127,10 @@ readSettings getExtra = do
                     Unknown -> fail $ "Unknown platform: " ++ System.Info.os
             let steamAppsCanonicalized = fromMaybe "Steam/steamapps/common" (steamAppsI settingsIn)
                 lang = languageI settingsIn
-                provisionalSettings = (settings ())
+                provisionalSettings = settings
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
-                            , game = gameI settingsIn
+                            , gameFolder = gameI settingsIn
                             , language = "l_" <> lang
                             , languageS = "l_" <> T.unpack lang
                             , gameVersion = T.pack (gameVersionI settingsIn)
@@ -140,8 +141,11 @@ readSettings getExtra = do
                             , currentIndent = Nothing }
             game_l10n <- readL10n provisionalSettings
             let provisionalSettings' = provisionalSettings `setGameL10n` game_l10n
-            extraInfo <- getExtra provisionalSettings'
-            return provisionalSettings' { info = extraInfo }
+            case gameFolder provisionalSettings' of
+                "Europa Universalis IV" -> EU4.fillSettings provisionalSettings'
+                "Stellaris" -> do
+                    putStrLn "Sorry, Stellaris isn't supported yet."
+                    exitFailure
         Left exc -> do
             hPutStrLn stderr $ "Couldn't parse settings: " ++ show exc
             exitFailure

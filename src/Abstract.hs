@@ -19,6 +19,7 @@ module Abstract (
     ,   genericScript2doc
     ,   displayGenericScript
     -- Parsing
+    ,   skipSpace
     ,   genericStatement
     ,   genericScript
     ,   statement

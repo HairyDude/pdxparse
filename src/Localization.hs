@@ -1,7 +1,7 @@
-module Localization
-        ( readL10n -- :: Settings -> IO L10n
-        , module SettingsTypes
-        ) where
+module Localization (
+        readL10n -- :: Settings -> IO L10n
+    ,   module SettingsTypes
+    ) where
 
 import Control.Monad
 import Data.Monoid
@@ -24,11 +24,11 @@ import Yaml
 
 import Debug.Trace
 
-readL10n :: Settings a -> IO L10n
+readL10n :: Settings -> IO L10n
 readL10n settings = do
     let dir = steamDir settings
               </> steamApps settings
-              </> game settings
+              </> gameFolder settings
               </> "localisation"
     files <- filterM doesFileExist
                 . map (dir </>)
