@@ -1,6 +1,7 @@
 module FileIO (
         readFileRetry
     ,   buildPath
+    ,   readScript
     ,   module System.IO
     ) where
 
@@ -16,6 +17,9 @@ import qualified Data.Text.Encoding as TE
 import System.FilePath
 import System.IO
 
+import qualified Data.Attoparsec.Text as Ap
+
+import Abstract
 import SettingsTypes
 
 -- Read a file as Text. Unfortunately EU4 script files use several incompatible
@@ -34,3 +38,17 @@ readFileRetry path = do
 
 buildPath :: Settings a -> FilePath -> FilePath
 buildPath settings path = steamDir settings </> steamApps settings </> game settings </> path
+
+-------------------------------
+-- Reading scripts from file --
+-------------------------------
+
+readScript :: Settings a -> FilePath -> IO GenericScript
+readScript settings file = do
+    let filepath = buildPath settings file
+    contents <- readFileRetry filepath
+    case Ap.parseOnly (Ap.skipSpace >> genericScript) contents of
+        Right result -> return result
+        Left error -> do
+            putStrLn $ "Couldn't parse " ++ file ++ ": " ++ error
+            return []

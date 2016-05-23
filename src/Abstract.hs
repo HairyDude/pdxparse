@@ -19,8 +19,8 @@ module Abstract (
     ,   genericScript2doc
     ,   displayGenericScript
     -- Parsing
-    ,   readScript
     ,   genericStatement
+    ,   genericScript
     ,   statement
     ,   ident
     ) where
@@ -68,8 +68,6 @@ import Data.Attoparsec.Text (Parser, (<?>))
 import qualified Data.Attoparsec.Text as Ap
 
 import Doc
-import FileIO
-import SettingsTypes
 
 -- statement ::= lhs | lhs '=' rhs
 -- Type of statements, parametrized by two custom types, one for left-hand
@@ -314,17 +312,3 @@ rhs2doc _ _ (DateRhs (Date year month day)) =
 
 displayGenericScript :: GenericScript -> Text
 displayGenericScript script = TL.toStrict . displayT . renderPretty 0.8 80 $ genericScript2doc script
-
--------------------------------
--- Reading scripts from file --
--------------------------------
-
-readScript :: Settings a -> FilePath -> IO GenericScript
-readScript settings file = do
-    let filepath = buildPath settings file
-    contents <- readFileRetry filepath
-    case Ap.parseOnly (skipSpace >> genericScript) contents of
-        Right result -> return result
-        Left error -> do
-            putStrLn $ "Couldn't parse " ++ file ++ ": " ++ error
-            return []
