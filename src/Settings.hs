@@ -10,6 +10,7 @@ import Data.Monoid
 
 import Data.Char (toLower)
 import Data.List (intersperse)
+import qualified Data.HashMap.Strict as HM
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Version as V
@@ -32,13 +33,18 @@ import SettingsTypes
 import Paths_pdxparse
 import qualified EU4.Settings as EU4
 
+data GameData
+    = DataEU4 EU4.EU4Data
+--  | DataStellaris StellarisData -- deferred
+    deriving (Show)
+
 -- intermediate structure. Maybe values don't need to be present in the
 -- settings file.
 data SettingsInput = SettingsInput {
         steamDriveI  :: Maybe String
     ,   steamDirI    :: Maybe FilePath
     ,   steamAppsI   :: Maybe FilePath
-    ,   gameI        :: String
+    ,   gameFolderI  :: String
     ,   languageI    :: Text
     ,   gameVersionI :: String
     } deriving (Show)
@@ -78,8 +84,8 @@ platform = case map toLower System.Info.os of
         | otherwise                -> Unknown
 {-# INLINE platform #-}
 
-opts :: [OptDescr CLArgs]
-opts =
+programOpts :: [OptDescr CLArgs]
+programOpts =
     [ Option ['p'] ["paths"]   (NoArg Paths)   "show location of configuration files"
     , Option ['v'] ["version"] (NoArg Version) "show version information"
     ]
@@ -89,14 +95,14 @@ opts =
 --
 -- The argument is an action to run after all other settings have been
 -- initialized, in order to get extra information.
-readSettings :: IO Settings
+readSettings :: IO (Settings, GameState)
 readSettings = do
-    (opts, nonopts, errs) <- getOpt Permute opts <$> getArgs
+    (opts, nonopts, errs) <- getOpt Permute programOpts <$> getArgs
     when (not (null errs)) $ do
         forM_ errs $ \err -> putStrLn err
         exitFailure
 
-    settingsFile <- getDataFileName "settings.yml"
+    settingsFilePath <- getDataFileName "settings.yml"
 
     -- Check if info args were specified. If so, honour them, then exit.
     when (Paths `elem` opts || Version `elem` opts) $ do
@@ -104,10 +110,10 @@ readSettings = do
             let V.Version branch _ = version
             in putStrLn $ "pdxparse " ++ concat (intersperse "." (map show branch))
         when (Paths `elem` opts) $
-            putStrLn $ "Settings file is at " ++ settingsFile
+            putStrLn $ "Settings file is at " ++ settingsFilePath
         exitSuccess
 
-    result <- decodeFileEither settingsFile
+    result <- decodeFileEither settingsFilePath
     case result of
         Right settingsIn -> do
             steamDirCanonicalized <- case steamDirI settingsIn of
@@ -127,24 +133,29 @@ readSettings = do
                     Unknown -> fail $ "Unknown platform: " ++ System.Info.os
             let steamAppsCanonicalized = fromMaybe "Steam/steamapps/common" (steamAppsI settingsIn)
                 lang = languageI settingsIn
-                provisionalSettings = settings
+                provisionalSettings = Settings
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
-                            , gameFolder = gameI settingsIn
+                            , game = GameUnknown -- filled in later
+                            , gameFolder = gameFolderI settingsIn
                             , language = "l_" <> lang
                             , languageS = "l_" <> T.unpack lang
                             , gameVersion = T.pack (gameVersionI settingsIn)
-                            , settingsFile = settingsFile
+                            , gameL10n = HM.empty -- filled in later
+                            , langs = ["en"]
+                            , settingsFile = settingsFilePath
                             , clargs = opts
-                            , filesToProcess = nonopts
-                            , currentFile = Nothing
-                            , currentIndent = Nothing }
+                            , filesToProcess = nonopts }
+
             game_l10n <- readL10n provisionalSettings
             let provisionalSettings' = provisionalSettings `setGameL10n` game_l10n
             case gameFolder provisionalSettings' of
                 "Europa Universalis IV" -> EU4.fillSettings provisionalSettings'
                 "Stellaris" -> do
                     putStrLn "Sorry, Stellaris isn't supported yet."
+                    exitFailure
+                other -> do
+                    putStrLn $ "I don't know how to handle " ++ other ++ "!"
                     exitFailure
         Left exc -> do
             hPutStrLn stderr $ "Couldn't parse settings: " ++ show exc

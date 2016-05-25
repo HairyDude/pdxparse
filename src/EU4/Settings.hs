@@ -1,12 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 module EU4.Settings (
         fillSettings
+    ,   writeEU4Scripts 
+    ,   module EU4.Types
     ) where
 
-import Control.Monad (filterM, forM, when)
+import Control.Monad.State
 
+import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
---import Data.Text (Text)
 
 import System.Directory
 import System.FilePath
@@ -14,68 +16,95 @@ import System.FilePath
 import Abstract
 import FileIO
 import SettingsTypes
-import EU4.IdeaGroups
 import EU4.Types
 
 -- Handlers
-import EU4.Decisions (processDecisionGroup)
-import EU4.Missions (processMission)
-import EU4.Events (processEU4Event)
-import EU4.Policies (processPolicy)
+import EU4.Decisions (parseEU4Decisions, writeEU4Decisions)
+import EU4.IdeaGroups (parseEU4IdeaGroups, writeEU4IdeaGroups)
+--import EU4.Missions (parseEU4Missions, writeEU4Missions)
+import EU4.Events (parseEU4Events, writeEU4Events)
+--import EU4.Policies (parseEU4Policies, writeEU4Policies)
 
-fillSettings :: Settings -> IO Settings
-fillSettings settings = do
-    ideaGroupTable <- readIdeaGroupTable settings
-    return $ settings {
+fillSettings :: Settings -> IO (Settings, GameState)
+fillSettings settings = return $
+    (settings {
         game = GameEU4 {
-            gEU4 = EU4 {
-                scopeStack = []
-            ,   ideas = ideaGroupTable
-            }
-        ,   readScripts = ScriptReader readEU4Scripts
-        ,   features =
-                ["decisions"
-                ,"missions"
-                ,"events"
-                ,"policies"
-                ,"ideagroups"
-                ]
-        ,   handlers = HM.fromList
-                [("decisions",  Handler processDecisionGroup)
-                ,("missions",   Handler processMission)
-                ,("events",     Handler processEU4Event)
-                ,("policies",   Handler processPolicy)
-                ,("ideagroups", Handler processIdeaGroup)
-                ]
+            readScripts = ScriptReader readEU4Scripts
+        ,   parseScripts = ScriptParser parseEU4Scripts
+        ,   writeScripts = ScriptWriter writeEU4Scripts
+        ,   eu4data = EU4Data HM.empty HM.empty HM.empty
         }
-    }
+    }, EU4State (EU4 {
+        scopeStack = []
+       }) Nothing Nothing)
 
 -- Read all scripts in a directory.
 -- Return: for each file, its path relative to the game root and the parsed
 --         script.
-readEU4Scripts :: Settings -> FilePath -> IO [(FilePath, GenericScript)]
-readEU4Scripts settings category =
-    let sourceSubdir = case category of
-            "policies" -> "common" </> "policies"
-            "ideagroups" -> "common" </> "ideas"
-            _          -> category
-        sourceDir = buildPath settings sourceSubdir
-    in do
-        files <- filterM (doesFileExist . buildPath settings . (sourceSubdir </>)) =<< getDirectoryContents sourceDir
-        forM files $ \filename ->
-            let target = sourceSubdir </> filename in
-            if filename == "00_basic_ideas.txt"
-            -- generic ideas are already parsed, don't do it again
-            then return (collateBasicIdeaGroups target settings)
-            else do
-                content <- readScript settings target
+readEU4Scripts :: PPT IO GameScripts
+readEU4Scripts = GameScriptsEU4 <$> do
+    {-
+    concat <$> forM ["decisions"
+--                               ,"missions"
+                                 ,"events"
+--                               ,"policies"
+                                 ,"ideagroups"
+                                 ] $ \category -> -}
+    let readEU4Script :: String -> PPT IO (HashMap String GenericScript)
+        readEU4Script category = do
+            settings <- get
+            let sourceSubdir = case category of
+                    "policies" -> "common" </> "policies"
+                    "ideagroups" -> "common" </> "ideas"
+                    _          -> category
+                sourceDir = buildPath settings sourceSubdir
+            files <- liftIO (filterM (doesFileExist . buildPath settings . (sourceSubdir </>))
+                                     =<< getDirectoryContents sourceDir)
+            results <- forM files $ \filename -> do
+                let target = sourceSubdir </> filename
+                content <- join (liftIO . flip readScript target <$> get)
                 when (null content) $
-                    hPutStrLn stderr $ "Warning: " ++ target ++ " contains no scripts - failed parse? Expected feature type " ++ category
+                    liftIO $ hPutStrLn stderr $
+                        "Warning: " ++ target
+                            ++ " contains no scripts - failed parse? Expected feature type "
+                            ++ category
                 return (target, content)
+            return $ foldl (flip (uncurry HM.insert)) HM.empty results
 
--- Return fake info for the ideas handler to handle basic ideas.
-collateBasicIdeaGroups :: FilePath -> Settings -> (FilePath, GenericScript)
-collateBasicIdeaGroups file settings
-    = (file,
-       map (\key -> Statement (GenericLhs "basic idea group") OpEq (GenericRhs key))
-           (HM.keys . ideas . gEU4 . game $ settings)) -- If this blows up, we can't continue anyway.
+    ideaGroups <- readEU4Script "ideagroups"
+    decisions <- readEU4Script "decisions"
+    events <- readEU4Script "events"
+    return $ EU4Scripts {
+            eu4ideaGroupScripts = ideaGroups
+        ,   eu4decisionScripts = decisions
+        ,   eu4eventScripts = events
+        }
+
+parseEU4Scripts :: Monad m => GameScripts -> PPT m ()
+parseEU4Scripts (GameScriptsEU4 (EU4Scripts {
+                    eu4ideaGroupScripts = ideaGroupScripts
+                ,   eu4decisionScripts = decisionScripts
+                ,   eu4eventScripts = eventScripts
+                })) = do
+    ideaGroups <- parseEU4IdeaGroups ideaGroupScripts
+    decisions <- parseEU4Decisions decisionScripts
+    events <- parseEU4Events eventScripts
+    
+    modify $ \s -> case game s of
+        GameEU4 { eu4data = gdata }
+            -> s {
+                game = (game s) {
+                    eu4data = gdata {
+                        eu4events = events
+                    ,   eu4decisions = decisions
+                    ,   eu4ideagroups = ideaGroups
+                    }
+                }
+            }
+        _ -> error "parseEU4Scripts passed wrong kind of scripts!"
+
+writeEU4Scripts :: PPT IO ()
+writeEU4Scripts = do
+    writeEU4IdeaGroups
+    writeEU4Events
+    writeEU4Decisions

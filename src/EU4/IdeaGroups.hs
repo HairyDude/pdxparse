@@ -1,20 +1,18 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings, FlexibleContexts, QuasiQuotes #-}
 module EU4.IdeaGroups (
         IdeaGroup (..)
     ,   Idea (..)
-    ,   readIdeaGroup'
-    ,   readIdeaGroupTable
-    ,   processIdeaGroup
+    ,   parseEU4IdeaGroups
+    ,   writeEU4IdeaGroups 
     ) where
 
-import Control.Arrow (first, (***))
+import Control.Arrow (first)
 import Control.Monad
 import Control.Monad.Except
-import Control.Monad.Reader
+import Control.Monad.State
 
 import Data.Array ((!))
 import Data.Either
-import Data.List
 import Data.Monoid
 
 import Data.HashMap.Strict (HashMap)
@@ -29,56 +27,52 @@ import qualified Data.Text.Encoding as TE
 import Text.Regex.TDFA (Regex)
 import qualified Text.Regex.TDFA as RE
 
-import System.FilePath
+import Debug.Trace
 
 import Abstract
 import Doc
 import EU4.Common
-import EU4.Types
+import EU4.IO
 --import EU4.SuperCommon
-import FileIO
 import Messages
+import QQ
 import SettingsTypes
 
 -- Starts off Nothing everywhere, except name (will get filled in immediately).
-newIdeaGroup = IdeaGroup undefined undefined Nothing Nothing Nothing Nothing False [] Nothing
+newIdeaGroup :: IdeaGroup
+newIdeaGroup = IdeaGroup undefined undefined Nothing Nothing Nothing Nothing False [] Nothing Nothing
 
-readIdeaGroupTable :: Settings -> IO IdeaTable
-readIdeaGroupTable settings = do
-    ideaGroupScripts <- readScript settings (buildPath settings "common/ideas/00_basic_ideas.txt")
-    let (errs, ideaGroups) = partitionEithers $
-            map (readIdeaGroup' settings)
-                ideaGroupScripts
-    forM_ errs $ \err -> hPutStrLn stderr $ "Warning while parsing idea groups: " ++ T.unpack err
-    return . HM.fromList . map (\ig -> (ig_name ig, ig)) $ ideaGroups
+parseEU4IdeaGroups :: Monad m => HashMap String GenericScript -> PPT m IdeaTable
+parseEU4IdeaGroups ideaGroupScripts = do
+    groupFiles <- sequenceA $ flip HM.mapWithKey ideaGroupScripts $ \path ideaGroupScript -> do
+        -- For each file, parse the groups
+        groupsWithErrors <- setCurrentFile path (mapM (runExceptT . parseIdeaGroup) ideaGroupScript)
+        let (errs, groups) = partitionEithers groupsWithErrors
+        forM_ errs $ \err -> traceM $ "Warning while parsing idea groups: " ++ err
+        return . HM.fromList . map (\ig -> (ig_name ig, ig)) $ groups
+    -- groupFiles :: HashMap String (HashMap Text IdeaGroup)
+    -- This maps a filename to a map of id -> group.
+    return (HM.unions (HM.elems groupFiles))
 
-readIdeaGroup' :: Settings -> GenericStatement -> Either Text IdeaGroup
-readIdeaGroup' settings stmt = runReaderT (readIdeaGroup stmt) settings
-
-readIdeaGroup :: MonadError Text m => GenericStatement -> PPT m IdeaGroup
-readIdeaGroup (StatementBare _) = throwError "bare statement at top level"
-readIdeaGroup (Statement (GenericLhs "basic idea group") OpEq (GenericRhs right))
-    -- This is a fake entry for an idea group that has already been parsed.
-    -- Fetch the corresponding basic idea group from settings.
-    = do
-        groups <- getIdeas
-        case HM.lookup right groups of
-            Nothing -> throwError ("Idea group not found: " <> right)
-            Just group -> return group
-readIdeaGroup (Statement left OpEq right) = case right of
+parseIdeaGroup :: Monad m =>
+    GenericStatement -> ExceptT String (PPT m) IdeaGroup
+parseIdeaGroup (StatementBare _) = throwError "bare statement at top level"
+parseIdeaGroup [pdx| %left = %right |] = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
         GenericLhs name -> do
-            name_loc <- getGameL10n name
-            foldM ideaGroupAddSection
-                        (newIdeaGroup { ig_name = name
-                                      , ig_name_loc = name_loc }) parts
+            name_loc <- lift $ getGameL10n name
+            ig <- foldM (curry (lift . uncurry ideaGroupAddSection))
+                      (newIdeaGroup { ig_name = name
+                                    , ig_name_loc = name_loc }) parts
+            lift . withCurrentFile $ \file -> return (ig { ig_path = Just file })
 
     _ -> throwError "warning: unknown statement in idea group file"
+parseIdeaGroup _ = error "idea group defined via operator other than ="
 
 ideaGroupAddSection :: Monad m => IdeaGroup -> GenericStatement -> PPT m IdeaGroup
-ideaGroupAddSection ig (Statement (GenericLhs label) OpEq rhs) =
+ideaGroupAddSection ig [pdx| $label = %rhs |] =
     case label of
         "category" -> case T.toLower <$> textRhs rhs of
             Just "adm" -> return ig { ig_category = Just Administrative }
@@ -118,11 +112,6 @@ iconForIdea idea = case iconForIdea' idea of
     Nothing -> mempty
     Just icon -> strictText icon
 
-processIdeaGroup :: MonadError Text m => GenericStatement -> PPT m [Either Text (FilePath, Doc)]
-processIdeaGroup stmt = withCurrentFile $ \file -> do
-    ig <- readIdeaGroup stmt
-    (:[]) . Right . ((file </>) *** fixup) <$> ppIdeaGroup ig
-
 -- Do some text substitutions to add 'ideaNicon' args to the idea group
 -- template, and remove/comment out undesirable icon templates.
 --
@@ -158,9 +147,26 @@ fixup = strictText . T.unlines . map (TE.decodeUtf8
             [pre, "idea", nth, "icon = ", iconFileB (fst (matcharr ! 2))
             ,"\n| idea", nth, "effect = ", post]
 
-ppIdeaGroup :: MonadError Text m => IdeaGroup -> PPT m (FilePath, Doc)
-ppIdeaGroup ig = do
-    version <- asks gameVersion
+writeEU4IdeaGroups :: PPT IO ()
+writeEU4IdeaGroups = do
+    gdata <- gets game
+    case gdata of
+        GameEU4 { eu4data = EU4Data { eu4ideagroups = groups } } -> do
+            writeFeatures "idea groups"
+                          pathedGroups
+                          ppIdeaGroup {- need IdeaGroup -> PPT IO (FilePath, Doc) -}
+            where
+                pathedGroups :: [Feature IdeaGroup]
+                pathedGroups = map (\ig -> Feature {
+                                            featurePath = ig_path ig
+                                        ,   featureId = Just (ig_name ig)
+                                        ,   theFeature = Right ig })
+                                    (HM.elems groups)
+        _ -> error "writeEU4IdeaGroups given non-EU4 state!"
+
+ppIdeaGroup :: Monad m => IdeaGroup -> PPT (ExceptT Text m) Doc
+ppIdeaGroup ig = fixup <$> do
+    version <- gets gameVersion
     let name = ig_name_loc ig
     case (ig_bonus ig, length (ig_ideas ig)) of
         (Just bonus, 7) -> do
@@ -180,17 +186,16 @@ ppIdeaGroup ig = do
                     -}
                     -- Instead, replace bullets with colons.
                     [] -> return mempty
-                    (m:ms) -> do
-                        first <- imsg2doc (unindent [m])
-                        rest <- mapM (\m -> (":" <>) <$> imsg2doc [m]) (unindent ms)
-                        return (first <> line <> vsep rest)
+                    (msg:msgs) -> do
+                        firstmsg <- imsg2doc (unindent [msg])
+                        rest <- mapM (\m -> (":" <>) <$> imsg2doc [m]) (unindent msgs)
+                        return (firstmsg <> line <> vsep rest)
             bonus_pp'd <- imsg2doc . unindent =<< ppMany bonus
             mtrigger_pp'd <- case ig_trigger ig of
                 Nothing -> return Nothing
                 Just trigger -> Just <$> (imsg2doc =<< ppMany trigger)
             let name_loc = strictText . T.replace " Ideas" "" $ name
                 ig_id_t = ig_name ig
-                ig_id_s = T.unpack ig_id_t
                 ig_id = strictText ig_id_t
             trads <- case ig_start ig of
                 Just [trad1s, trad2s] -> do
@@ -199,7 +204,7 @@ ppIdeaGroup ig = do
                     return $ Right (trad1, trad2)
                 Just trads -> return . Left . Just . length $ trads
                 Nothing -> return (Left Nothing)
-            return . (,) ig_id_s . mconcat $
+            return . mconcat $
                 ["<section begin=", ig_id, "/>", line
                 ,"{{Idea group", line
                 ,"| name = ", name_loc, line

@@ -1,85 +1,126 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, QuasiQuotes, LambdaCase #-}
 module EU4.Events (
-        processEU4Event
+        parseEU4Events
+    ,   writeEU4Events
     ) where
 
 import Prelude hiding (mapM)
 
 import Debug.Trace
 
-import Control.Arrow (first)
+import Control.Arrow ((&&&))
 import Control.Monad.Except
-import Control.Monad.Reader hiding (mapM)
+import Control.Monad.State hiding (mapM)
 
 import Data.List (intersperse)
-import Data.Either
 import Data.Maybe
 import Data.Monoid
-import Data.Traversable
 
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HM
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 
 import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>), (</>))
-import qualified Text.PrettyPrint.Leijen.Text as PP
-
-import System.FilePath
 
 import Abstract
 import EU4.Common
+import FileIO
 import Messages
+import QQ
 import SettingsTypes
 
--- Object that accumulates info about an event.
-data EU4Event = EU4Event
-    {   eu4evt_id :: Maybe Text -- event id
-    ,   eu4evt_title :: Maybe Text -- event title l10n key
-    ,   eu4evt_desc :: Maybe Text -- event description l10n key
-    ,   eu4evt_picture :: Maybe Text -- event picture
-    ,   eu4evt_trigger :: Maybe GenericScript
-    ,   eu4evt_is_triggered_only :: Maybe Bool
-    ,   eu4evt_mean_time_to_happen :: Maybe GenericScript
-    ,   eu4evt_immediate :: Maybe GenericScript
-    ,   eu4evt_options :: Maybe [Option]
-    } deriving (Show)
-data Option = Option
-    {   eu4opt_name :: Maybe Text
-    ,   eu4opt_trigger :: Maybe GenericScript
-    ,   eu4opt_ai_chance :: Maybe GenericScript
-    ,   eu4opt_effects :: Maybe GenericScript
-    } deriving (Show)
 -- Starts off Nothing everywhere.
-newEU4Event = EU4Event Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
-newOption = Option Nothing Nothing Nothing Nothing
+newEU4Event :: EU4Scope -> EU4Event
+newEU4Event escope = EU4Event Nothing Nothing Nothing Nothing escope Nothing Nothing Nothing Nothing Nothing Nothing
+newEU4Option :: EU4Option
+newEU4Option = EU4Option Nothing Nothing Nothing Nothing
 
-processEU4Event :: MonadError Text m => GenericStatement -> PPT m [Either Text (FilePath, Doc)]
-processEU4Event (StatementBare _) = throwError "bare statement at top level"
-processEU4Event (Statement left OpEq right) = fmap (:[]) . withCurrentFile $ \file -> case right of
+-- Parse events and return them.
+parseEU4Events :: Monad m => HashMap String GenericScript -> PPT m (HashMap Text EU4Event)
+parseEU4Events scripts = HM.unions . HM.elems <$> do
+    tryParse <- hoistExceptions $
+        HM.traverseWithKey
+            (\sourceFile scr ->
+                setCurrentFile sourceFile $ mapM parseEU4Event scr)
+            scripts 
+    case tryParse of
+        Left err -> do
+            traceM $ "Completely failed parsing events: " ++ T.unpack err
+            return HM.empty
+        Right eventsFilesOrErrors ->
+            flip HM.traverseWithKey eventsFilesOrErrors $ \sourceFile eevts ->
+                fmap (mkEvtMap . catMaybes) . forM eevts $ \case
+                    Left err -> do
+                        traceM $ "Error parsing events in " ++ sourceFile
+                                 ++ ": " ++ T.unpack err
+                        return Nothing
+                    Right mevt -> return mevt
+                where mkEvtMap :: [EU4Event] -> HashMap Text EU4Event
+                      mkEvtMap = HM.fromList . map (fromJust . eu4evt_id &&& id)
+                        -- Events returned from parseEvent are guaranteed to have an id.
+
+writeEU4Events :: PPT IO ()
+writeEU4Events = do
+    gdata <- gets game
+    case gdata of
+        GameEU4 { eu4data = EU4Data { eu4events = events } } ->
+            writeFeatures "events"
+                          pathedEvents
+                          pp_event
+            where
+                pathedEvents :: [Feature EU4Event]
+                pathedEvents = map (\evt -> Feature {
+                                            featurePath = eu4evt_path evt
+                                        ,   featureId = eu4evt_id evt
+                                        ,   theFeature = Right evt })
+                                    (HM.elems events)
+        _ -> error "writeEU4Events passed wrong game's data!"
+
+-- Parse a statement in an events file. Some statements aren't events; for
+-- those, and for any obvious errors, return Nothing.
+parseEU4Event :: MonadError Text m => GenericStatement -> PPT m (Either Text (Maybe EU4Event))
+parseEU4Event (StatementBare _) = throwError "bare statement at top level"
+parseEU4Event [pdx| %left = %right |] = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
-        GenericLhs _ -> hoistErrors
-            (first (file </>) <$> (pp_event =<< foldM eventAddSection newEU4Event parts))
+        GenericLhs etype ->
+            let mescope = case etype of
+                    "country_event" -> Just EU4Country
+                    "province_event" -> Just EU4Province
+                    _ -> Nothing
+            in case mescope of
+                Nothing -> throwError $ "unrecognized event type " <> etype
+                Just escope -> do
+                    mevt <- hoistErrors (foldM eventAddSection (Just (newEU4Event escope)) parts)
+                    case mevt of
+                        Left err -> return (Left err)
+                        Right Nothing -> return (Right Nothing)
+                        Right (Just evt) -> withCurrentFile $ \file ->
+                            let pathedEvt = evt { eu4evt_path = Just file }
+                            in  if isJust (eu4evt_id pathedEvt)
+                                then return (Right (Just pathedEvt))
+                                else return (Left $ "error parsing events in " <> T.pack file
+                                             <> ": missing event id")
 
-    _ -> return $ Right (file </> "administrivia", PP.empty)
+    _ -> return (Right Nothing)
+parseEU4Event _ = throwError "operator other than ="
 
-eventAddSection :: MonadError Text m => EU4Event -> GenericStatement -> PPT m EU4Event
-eventAddSection evt (Statement (GenericLhs label) OpEq rhs) = withCurrentFile $ \file ->
-    case label of
+eventAddSection :: MonadError Text m => Maybe EU4Event -> GenericStatement -> PPT m (Maybe EU4Event)
+eventAddSection Nothing _ = return Nothing
+eventAddSection (Just evt) [pdx| $label = %rhs |] = withCurrentFile $ \file ->
+    Just <$> case label of
         "id" -> case (textRhs rhs, floatRhs rhs) of
             (Just tid, _) -> return evt { eu4evt_id = Just tid }
             (_, Just nid) -> return evt { eu4evt_id = Just (T.pack $ show (nid::Int)) }
             _ -> throwError $ "bad id in " <> T.pack file <> ": " <> T.pack (show rhs)
         "title" -> case textRhs rhs of
-            Just title -> do
-                t_loc <- getGameL10nIfPresent title
-                return evt { eu4evt_title = Just title }
+            Just title -> return evt { eu4evt_title = Just title }
             _ -> throwError $ "bad title in " <> T.pack file
         "desc" -> case textRhs rhs of
-            Just desc -> do
-                desc_loc <- getGameL10nIfPresent desc
-                return evt { eu4evt_desc = Just desc }
+            Just desc -> return evt { eu4evt_desc = Just desc }
             _ -> throwError "bad desc"
         "picture" -> case textRhs rhs of
             Just pic -> return evt { eu4evt_picture = Just pic }
@@ -102,8 +143,8 @@ eventAddSection evt (Statement (GenericLhs label) OpEq rhs) = withCurrentFile $ 
             _ -> throwError "bad immediate section"
         "option" -> case rhs of
             CompoundRhs option -> do
-                newOptions <- addOption (eu4evt_options evt) option
-                return evt { eu4evt_options = newOptions }
+                newEU4Options <- addEU4Option (eu4evt_options evt) option
+                return evt { eu4evt_options = newEU4Options }
             _ -> throwError "bad option"
         "fire_only_once" -> return evt -- do nothing
         "major" -> return evt -- do nothing
@@ -111,19 +152,17 @@ eventAddSection evt (Statement (GenericLhs label) OpEq rhs) = withCurrentFile $ 
         _ -> throwError $ "unrecognized event section in " <> T.pack file <> ": " <> label
 eventAddSection evt _ = return evt
 
-addOption :: Monad m => Maybe [Option] -> GenericScript -> PPT m (Maybe [Option])
-addOption Nothing opt = addOption (Just []) opt
-addOption (Just opts) opt = do
-    opt <- foldM optionAddStatement newOption opt
-    return $ Just (opts ++ [opt])
+addEU4Option :: Monad m => Maybe [EU4Option] -> GenericScript -> PPT m (Maybe [EU4Option])
+addEU4Option Nothing opt = addEU4Option (Just []) opt
+addEU4Option (Just opts) opt = do
+    optn <- foldM optionAddStatement newEU4Option opt
+    return $ Just (opts ++ [optn])
 
-optionAddStatement :: Monad m => Option -> GenericStatement -> PPT m Option
-optionAddStatement opt stmt@(Statement (GenericLhs label) OpEq rhs) =
+optionAddStatement :: Monad m => EU4Option -> GenericStatement -> PPT m EU4Option
+optionAddStatement opt stmt@[pdx| $label = %rhs |] =
     case label of
         "name" -> case textRhs rhs of
-            Just name ->
-                (\name_loc -> opt { eu4opt_name = Just name })
-                <$> getGameL10nIfPresent name
+            Just name -> return $ opt { eu4opt_name = Just name }
             _ -> error "bad option name"
         "ai_chance" -> case rhs of
             CompoundRhs ai_chance -> return $ opt { eu4opt_ai_chance = Just ai_chance }
@@ -145,7 +184,7 @@ optionAddEffect Nothing stmt = optionAddEffect (Just []) stmt
 optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 
 -- Pretty-print an event, or fail.
-pp_event :: forall m. MonadError Text m => EU4Event -> PPT m (FilePath, Doc)
+pp_event :: forall m. MonadError Text m => EU4Event -> PPT m Doc
 pp_event evt = case (eu4evt_id evt
                     ,eu4evt_title evt
                     ,eu4evt_options evt) of
@@ -153,7 +192,7 @@ pp_event evt = case (eu4evt_id evt
         | (isJust (eu4evt_is_triggered_only evt) ||
            isJust (eu4evt_mean_time_to_happen evt)) -> do
         -- Valid event
-        version <- asks gameVersion
+        version <- gets gameVersion
         (conditional, options_pp'd) <- pp_options options
         titleLoc <- getGameL10n title
         descLoc <- getGameL10n `mapM` eu4evt_desc evt
@@ -173,7 +212,7 @@ pp_event evt = case (eu4evt_id evt
         trigger_pp'd <- evtArg "trigger" eu4evt_trigger pp_script
         mmtth_pp'd <- mapM pp_mtth (eu4evt_mean_time_to_happen evt)
         immediate_pp'd <- evtArg "immediate" eu4evt_immediate pp_script
-        return . (,) (T.unpack eid) . mconcat $
+        return . mconcat $
             ["<section begin=", evtId, "/>", line
             ,"{{Event", line
             ,"| version = ", strictText version, line
@@ -218,13 +257,13 @@ pp_event evt = case (eu4evt_id evt
     (Just eid, _, _) ->
         throwError ("is_triggered_only and mean_time_to_happen missing for event id " <> eid)
 
-pp_options :: MonadError Text m => [Option] -> PPT m (Bool, Doc)
+pp_options :: MonadError Text m => [EU4Option] -> PPT m (Bool, Doc)
 pp_options opts = do
     let triggered = any (isJust . eu4opt_trigger) opts
     options_pp'd <- mapM (pp_option triggered) opts
     return (triggered, mconcat . (line:) . intersperse line $ options_pp'd)
 
-pp_option :: MonadError Text m => Bool -> Option -> PPT m Doc
+pp_option :: MonadError Text m => Bool -> EU4Option -> PPT m Doc
 pp_option triggered opt = do
     optNameLoc <- getGameL10n `mapM` eu4opt_name opt
     case optNameLoc of

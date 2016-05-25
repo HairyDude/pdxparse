@@ -17,7 +17,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 
-import Text.PrettyPrint.Leijen.Text as PP hiding ((<>), (<$>), (</>))
+import Text.PrettyPrint.Leijen.Text as PP hiding ((<>), (<$>), (</>), cat)
 
 import Numeric (showFFloat)
 
@@ -46,7 +46,7 @@ pp_nosigned pp_num n =
 -- Pretty-print a Double. If it's a whole number, display it without a decimal.
 pp_float :: Double -> Doc
 pp_float n =
-    let trunc = floor n
+    let trunc = floor n :: Int
     in if fromIntegral trunc == n
         then PP.int (fromIntegral trunc)
         else PP.text . TL.pack $ showFFloat Nothing n ""

@@ -6,7 +6,7 @@ module EU4.Common (
     ,   ppMany
     ,   iconKey, iconFile, iconFileB
     ,   AIWillDo (..), AIModifier (..)
-    ,   EU4Scope (..), EU4 (..), eu4
+    ,   EU4Scope (..), EU4 (..)
     ,   scope, getCurrentEU4Scope
     ,   getIdeas
     ,   ppAiWillDo, ppAiMod
@@ -20,6 +20,7 @@ import Debug.Trace
 import Control.Applicative (liftA2)
 import Control.Arrow
 import Control.Monad.Reader hiding (sequence, mapM, forM)
+import Control.Monad.State hiding (sequence, mapM, forM)
 
 import Data.Char
 import Data.List
@@ -41,7 +42,6 @@ import qualified Data.HashMap.Strict as HM
 import Data.Trie (Trie)
 import qualified Data.Trie as Tr
 
-import Data.Set (Set)
 import qualified Data.Set as S
 
 import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>), int, double)
@@ -61,28 +61,17 @@ isGeographic EU4TradeNode = True
 isGeographic EU4Geographic = True
 isGeographic EU4Bonus = False
 
-eu4 :: EU4
-eu4 = EU4 { ideas = HM.empty, scopeStack = [] }
-
 scope :: Monad m => EU4Scope -> PPT m a -> PPT m a
-scope s = local (\r ->
-    let oldgame = game r
-        oldeu4 = gEU4 oldgame
-        oldstack = scopeStack oldeu4
-    in  r {
-            game = oldgame {
-                gEU4 = oldeu4 {
-                    scopeStack = s : oldstack
-                }
-            }
-        })
+scope s = local $ \st ->
+    let oldeu4state = gEU4 st
+    in  st { gEU4 = oldeu4state { scopeStack = s : scopeStack oldeu4state } }
 
 -- Get current scope, if there is one.
 getCurrentEU4Scope :: Monad m => PPT m (Maybe EU4Scope)
-getCurrentEU4Scope = asks (listToMaybe . scopeStack . gEU4 . game)
+getCurrentEU4Scope = asks (listToMaybe . scopeStack . gEU4)
 
 getIdeas :: Monad m => PPT m IdeaTable
-getIdeas = asks (ideas . gEU4 . game)
+getIdeas = gets (eu4ideagroups . eu4data . game)
 
 -- no particular order from here... TODO: organize this!
 
@@ -794,11 +783,12 @@ data MTTHModifier = MTTHModifier
         {   mtthmod_factor :: Maybe Double
         ,   mtthmod_conditions :: GenericScript
         } deriving Show
+newMTTH :: MTTH
 newMTTH = MTTH Nothing Nothing Nothing []
+newMTTHMod :: MTTHModifier
 newMTTHMod = MTTHModifier Nothing []
 pp_mtth :: Monad m => GenericScript -> PPT m Doc
-pp_mtth scr
-    = pp_mtth' $ foldl' addField newMTTH scr
+pp_mtth = pp_mtth' . foldl' addField newMTTH
     where
         addField mtth [pdx| years    = !n   |] = mtth { mtth_years = Just n }
         addField mtth [pdx| months   = !n   |] = mtth { mtth_months = Just n }
@@ -928,8 +918,8 @@ withLocAtomIconEU4Scope :: Monad m =>
         -> (Text -> Text -> ScriptMessage)
         -> GenericStatement -> PPT m IndentedMessages
 withLocAtomIconEU4Scope countrymsg provincemsg stmt = do
-    scope <- getCurrentEU4Scope
-    case scope of
+    thescope <- getCurrentEU4Scope
+    case thescope of
         Just EU4Country -> withLocAtomIcon countrymsg stmt
         Just EU4Province -> withLocAtomIcon provincemsg stmt
         _ -> preStatement stmt -- others don't make sense
@@ -938,8 +928,8 @@ withProvince :: Monad m =>
     (Text -> ScriptMessage)
         -> GenericStatement
         -> PPT m IndentedMessages
-withProvince msg [pdx| %lhs = !id |]
-    = withLocAtom msg [pdx| %lhs = $(T.pack ("PROV" <> show (id::Int))) |]
+withProvince msg [pdx| %lhs = !provid |]
+    = withLocAtom msg [pdx| %lhs = $(T.pack ("PROV" <> show (provid::Int))) |]
 withProvince _ stmt = preStatement stmt
 
 -- As withLocAtom but no l10n.
@@ -954,9 +944,9 @@ withNonlocAtom2 :: Monad m =>
         -> (Text -> Text -> ScriptMessage)
         -> GenericStatement
         -> PPT m IndentedMessages
-withNonlocAtom2 submsg msg [pdx| %_ = ?text |] = do
+withNonlocAtom2 submsg msg [pdx| %_ = ?txt |] = do
     extratext <- messageText submsg
-    msgToPP $ msg extratext text
+    msgToPP $ msg extratext txt
 withNonlocAtom2 _ _ stmt = preStatement stmt
 
 -- Table of script atom -> icon key. Only ones that are different are listed.
@@ -1141,7 +1131,7 @@ numericIconBonus the_icon plainmsg yearlymsg [pdx| %_ = !amt |]
             yearly = msgToPP $ yearlymsg icont amt
         case mscope of
             Nothing -> yearly -- ideas / bonuses
-            Just scope -> case scope of
+            Just thescope -> case thescope of
                 EU4Bonus -> yearly
                 _ -> -- act as though it's country for all others
                     msgToPP $ plainmsg icont amt
@@ -1181,8 +1171,9 @@ data TextValue = TextValue
         {   tv_what :: Maybe Text
         ,   tv_value :: Maybe Double
         }
+newTV :: TextValue
 newTV = TextValue Nothing Nothing
-textValue :: forall extra m. Monad m =>
+textValue :: forall m. Monad m =>
     Text                                             -- ^ Label for "what"
         -> Text                                      -- ^ Label for "how much"
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value < 1
@@ -1217,8 +1208,9 @@ data TextAtom = TextAtom
         {   ta_what :: Maybe Text
         ,   ta_atom :: Maybe Text
         }
+newTA :: TextAtom
 newTA = TextAtom Nothing Nothing
-textAtom :: forall extra m. Monad m =>
+textAtom :: forall m. Monad m =>
     Text -- ^ Label for "what"
         -> Text -- ^ Label for atom
         -> (Text -> Text -> Text -> ScriptMessage) -- ^ Message constructor
@@ -1308,6 +1300,7 @@ data FactionInfluence = FactionInfluence {
         faction :: Maybe Text
     ,   influence :: Maybe Double
     }
+newInfluence :: FactionInfluence
 newInfluence = FactionInfluence Nothing Nothing
 factionInfluence :: Monad m => GenericStatement -> PPT m IndentedMessages
 factionInfluence stmt@[pdx| %_ = @scr |]
@@ -1341,6 +1334,7 @@ data Modifier = Modifier {
     ,   mod_duration :: Maybe Double
     ,   mod_power :: Maybe Double
     } deriving Show
+newModifier :: Modifier
 newModifier = Modifier Nothing Nothing Nothing Nothing Nothing
 
 addModifierLine :: Modifier -> GenericStatement -> Modifier 
@@ -1356,15 +1350,15 @@ maybeM f = maybe (return Nothing) (liftM Just . f)
 
 addModifier :: Monad m => ScriptMessage -> GenericStatement -> PPT m IndentedMessages
 addModifier kind stmt@(Statement _ OpEq (CompoundRhs scr)) = msgToPP =<<
-    let mod = foldl' addModifierLine newModifier scr
-    in if isJust (mod_name mod) || isJust (mod_key mod) then do
-        let mkey = mod_key mod
-            mname = mod_name mod
-        kind <- messageText kind
-        mwho <- maybe (return Nothing) (fmap (Just . doc2text) . flag) (mod_who mod)
+    let modifier = foldl' addModifierLine newModifier scr
+    in if isJust (mod_name modifier) || isJust (mod_key modifier) then do
+        let mkey = mod_key modifier
+            mname = mod_name modifier
+        tkind <- messageText kind
+        mwho <- maybe (return Nothing) (fmap (Just . doc2text) . flag) (mod_who modifier)
         mname_loc <- maybeM getGameL10n mname
         mkey_loc <- maybeM getGameL10n mkey
-        let mdur = mod_duration mod
+        let mdur = mod_duration modifier
             mname_or_key = maybe mkey Just mname
             mname_or_key_loc = maybe mkey_loc Just mname_loc
 
@@ -1372,15 +1366,15 @@ addModifier kind stmt@(Statement _ OpEq (CompoundRhs scr)) = msgToPP =<<
             Just modid ->
                 -- default presented name to mod id
                 let name_loc = fromMaybe modid mname_or_key_loc
-                in case (mwho, mod_power mod, mdur) of
-                    (Nothing,  Nothing,  Nothing)  -> MsgGainMod modid kind name_loc
-                    (Nothing,  Nothing,  Just dur) -> MsgGainModDur modid kind name_loc dur
-                    (Nothing,  Just pow, Nothing)  -> MsgGainModPow modid kind name_loc pow
-                    (Nothing,  Just pow, Just dur) -> MsgGainModPowDur modid kind name_loc pow dur
-                    (Just who, Nothing,  Nothing)  -> MsgActorGainsMod modid who kind name_loc
-                    (Just who, Nothing,  Just dur) -> MsgActorGainsModDur modid who kind name_loc dur
-                    (Just who, Just pow, Nothing)  -> MsgActorGainsModPow modid who kind name_loc pow
-                    (Just who, Just pow, Just dur) -> MsgActorGainsModPowDur modid who kind name_loc pow dur
+                in case (mwho, mod_power modifier, mdur) of
+                    (Nothing,  Nothing,  Nothing)  -> MsgGainMod modid tkind name_loc
+                    (Nothing,  Nothing,  Just dur) -> MsgGainModDur modid tkind name_loc dur
+                    (Nothing,  Just pow, Nothing)  -> MsgGainModPow modid tkind name_loc pow
+                    (Nothing,  Just pow, Just dur) -> MsgGainModPowDur modid tkind name_loc pow dur
+                    (Just who, Nothing,  Nothing)  -> MsgActorGainsMod modid who tkind name_loc
+                    (Just who, Nothing,  Just dur) -> MsgActorGainsModDur modid who tkind name_loc dur
+                    (Just who, Just pow, Nothing)  -> MsgActorGainsModPow modid who tkind name_loc pow
+                    (Just who, Just pow, Just dur) -> MsgActorGainsModPowDur modid who tkind name_loc pow dur
             _ -> preMessage stmt -- Must have mod id
     else return (preMessage stmt)
 addModifier _ stmt = preStatement stmt
@@ -1402,10 +1396,11 @@ addCore stmt = preStatement stmt
 
 -- Add an opinion modifier towards someone (for a number of years).
 data AddOpinion = AddOpinion {
-        who :: Maybe Text
-    ,   modifier :: Maybe Text
+        op_who :: Maybe Text
+    ,   op_modifier :: Maybe Text
     ,   op_years :: Maybe Double
     } deriving Show
+newAddOpinion :: AddOpinion
 newAddOpinion = AddOpinion Nothing Nothing Nothing
 
 opinion :: Monad m =>
@@ -1416,26 +1411,27 @@ opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_add_opinion (foldl' addLine newAddOpinion scr)
     where
         addLine :: AddOpinion -> GenericStatement -> AddOpinion
-        addLine op [pdx| who      = $tag   |] = op { who = Just tag }
-        addLine op [pdx| modifier = ?label |] = op { modifier = Just label }
+        addLine op [pdx| who      = $tag   |] = op { op_who = Just tag }
+        addLine op [pdx| modifier = ?label |] = op { op_modifier = Just label }
         addLine op [pdx| years    = !n     |] = op { op_years = Just n }
         addLine op _ = op
-        pp_add_opinion op = case (who op, modifier op) of
-            (Just whom, Just mod) -> do
+        pp_add_opinion op = case (op_who op, op_modifier op) of
+            (Just whom, Just modifier) -> do
                 whomflag <- doc2text <$> flag whom
-                mod_loc <- getGameL10n mod
+                mod_loc <- getGameL10n modifier
                 case op_years op of
                     Nothing -> return $ msgIndef mod_loc whomflag
                     Just years -> return $ msgDur mod_loc whomflag years
-            _ -> trace ("failed! modifier op is " ++ show (modifier op)) $ return (preMessage stmt)
+            _ -> trace ("failed! modifier op is " ++ show (op_modifier op)) $ return (preMessage stmt)
 opinion _ _ stmt = preStatement stmt
 
 data HasOpinion = HasOpinion
         {   hop_who :: Maybe Text
         ,   hop_value :: Maybe Double
         }
+newHasOpinion :: HasOpinion
 newHasOpinion = HasOpinion Nothing Nothing
-hasOpinion :: forall extra m. Monad m =>
+hasOpinion :: forall m. Monad m =>
     GenericStatement -> PPT m IndentedMessages
 hasOpinion stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_hasOpinion (foldl' addLine newHasOpinion scr)
@@ -1512,9 +1508,10 @@ data SpawnRebels = SpawnRebels {
     ,   sr_unrest :: Maybe Double -- rebel faction progress
     ,   sr_leader :: Maybe Text
     } deriving Show
+newSpawnRebels :: SpawnRebels
 newSpawnRebels = SpawnRebels Nothing Nothing Nothing False Nothing Nothing
 
-spawnRebels :: forall extra m. Monad m =>
+spawnRebels :: forall m. Monad m =>
     Maybe Text
         -> GenericStatement
         -> PPT m IndentedMessages
@@ -1523,7 +1520,7 @@ spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
         = pp_spawnRebels $ foldl' addLine newSpawnRebels scr
     spawnRebels' rtype (Statement _ OpEq (floatRhs -> Just size))
         = pp_spawnRebels $ newSpawnRebels { rebelType = rtype, rebelSize = Just size }
-    spawnRebels' _ stmt = return (preMessage stmt)
+    spawnRebels' _ stmt' = return (preMessage stmt')
 
     addLine :: SpawnRebels -> GenericStatement -> SpawnRebels
     addLine op [pdx| type   = $tag  |] = op { rebelType = Just tag }
@@ -1540,20 +1537,20 @@ spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
             Just size -> do
                 let rtype_loc_icon = flip HM.lookup rebel_loc =<< rebelType reb
                 friendText <- case friend reb of
-                    Just friend -> do
-                        flag <- flagText friend
-                        text <- messageText (MsgRebelsFriendlyTo flag)
-                        return (" (" <> text <> ")")
+                    Just thefriend -> do
+                        cflag <- flagText thefriend
+                        mtext <- messageText (MsgRebelsFriendlyTo cflag)
+                        return (" (" <> mtext <> ")")
                     Nothing -> return ""
                 leaderText <- case sr_leader reb of
                     Just leader -> do
-                        text <- messageText (MsgRebelsLedBy leader)
-                        return (" (" <> text <> ")")
+                        mtext <- messageText (MsgRebelsLedBy leader)
+                        return (" (" <> mtext <> ")")
                     Nothing -> return ""
                 progressText <- case sr_unrest reb of
                     Just unrest -> do
-                        text <- messageText (MsgRebelsGainProgress unrest)
-                        return (" (" <> text <> ")")
+                        mtext <- messageText (MsgRebelsGainProgress unrest)
+                        return (" (" <> mtext <> ")")
                     Nothing -> return ""
                 return $ MsgSpawnRebels
                             (maybe "" (\(ty, ty_icon) -> iconText ty_icon <> " " <> ty) rtype_loc_icon)
@@ -1583,8 +1580,9 @@ data TriggerEvent = TriggerEvent
         , e_title_loc :: Maybe Text
         , e_days :: Maybe Double
         }
+newTriggerEvent :: TriggerEvent
 newTriggerEvent = TriggerEvent Nothing Nothing Nothing
-triggerEvent :: forall extra m. Monad m =>
+triggerEvent :: forall m. Monad m =>
     ScriptMessage
         -> GenericStatement
         -> PPT m IndentedMessages
@@ -1592,15 +1590,15 @@ triggerEvent evtType stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_trigger_event =<< foldM addLine newTriggerEvent scr
     where
         addLine :: TriggerEvent -> GenericStatement -> PPT m TriggerEvent
-        addLine evt [pdx| id = $id |]
-            = (\t_loc -> evt { e_id = Just id, e_title_loc = t_loc })
+        addLine evt [pdx| id = $eid |]
+            = (\t_loc -> evt { e_id = Just eid, e_title_loc = t_loc })
               . msum
               <$> mapM getGameL10nIfPresent
                 -- The following is a list of schemes that Paradox uses in
                 -- localization keys for event names. We take the first one
                 -- that exists.
-                [id <> ".t"
-                ,let (ns,num) = T.break (=='.') id
+                [eid <> ".t"
+                ,let (ns,num) = T.break (=='.') eid
                  in ns <> ".EVTNAME" <> T.drop 1 num
                 ]
         addLine evt [pdx| days = %rhs |]
@@ -1639,8 +1637,9 @@ data AddCB = AddCB
     ,   acb_type_loc :: Maybe Text
     ,   acb_months :: Maybe Double
     }
+newAddCB :: AddCB
 newAddCB = AddCB Nothing Nothing Nothing Nothing Nothing
-addCB :: forall extra m. Monad m =>
+addCB :: forall m. Monad m =>
     Bool -- ^ True for add_casus_belli, False for reverse_add_casus_belli
         -> GenericStatement
         -> PPT m IndentedMessages
@@ -1680,7 +1679,7 @@ addCB _ stmt = preStatement stmt
 random :: Monad m => GenericStatement -> PPT m IndentedMessages
 random stmt@[pdx| %_ = @scr |]
     | (front, back) <- break
-                        (\stmt -> case stmt of 
+                        (\substmt -> case substmt of 
                             [pdx| chance = %_ |] -> True
                             _ -> False)
                         scr
@@ -1705,9 +1704,10 @@ data DefineAdvisor = DefineAdvisor
     ,   da_skill :: Maybe Double
     ,   da_female :: Maybe Bool
     }
+newDefineAdvisor :: DefineAdvisor
 newDefineAdvisor = DefineAdvisor Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
-defineAdvisor :: forall extra m. Monad m => GenericStatement -> PPT m IndentedMessages
+defineAdvisor :: forall m. Monad m => GenericStatement -> PPT m IndentedMessages
 defineAdvisor stmt@[pdx| %_ = @scr |]
     = msgToPP . pp_define_advisor =<< foldM addLine newDefineAdvisor scr where
         addLine :: DefineAdvisor -> GenericStatement -> PPT m DefineAdvisor
@@ -1829,9 +1829,10 @@ data DefineRuler = DefineRuler
     ,   dr_fixed :: Bool
     ,   dr_attach_leader :: Maybe Text
     }
+newDefineRuler :: DefineRuler
 newDefineRuler = DefineRuler False Nothing Nothing Nothing Nothing Nothing False Nothing Nothing Nothing False Nothing
 
-defineRuler :: forall extra m. Monad m => GenericStatement -> PPT m IndentedMessages
+defineRuler :: forall m. Monad m => GenericStatement -> PPT m IndentedMessages
 defineRuler [pdx| %_ = @scr |]
     = pp_define_ruler $ foldl' addLine newDefineRuler scr where
         addLine :: DefineRuler -> GenericStatement -> DefineRuler
@@ -1909,6 +1910,7 @@ data BuildToForcelimit = BuildToForcelimit
     ,   btf_galley :: Maybe Double
     ,   btf_transport :: Maybe Double
     }
+newBuildToForcelimit :: BuildToForcelimit
 newBuildToForcelimit = BuildToForcelimit Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
 buildToForcelimit :: Monad m => GenericStatement -> PPT m IndentedMessages
@@ -1971,9 +1973,10 @@ data DeclareWarWithCB = DeclareWarWithCB
     {   dwcb_who :: Maybe Text
     ,   dwcb_cb :: Maybe Text
     }
+newDeclareWarWithCB :: DeclareWarWithCB
 newDeclareWarWithCB = DeclareWarWithCB Nothing Nothing
 
-declareWarWithCB :: forall extra m. Monad m => GenericStatement -> PPT m IndentedMessages
+declareWarWithCB :: forall m. Monad m => GenericStatement -> PPT m IndentedMessages
 declareWarWithCB stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_declare_war_with_cb (foldl' addLine newDeclareWarWithCB scr) where
         addLine :: DeclareWarWithCB -> GenericStatement -> DeclareWarWithCB
@@ -2017,19 +2020,20 @@ data EstateInfluenceModifier = EstateInfluenceModifier {
         eim_estate :: Maybe Text
     ,   eim_modifier :: Maybe Text
     }
+newEIM :: EstateInfluenceModifier
 newEIM = EstateInfluenceModifier Nothing Nothing
 hasEstateInfluenceModifier :: Monad m => GenericStatement -> PPT m IndentedMessages
 hasEstateInfluenceModifier stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_eim (foldl' addField newEIM scr)
     where
         addField :: EstateInfluenceModifier -> GenericStatement -> EstateInfluenceModifier
-        addField inf [pdx| estate   = $est |] = inf { eim_estate = Just est }
-        addField inf [pdx| modifier = $mod |] = inf { eim_modifier = Just mod }
+        addField inf [pdx| estate   = $est      |] = inf { eim_estate = Just est }
+        addField inf [pdx| modifier = $modifier |] = inf { eim_modifier = Just modifier }
         addField inf _ = inf -- unknown statement
         pp_eim inf = case (eim_estate inf, eim_modifier inf) of
-            (Just est, Just mod) -> do
+            (Just est, Just modifier) -> do
                 loc_est <- getGameL10n est
-                loc_mod <- getGameL10n mod
+                loc_mod <- getGameL10n modifier
                 return $ MsgEstateHasInfluenceModifier (iconText est) loc_est loc_mod
             _ -> return (preMessage stmt)
 hasEstateInfluenceModifier stmt = preStatement stmt
@@ -2040,32 +2044,33 @@ data AddEstateInfluenceModifier = AddEstateInfluenceModifier {
     ,   aeim_influence :: Maybe Double
     ,   aeim_duration :: Maybe Double
     } deriving Show
+newAddEstateInfluenceModifier :: AddEstateInfluenceModifier
 newAddEstateInfluenceModifier = AddEstateInfluenceModifier Nothing Nothing Nothing Nothing
 
 timeOrIndef :: Monad m => Double -> PPT m Text
 timeOrIndef n = if n < 0 then messageText MsgIndefinitely else messageText (MsgForDays n)
 
-estateInfluenceModifier :: forall extra m. Monad m =>
+estateInfluenceModifier :: forall m. Monad m =>
     (Text -> Text -> Text -> Double -> Text -> ScriptMessage)
         -> GenericStatement -> PPT m IndentedMessages
 estateInfluenceModifier msg stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_eim (foldl' addLine newAddEstateInfluenceModifier scr)
     where
         addLine :: AddEstateInfluenceModifier -> GenericStatement -> AddEstateInfluenceModifier 
-        addLine aeim [pdx| estate    = $estate    |] = aeim { aeim_estate = Just estate }
-        addLine aeim [pdx| desc      = $desc      |] = aeim { aeim_desc = Just desc }
-        addLine aeim [pdx| influence = !influence |] = aeim { aeim_influence = Just influence }
-        addLine aeim [pdx| duration  = !duration  |] = aeim { aeim_duration = Just duration }
+        addLine aeim [pdx| estate    = $estate   |] = aeim { aeim_estate = Just estate }
+        addLine aeim [pdx| desc      = $desc     |] = aeim { aeim_desc = Just desc }
+        addLine aeim [pdx| influence = !inf      |] = aeim { aeim_influence = Just inf }
+        addLine aeim [pdx| duration  = !duration |] = aeim { aeim_duration = Just duration }
         addLine aeim _ = aeim
         pp_eim :: AddEstateInfluenceModifier -> PPT m ScriptMessage
         pp_eim aeim
             = case (aeim_estate aeim, aeim_desc aeim, aeim_influence aeim, aeim_duration aeim) of
-                (Just estate, Just desc, Just influence, Just duration) -> do
+                (Just estate, Just desc, Just inf, Just duration) -> do
                     let estate_icon = iconText estate
                     estate_loc <- getGameL10n estate
                     desc_loc <- getGameL10n desc
                     dur <- timeOrIndef duration
-                    return (msg estate_icon estate_loc desc_loc influence dur)
+                    return (msg estate_icon estate_loc desc_loc inf dur)
                 _ -> return (preMessage stmt)
 estateInfluenceModifier _ stmt = preStatement stmt
 
@@ -2087,8 +2092,8 @@ triggerSwitch stmt@(Statement _ OpEq (CompoundRhs
                 -- using next indent level, for each block <condrhs> = { ... }:
                 [pdx| $condrhs = @action |] -> do
                     -- construct a fake condition to pp
-                    let guard = [pdx| $condlhs = $condrhs |]
-                    ((_, guardMsg):_) <- ppOne guard -- XXX: match may fail (but shouldn't)
+                    let cond = [pdx| $condlhs = $condrhs |]
+                    ((_, guardMsg):_) <- ppOne cond -- XXX: match may fail (but shouldn't)
                     guardText <- messageText guardMsg
                     -- pp the rest of the block, at the next level
                     statementMsgs <- indentUp (ppMany action)
@@ -2104,8 +2109,9 @@ data Heir = Heir
         ,   heir_claim :: Maybe Double
         ,   heir_age :: Maybe Double
         }
+newHeir :: Heir
 newHeir = Heir Nothing Nothing Nothing
-defineHeir :: forall extra m. Monad m => GenericStatement -> PPT m IndentedMessages
+defineHeir :: forall m. Monad m => GenericStatement -> PPT m IndentedMessages
 defineHeir [pdx| %_ = @scr |]
     = msgToPP =<< pp_heir (foldl' addLine newHeir scr)
     where
@@ -2118,14 +2124,14 @@ defineHeir [pdx| %_ = @scr |]
         pp_heir heir = do
             dynasty_flag <- fmap doc2text <$> maybeM flag (heir_dynasty heir)
             case (heir_age heir, dynasty_flag, heir_claim heir) of
-                (Nothing,  Nothing,   Nothing)    -> return $ MsgNewHeir
-                (Nothing,  Nothing,   Just claim) -> return $ MsgNewHeirClaim claim
-                (Nothing,  Just flag, Nothing)    -> return $ MsgNewHeirDynasty flag
-                (Nothing,  Just flag, Just claim) -> return $ MsgNewHeirDynastyClaim flag claim
-                (Just age, Nothing,   Nothing)    -> return $ MsgNewHeirAge age
-                (Just age, Nothing,   Just claim) -> return $ MsgNewHeirAgeClaim age claim
-                (Just age, Just flag, Nothing)    -> return $ MsgNewHeirAgeFlag age flag
-                (Just age, Just flag, Just claim) -> return $ MsgNewHeirAgeFlagClaim age flag claim
+                (Nothing,  Nothing,   Nothing)     -> return $ MsgNewHeir
+                (Nothing,  Nothing,   Just claim)  -> return $ MsgNewHeirClaim claim
+                (Nothing,  Just cflag, Nothing)     -> return $ MsgNewHeirDynasty cflag
+                (Nothing,  Just cflag, Just claim)  -> return $ MsgNewHeirDynastyClaim cflag claim
+                (Just age, Nothing,   Nothing)     -> return $ MsgNewHeirAge age
+                (Just age, Nothing,   Just claim)  -> return $ MsgNewHeirAgeClaim age claim
+                (Just age, Just cflag, Nothing)    -> return $ MsgNewHeirAgeFlag age cflag
+                (Just age, Just cflag, Just claim) -> return $ MsgNewHeirAgeFlagClaim age cflag claim
 defineHeir stmt = preStatement stmt
 
 -- Holy Roman Empire
@@ -2185,9 +2191,9 @@ numProvinces :: Monad m =>
         -> (Text -> Text -> Double -> ScriptMessage)
         -> GenericStatement
         -> PPT m IndentedMessages
-numProvinces iconKey msg [pdx| $what = !amt |] = do
+numProvinces micon msg [pdx| $what = !amt |] = do
     what_loc <- getGameL10n what
-    msgToPP (msg (iconText iconKey) what_loc amt)
+    msgToPP (msg (iconText micon) what_loc amt)
 numProvinces _ _ stmt = preStatement stmt
 
 withFlagOrProvince :: Monad m =>
@@ -2289,8 +2295,8 @@ hasIdea msg stmt@[pdx| $lhs = !n |] | n >= 1, n <= 7 = do
     let mideagroup = HM.lookup lhs groupTable
     case mideagroup of
         Nothing -> preStatement stmt -- unknown idea group
-        Just group -> do
-            let idea = ig_ideas group !! (n - 1)
+        Just grp -> do
+            let idea = ig_ideas grp !! (n - 1)
                 ideaKey = idea_name idea
             idea_loc <- getGameL10n ideaKey
             msgToPP (msg idea_loc n)

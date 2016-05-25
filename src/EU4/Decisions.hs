@@ -1,68 +1,82 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, QuasiQuotes, FlexibleContexts, LambdaCase #-}
 module EU4.Decisions (
-        processDecisionGroup
+        parseEU4Decisions
+    ,   writeEU4Decisions
     ) where
 
 import Debug.Trace
 
-import Control.Arrow (first)
+import Control.Arrow ((&&&))
 import Control.Monad.Except
-import Control.Monad.Identity
-import Control.Monad.Reader
+import Control.Monad.State
 
-import Data.List
+import Data.Maybe
 import Data.Monoid
 
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HM
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import System.FilePath (FilePath, (</>))
-
 import Abstract
 import Doc
+import FileIO
 import Messages
+import QQ
 import SettingsTypes
 import EU4.Common
 
--- Object that accumulates info about a decision.
-data Decision = Decision
-    {   dec_name :: Text
-    ,   dec_name_loc :: Text
-    ,   dec_text :: Maybe Text
-    ,   dec_potential :: GenericScript
-    ,   dec_allow :: GenericScript
-    ,   dec_effect :: GenericScript
-    ,   dec_ai_will_do :: Maybe AIWillDo
-    } deriving (Show)
 -- Starts off Nothing/empty everywhere, except name (will get filled in immediately).
-newDecision = Decision undefined undefined Nothing [] [] [] Nothing
+newDecision :: EU4Decision
+newDecision = EU4Decision undefined undefined Nothing [] [] [] Nothing Nothing
 
-processDecisionGroup :: GenericStatement -> PPT (Either Text) [Either Text (FilePath, Doc)]
-processDecisionGroup (Statement (GenericLhs left) OpEq rhs)
+parseEU4Decisions :: Monad m => HashMap String GenericScript -> PPT m (HashMap Text EU4Decision)
+parseEU4Decisions scripts = do
+    tryParse <- hoistExceptions . flip HM.traverseWithKey scripts $ \f script ->
+                    setCurrentFile f (concat <$> mapM parseEU4DecisionGroup script)
+    case tryParse of
+        Left err -> do
+            traceM $ "Completely failed parsing decisions: " ++ T.unpack err
+            return HM.empty
+        Right files -> fmap (HM.unions . HM.elems) . flip HM.traverseWithKey files $
+            \sourceFile edecs ->
+                    fmap (HM.fromList . map (dec_name &&& id) . catMaybes)
+                        . forM edecs $ \case
+                Left err -> do
+                    traceM $ "Error parsing " ++ sourceFile
+                             ++ ": " ++ T.unpack err
+                    return Nothing
+                Right dec -> return (Just dec)
+
+--parseEU4Event :: MonadError Text m => FilePath -> GenericStatement -> PPT m (Either Text (Maybe EU4Event))
+
+parseEU4DecisionGroup :: Monad m => GenericStatement -> PPT (ExceptT Text m) [Either Text EU4Decision]
+parseEU4DecisionGroup [pdx| $left = @scr |]
     | left `elem` ["country_decisions", "religion_decisions"]
-    = withCurrentFile $ \file -> case rhs of
-        CompoundRhs scr -> forM scr $ \stmt ->
-            (Right . first ((file </>) . T.unpack) <$> processDecision stmt)
-                `catchError` \e -> return (Left e)
-        _ -> throwError "unrecognized form for decision block (RHS)"
-processDecisionGroup _ = throwError "unrecognized form for decision block (LHS)"
+    = forM scr $ \stmt -> (Right <$> parseEU4Decision stmt)
+                            `catchError` (return . Left)
+    | otherwise = throwError "unrecognized form for decision block (LHS)"
+parseEU4DecisionGroup [pdx| $_ = %_ |]
+    = throwError "unrecognized form for decision block (RHS)"
+parseEU4DecisionGroup _ = throwError "unrecognized form for decision block (LHS)"
 
-processDecision :: GenericStatement -> PPT (Either Text) (Text, Doc)
-processDecision (Statement (GenericLhs decName) OpEq rhs) = case rhs of
+parseEU4Decision :: Monad m => GenericStatement -> PPT (ExceptT Text m) EU4Decision
+parseEU4Decision [pdx| $decName = %rhs |] = case rhs of
     CompoundRhs parts -> do
         decName_loc <- getGameL10n (decName <> "_title")
         decText <- getGameL10nIfPresent (decName <> "_desc")
-        dec <- foldM decisionAddSection
-                     newDecision { dec_name = decName
-                                 , dec_name_loc = decName_loc
-                                 , dec_text = decText }
-                     parts
-        (,) decName <$> pp_decision dec
+        withCurrentFile $ \sourcePath ->
+            foldM decisionAddSection
+                  newDecision { dec_name = decName
+                              , dec_name_loc = decName_loc
+                              , dec_text = decText
+                              , dec_path = Just sourcePath }
+                  parts
     _ -> throwError "unrecognized form for decision (RHS)"
-processDecision _ = throwError "unrecognized form for decision (LHS)"
+parseEU4Decision _ = throwError "unrecognized form for decision (LHS)"
 
-decisionAddSection :: Monad m => Decision -> GenericStatement -> PPT m Decision
-decisionAddSection dec (Statement (GenericLhs sectname) OpEq (CompoundRhs scr))
+decisionAddSection :: Monad m => EU4Decision -> GenericStatement -> PPT m EU4Decision
+decisionAddSection dec [pdx| $sectname = @scr |]
     = case sectname of
         "potential" -> return dec { dec_potential = scr }
         "allow" -> return dec { dec_allow = scr }
@@ -78,9 +92,26 @@ decisionAddSection dec (Statement (GenericLhs "ai_importance") OpEq _)
 decisionAddSection dec stmt = trace ("warning: unrecognized decision section: " ++ show stmt) $
                               return dec
 
-pp_decision :: Monad m => Decision -> PPT m Doc
+writeEU4Decisions :: PPT IO ()
+writeEU4Decisions = do
+    gdata <- gets game
+    case gdata of
+        GameEU4 { eu4data = EU4Data { eu4decisions = decisions } } ->
+            writeFeatures "decisions"
+                          pathedDecisions
+                          pp_decision
+            where
+                pathedDecisions :: [Feature EU4Decision]
+                pathedDecisions = map (\dec -> Feature {
+                                                featurePath = dec_path dec
+                                            ,   featureId = Just (dec_name dec)
+                                            ,   theFeature = Right dec })
+                                      (HM.elems decisions)
+        GameUnknown -> error "writeEU4Decisions: unknown game!"
+
+pp_decision :: Monad m => EU4Decision -> PPT m Doc
 pp_decision dec = do
-    version <- asks gameVersion
+    version <- gets gameVersion
     pot_pp'd    <- scope EU4Country (pp_script (dec_potential dec))
     allow_pp'd  <- scope EU4Country (pp_script (dec_allow dec))
     effect_pp'd <- scope EU4Country (pp_script (dec_effect dec))
@@ -92,7 +123,7 @@ pp_decision dec = do
         ,"| version = ", strictText version, line
         ,"| decision_name = ", strictText (dec_name_loc dec), line
         ,maybe mempty
-               (\text -> mconcat ["| decision_text = ", strictText text, line])
+               (\txt -> mconcat ["| decision_text = ", strictText txt, line])
                (dec_text dec) 
         ,"| potential = ", line, pot_pp'd, line
         ,"| allow = ", line, allow_pp'd, line

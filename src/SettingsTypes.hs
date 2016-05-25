@@ -1,45 +1,34 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, RankNTypes #-}
 module SettingsTypes (
         L10n
     ,   CLArgs (..)
     ,   Game (..)
+    ,   GameState (..)
+    ,   GameScripts (..)
     ,   ScriptReader (..)
+    ,   ScriptParser (..)
+    ,   ScriptWriter (..)
     ,   Handler (..)
-    ,   Settings (
-        -- Export everything EXCEPT L10n
-            steamDir
-        ,   steamApps
-        ,   game
-        ,   gameFolder
-        ,   language
-        ,   languageS
-        ,   gameVersion
-        ,   settingsFile
-        ,   clargs
-        ,   filesToProcess
-        ,   currentFile
-        ,   currentIndent
-        )
-    ,   settings
+    ,   Settings (..)
     ,   setGameL10n
     ,   PP, PPT
-    ,   hoistErrors
+    ,   hoistErrors, hoistExceptions
     ,   indentUp, indentDown
     ,   withCurrentIndent, withCurrentIndentZero
     ,   alsoIndent, alsoIndent'
     ,   getGameL10n
     ,   getGameL10nDefault
     ,   getGameL10nIfPresent
-    ,   withCurrentFile
+    ,   setCurrentFile, withCurrentFile
     ,   getLangs
     ,   unfoldM, concatMapM
     ,   fromReaderT, toReaderT
     ) where
 
-import Debug.Trace
-
+import Control.Monad.Except
 import Control.Monad.Identity (runIdentity)
 import Control.Monad.Reader
+import Control.Monad.State
 
 import Data.Foldable (fold)
 import Data.Maybe
@@ -47,13 +36,11 @@ import Data.Maybe
 import Data.Text (Text)
 import Text.Shakespeare.I18N (Lang)
 
-import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
 import Abstract
 import Doc
 import EU4.Types
-import Stellaris.Settings
 import Yaml
 
 -- Command line arguments.
@@ -67,7 +54,7 @@ data CLArgs
 ----------------------------
 
 newtype ScriptReader = ScriptReader {
-        runScriptReader :: Settings -> FilePath -> IO [(FilePath, GenericScript)]
+        runScriptReader :: PPT IO GameScripts
     }
 instance Show ScriptReader where
     show _ = "<script reader>"
@@ -77,19 +64,52 @@ newtype Handler = Handler {
 instance Show Handler where
     show _ = "<feature handler>"
 
+newtype ScriptParser = ScriptParser {
+        runScriptParser :: forall m. Monad m => GameScripts -> PPT m ()
+    }
+instance Show ScriptParser where
+    show _ = "<script parser>"
+
+newtype ScriptWriter = ScriptWriter {
+        runScriptWriter :: PPT IO ()
+    }
+instance Show ScriptWriter where
+    show _ = "<script parser>"
+
 data Game
-    = GameEU4 {
+    = GameUnknown
+    | GameEU4 {
+            readScripts :: ScriptReader
+        ,   parseScripts :: ScriptParser
+        ,   writeScripts :: ScriptWriter
+        ,   eu4data :: EU4Data
+        }
+--  | GameStellaris {
+--          readScripts :: ScriptReader
+--      ,   parseScripts :: ScriptParser
+--      ,   writeScripts :: ScriptWriter
+--      ,   stdata :: StellarisData
+--      }
+    deriving (Show)
+
+-- State to store in a Reader.
+data GameState
+    = EU4State {
             gEU4 :: EU4
-        ,   readScripts :: ScriptReader
-        ,   features :: [FilePath]
-        ,   handlers :: HashMap FilePath Handler
+        ,   currentIndent :: Maybe Int
+        ,   currentFile :: Maybe FilePath
         }
-    | GameStellaris {
+{-  | StellarisState {
             gStellaris :: Stellaris
-        ,   readScripts :: ScriptReader
-        ,   features :: [FilePath]
-        ,   handlers :: HashMap FilePath Handler
-        }
+        ,   currentIndent :: Maybe Int
+        ,   currentFile :: Maybe FilePath
+        } -}
+    deriving (Show)
+
+-- Scripts after reading.
+data GameScripts
+    = GameScriptsEU4 EU4Scripts
+--  | GameScriptsEu4 EU4Scripts
     deriving (Show)
 
 ----------------------
@@ -109,41 +129,32 @@ data Settings = Settings {
     ,   settingsFile :: FilePath
     ,   clargs      :: [CLArgs]
     ,   filesToProcess :: [FilePath]
-    -- Local state
-    ,   currentFile :: Maybe FilePath
-    ,   currentIndent :: Maybe Int
     } deriving (Show)
-
--- All undefined/Nothing settings, except langs.
-settings :: Settings
-settings = Settings
-    { steamDir       = error "steamDir not defined"
-    , steamApps      = error "steamApps not defined"
-    , game           = error "game not defined"
-    , gameFolder     = error "gameFolder not defined"
-    , language       = error "language not defined"
-    , languageS      = error "languageS not defined"
-    , gameVersion    = error "gameVersion not defined"
-    , gameL10n       = error "gameL10n not defined"
-    , currentFile    = error "currentFile not defined"
-    , currentIndent  = error "currentIndent not defined"
-    , langs          = ["en"]
-    , settingsFile   = error "settingsFile not defined"
-    , clargs         = []
-    , filesToProcess = []
-    }
 
 setGameL10n :: Settings -> L10n -> Settings
 setGameL10n settings l10n = settings { gameL10n = l10n }
 
 -- Pretty-printing monad, and its transformer version
-type PP a = Reader Settings a -- equal to PPT Identity a
-type PPT m a = ReaderT Settings m a
+type PP = StateT Settings (Reader GameState) -- equal to PPT Identity a
+type PPT m = StateT Settings (ReaderT GameState m)
 
 -- Convert a PP wrapping errors into a PP returning Either.
 -- TODO: generalize
 hoistErrors :: Monad m => PPT (Either e) a -> PPT m (Either e a)
-hoistErrors (ReaderT rd) = return . rd =<< ask
+hoistErrors (StateT rd) =
+    StateT $ \settings ->
+        ReaderT $ \st -> case runReaderT (rd settings) st of
+            Left err -> return (Left err, settings)
+            Right (res, settings') -> return (Right res, settings')
+
+hoistExceptions :: Monad m => PPT (ExceptT e m) a -> PPT m (Either e a)
+hoistExceptions (StateT rd) =
+    StateT $ \settings ->
+        ReaderT $ \st -> do
+            result <- runExceptT (runReaderT (rd settings) st)
+            case result of
+                Left e -> return (Left e, settings)
+                Right (r, settings') -> return (Right r, settings')
 
 -- Increase current indentation by 1 for the given action.
 -- If there is no current indentation, set it to 1.
@@ -187,7 +198,7 @@ alsoIndent' :: Monad m => a -> PPT m (Int, a)
 alsoIndent' x = withCurrentIndent $ \i -> return (i,x)
 
 getCurrentLang :: Monad m => PPT m L10nLang
-getCurrentLang = HM.lookupDefault HM.empty <$> asks language <*> asks gameL10n
+getCurrentLang = HM.lookupDefault HM.empty <$> gets language <*> gets gameL10n
 
 getGameL10n :: Monad m => Text -> PPT m Text
 getGameL10n key = content <$> HM.lookupDefault (LocEntry 0 key) key <$> getCurrentLang
@@ -209,9 +220,13 @@ withCurrentFile go = do
           -- fromJust guaranteed to succeed
           (go . fromJust =<< asks currentFile)
 
+-- Set the current file for the action.
+setCurrentFile :: Monad m => String -> PPT m a -> PPT m a
+setCurrentFile f = local (\s -> s { currentFile = Just f })
+
 -- Get the list of output languages.
 getLangs :: Monad m => PPT m [Lang]
-getLangs = asks langs
+getLangs = gets langs
 
 -- Misc. utilities
 

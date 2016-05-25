@@ -8,7 +8,6 @@ module Yaml (
 
 import Control.Applicative
 
-import Data.Maybe
 import Data.Monoid
 
 import Data.HashMap.Strict (HashMap)
@@ -136,7 +135,7 @@ locFile = startspace *> lang <* endspace
 
 -- Front end.
 parseLocFile :: Text -> Either String L10n
-parseLocFile content = Ap.parseOnly locFile content
+parseLocFile contents = Ap.parseOnly locFile contents
 
 -- Parser for one language's localisations.
 lang :: Parser L10n

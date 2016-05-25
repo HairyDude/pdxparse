@@ -4,14 +4,10 @@ module Localization (
     ) where
 
 import Control.Monad
-import Data.Monoid
 
 import Data.List
-import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
-import Data.Text (Text)
-import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 
 import System.Directory
@@ -21,8 +17,6 @@ import System.IO (hPutStrLn, stderr)
 import SettingsTypes
 
 import Yaml
-
-import Debug.Trace
 
 readL10n :: Settings -> IO L10n
 readL10n settings = do

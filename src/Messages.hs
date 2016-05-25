@@ -1,5 +1,5 @@
 {-# LANGUAGE OverloadedStrings, TemplateHaskell, MultiParamTypeClasses #-}
-{-# OPTIONS_GHC -O0 #-} -- Compiling with optimizations on takes far too long
+{-# OPTIONS_GHC -O0 -fno-warn-type-defaults #-} -- Compiling with optimizations on takes far too long
 module Messages (
         ScriptMessage (..)
     ,   template, templateDoc
@@ -32,8 +32,8 @@ type IndentedMessages = [IndentedMessage]
 
 messageText :: Monad m => ScriptMessage -> PPT m Text
 messageText msg = do
-    langs <- getLangs
-    return $ renderMessage Script langs msg
+    mlangs <- getLangs
+    return $ renderMessage Script mlangs msg
 
 message :: Monad m => ScriptMessage -> PPT m Doc
 message msg = strictText <$> messageText msg

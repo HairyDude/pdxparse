@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 module MessageTools (
         plainNum, plainPc
     ,   roundNum, roundPc
@@ -52,13 +53,13 @@ instance PPSep Integer where
 -- spaces.
 -- If first arg is True, start grouping at the end (e.g. for integers).
 ppNumSep' :: Bool -> String -> String
-ppNumSep' int
+ppNumSep' isint
     = mconcat
-        . (if int then reverse else id)
+        . (if isint then reverse else id)
         . intersperse "&#8239;"
-        . (if int then map reverse else id)
+        . (if isint then map reverse else id)
         . group3 
-        . (if int then reverse else id)
+        . (if isint then reverse else id)
 
 instance PPSep Int where
     ppNumSep = ppNumSep . toInteger
@@ -66,17 +67,17 @@ instance PPSep Int where
 instance PPSep Double where
     ppNumSep n
         = let absn = abs n
-              (digits, exp) = floatToDigits 10 absn
-              (_, fracDigits') = splitAt exp digits
+              (digits, expn) = floatToDigits 10 absn
+              (_, fracDigits') = splitAt expn digits
               -- fracDigits' is [] if exp is a nonzero whole number
               fracDigits = if fracDigits' == [0] then [] else fracDigits'
           in (if n < 0 then "−" else "")
-                <> text (TL.pack . ppNumSep' True $ show (truncate absn))
+                <> text (TL.pack . ppNumSep' True $ show (truncate absn :: Int))
                 <> (if null fracDigits
                     then ""
                     else "."
                          <> text (TL.pack . ppNumSep' False $
-                             replicate (negate exp) '0' -- zeroes after decimal
+                             replicate (negate expn) '0' -- zeroes after decimal
                              ++ concatMap show fracDigits))
 
 -- | Just a number.
