@@ -68,7 +68,7 @@ writeEU4Events = do
         GameEU4 { eu4data = EU4Data { eu4events = events } } ->
             writeFeatures "events"
                           pathedEvents
-                          pp_event
+                          (\e -> scope (eu4evt_scope e) $ pp_event e)
             where
                 pathedEvents :: [Feature EU4Event]
                 pathedEvents = map (\evt -> Feature {

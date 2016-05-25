@@ -116,12 +116,14 @@ pp_decision dec = do
     allow_pp'd  <- scope EU4Country (pp_script (dec_allow dec))
     effect_pp'd <- scope EU4Country (pp_script (dec_effect dec))
     mawd_pp'd    <- mapM ((imsg2doc =<<) . ppAiWillDo) (dec_ai_will_do dec)
-    let name = strictText (dec_name dec)
+    let name = dec_name dec
+        nameD = strictText name
+    name_loc <- getGameL10n (name <> "_title")
     return . mconcat $
-        ["<section begin=", name, "/>"
+        ["<section begin=", nameD, "/>"
         ,"{{Decision", line
         ,"| version = ", strictText version, line
-        ,"| decision_name = ", strictText (dec_name_loc dec), line
+        ,"| decision_name = ", strictText name_loc, line
         ,maybe mempty
                (\txt -> mconcat ["| decision_text = ", strictText txt, line])
                (dec_text dec) 
@@ -133,5 +135,5 @@ pp_decision dec = do
             ["| comment = AI decision factors:", line
             ,awd_pp'd, line]) ++
         ["}}" -- no line, causes unwanted extra space
-        ,"<section end=", name, "/>"
+        ,"<section end=", nameD, "/>"
         ]
