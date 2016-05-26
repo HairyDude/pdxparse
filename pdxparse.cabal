@@ -43,6 +43,10 @@ executable pdxparse
                        QQ,
                        Settings,
                        SettingsTypes,
+                       Stellaris.Common,
+                       Stellaris.Events,
+                       Stellaris.Settings,
+                       Stellaris.Types,
                        Yaml
 
   other-extensions:    FlexibleContexts,

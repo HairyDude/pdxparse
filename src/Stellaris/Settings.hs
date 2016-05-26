@@ -1,16 +1,87 @@
-module Stellaris.Settings {-(
-    )-} where
+{-# LANGUAGE OverloadedStrings #-}
+module Stellaris.Settings (
+        fillSettings
+    ,   writeStellarisScripts 
+    ,   module Stellaris.Types
+    ) where
 
--- Placeholder - Stellaris scopes are different from EU4
-data StScope
-    = StCountry
-    | StProvince
-    | StTradeNode
-    | StGeographic -- area, etc.
-    | StBonus
-    deriving (Show, Eq, Ord, Enum, Bounded)
+import Control.Monad.State
 
--- State
-data Stellaris = Stellaris
-    { scopeStack :: [StScope]
-    } deriving (Show)
+import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HM
+
+import System.Directory
+import System.FilePath
+
+import Abstract
+import FileIO
+import SettingsTypes
+import Stellaris.Types
+
+-- Handlers
+import Stellaris.Events (parseStellarisEvents, writeStellarisEvents)
+
+fillSettings :: Settings -> IO (Settings, GameState)
+fillSettings settings = return $
+    (settings {
+        game = GameStellaris {
+            readScripts = ScriptReader readStellarisScripts
+        ,   parseScripts = ScriptParser parseStellarisScripts
+        ,   writeScripts = ScriptWriter writeStellarisScripts
+        ,   stdata = StellarisData HM.empty
+        }
+    }, StellarisState (Stellaris {
+        scopeStack = []
+       }) Nothing Nothing)
+
+-- Read all scripts in a directory.
+-- Return: for each file, its path relative to the game root and the parsed
+--         script.
+readStellarisScripts :: PPT IO GameScripts
+readStellarisScripts = GameScriptsStellaris <$> do
+    let readStellarisScript :: String -> PPT IO (HashMap String GenericScript)
+        readStellarisScript category = do
+            settings <- get
+            let sourceSubdir = {-case category of
+                    "policies" -> "common" </> "policies"
+                    "ideagroups" -> "common" </> "ideas"
+                    _          ->-} category
+                sourceDir = buildPath settings sourceSubdir
+            files <- liftIO (filterM (doesFileExist . buildPath settings . (sourceSubdir </>))
+                                     =<< getDirectoryContents sourceDir)
+            results <- forM files $ \filename -> do
+                let target = sourceSubdir </> filename
+                content <- join (liftIO . flip readScript target <$> get)
+                when (null content) $
+                    liftIO $ hPutStrLn stderr $
+                        "Warning: " ++ target
+                            ++ " contains no scripts - failed parse? Expected feature type "
+                            ++ category
+                return (target, content)
+            return $ foldl (flip (uncurry HM.insert)) HM.empty results
+
+    events <- readStellarisScript "events"
+    return $ StellarisScripts {
+            steventScripts = events
+        }
+
+parseStellarisScripts :: Monad m => GameScripts -> PPT m ()
+parseStellarisScripts (GameScriptsStellaris (StellarisScripts {
+                    steventScripts = eventScripts
+                })) = do
+    events <- parseStellarisEvents eventScripts
+    
+    modify $ \s -> case game s of
+        GameStellaris { stdata = gdata }
+            -> s {
+                game = (game s) {
+                    stdata = gdata {
+                        stevents = events
+                    }
+                }
+            }
+        _ -> error "parseStellarisScripts passed wrong kind of scripts!"
+
+writeStellarisScripts :: PPT IO ()
+writeStellarisScripts = do
+    writeStellarisEvents

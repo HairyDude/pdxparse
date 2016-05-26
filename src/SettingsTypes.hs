@@ -41,6 +41,7 @@ import qualified Data.HashMap.Strict as HM
 import Abstract
 import Doc
 import EU4.Types
+import Stellaris.Types
 import Yaml
 
 -- Command line arguments.
@@ -84,12 +85,12 @@ data Game
         ,   writeScripts :: ScriptWriter
         ,   eu4data :: EU4Data
         }
---  | GameStellaris {
---          readScripts :: ScriptReader
---      ,   parseScripts :: ScriptParser
---      ,   writeScripts :: ScriptWriter
---      ,   stdata :: StellarisData
---      }
+    | GameStellaris {
+            readScripts :: ScriptReader
+        ,   parseScripts :: ScriptParser
+        ,   writeScripts :: ScriptWriter
+        ,   stdata :: StellarisData
+        }
     deriving (Show)
 
 -- State to store in a Reader.
@@ -99,17 +100,17 @@ data GameState
         ,   currentIndent :: Maybe Int
         ,   currentFile :: Maybe FilePath
         }
-{-  | StellarisState {
+    | StellarisState {
             gStellaris :: Stellaris
         ,   currentIndent :: Maybe Int
         ,   currentFile :: Maybe FilePath
-        } -}
+        }
     deriving (Show)
 
 -- Scripts after reading.
 data GameScripts
     = GameScriptsEU4 EU4Scripts
---  | GameScriptsEu4 EU4Scripts
+    | GameScriptsStellaris StellarisScripts
     deriving (Show)
 
 ----------------------
