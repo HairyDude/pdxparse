@@ -1,6 +1,9 @@
 # pdxparse
 A parser for scripts used in Paradox Development Studios games, written in Haskell.
 
+Currently only Europa Universalis IV is supported, but there are plans for
+other games as well.
+
 ## Building
 
 The easiest way to get it running is to use
@@ -19,8 +22,9 @@ You may also be able to just use `cabal-install` if you have it:
 ## Usage
 
 `pdxparse` should be run from the command line. It will create a directory
-`output` in the current directory. Its structure is the same as that of the EU4
-directory.
+`output` in the current directory. Its structure is the same as that of the game
+directory, except that the `.txt` files are directories. Each file in these
+directories is one "object": one event, one decision, etc.
 
 If you got EU4 from Steam, `pdxparse` should be able to find it automatically
 as long as your steamapps folder is in the default location.  If it's somewhere
