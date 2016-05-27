@@ -146,7 +146,7 @@ ppHandlers = Tr.fromList
         -- Random
         ,("random", random)
         -- Simple generic statements (RHS is a localizable atom)
-        ,("text",                  , withLocAtom MsgTextIs
+        ,("text"                   , withLocAtom MsgTextIs)
         -- RHS is a province ID
 --      ,("capital"           , withProvince MsgCapitalIs)
         -- RHS is a flag OR a province ID

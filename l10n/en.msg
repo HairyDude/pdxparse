@@ -626,3 +626,4 @@ SiegeAbility icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt}
 RecoverArmyMoraleSpeed icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Recover army morale speed
 TradeRange icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Trade range
 TradeSteering icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Trade steering
+TextIs what@Text: Text is: ''#{what}''

@@ -5,7 +5,7 @@ module Stellaris.Types (
     ,   Stellaris (..)
     ,   StellarisScripts (..)
         -- Features
-    ,   StellarisEvent (..), StellarisOption (..)
+    ,   StEvtDesc (..), StellarisEvent (..), StellarisOption (..)
         -- Low level
     ,   StellarisScope (..)
 --  ,   AIWillDo (..)
@@ -43,12 +43,19 @@ data StellarisScripts = StellarisScripts {
 -- Feature types --
 -------------------
 
+data StEvtDesc
+    = StEvtDescSimple Text  -- desc = key
+    | StEvtDescConditional GenericScript Text
+            -- desc = { text = key trigger = conditions }
+    | StEvtDescCompound GenericScript
+            -- desc = { trigger = { conditional_expressions } }
+    deriving (Show)
+
 -- Object that accumulates info about an event.
 data StellarisEvent = StellarisEvent
     {   stevt_id :: Maybe Text -- event id
     ,   stevt_title :: Maybe Text -- event title l10n key
-    ,   stevt_desc :: [(GenericScript, Maybe Text)]
-                            -- event description: trigger, l10n key
+    ,   stevt_desc :: [StEvtDesc]
     ,   stevt_picture :: Maybe Text -- event picture
     ,   stevt_scope :: StellarisScope -- type of thing the event happens to
     ,   stevt_trigger :: Maybe GenericScript
@@ -56,7 +63,7 @@ data StellarisEvent = StellarisEvent
     ,   stevt_mean_time_to_happen :: Maybe GenericScript
     ,   stevt_immediate :: Maybe GenericScript
     ,   stevt_hide_window :: Bool
-    ,   stevt_options :: Maybe [StellarisOption]
+    ,   stevt_options :: [StellarisOption]
     ,   stevt_path :: Maybe FilePath -- source file
     } deriving (Show)
 data StellarisOption = StellarisOption

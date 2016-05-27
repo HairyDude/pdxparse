@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, QuasiQuotes, LambdaCase #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, QuasiQuotes, LambdaCase, ViewPatterns #-}
 module Stellaris.Events (
         parseStellarisEvents
     ,   writeStellarisEvents
@@ -33,7 +33,7 @@ import SettingsTypes
 
 -- Starts off Nothing everywhere.
 newStellarisEvent :: StellarisScope -> StellarisEvent
-newStellarisEvent escope = StellarisEvent Nothing Nothing Nothing Nothing escope Nothing Nothing Nothing Nothing Nothing Nothing
+newStellarisEvent escope = StellarisEvent Nothing Nothing [] Nothing escope Nothing Nothing Nothing Nothing False [] Nothing
 newStellarisOption :: StellarisOption
 newStellarisOption = StellarisOption Nothing Nothing Nothing Nothing
 
@@ -114,64 +114,103 @@ parseStellarisEvent [pdx| %left = %right |] = case right of
 parseStellarisEvent _ = throwError "operator other than ="
 
 eventAddSection :: MonadError Text m => Maybe StellarisEvent -> GenericStatement -> PPT m (Maybe StellarisEvent)
-eventAddSection Nothing _ = return Nothing
-eventAddSection (Just evt) stmt@[pdx| $label = %rhs |] = withCurrentFile $ \file ->
-    Just <$> case label of
-        "id" -> case (textRhs rhs, floatRhs rhs) of
+eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) where
+    eventAddSection' evt stmt@[pdx| id = %rhs |]
+        = case (textRhs rhs, floatRhs rhs) of
             (Just tid, _) -> return evt { stevt_id = Just tid }
             (_, Just nid) -> return evt { stevt_id = Just (T.pack $ show (nid::Int)) }
-            _ -> throwError $ "bad id in " <> T.pack file <> ": " <> T.pack (show rhs)
-        "title" -> case textRhs rhs of
-            Just title -> return evt { stevt_title = Just title }
-            _ -> throwError $ "bad title in " <> T.pack file
-        "desc" -> let olddescs = stevt_desc evt in case rhs of
-            (textRhs -> Just desc) -> return evt { stevt_desc = olddescs ++ [([], desc)] }
+            _ -> withCurrentFile $ \file ->
+                throwError $ "bad id in " <> T.pack file <> ": " <> T.pack (show rhs)
+    eventAddSection' evt stmt@[pdx| title = %rhs |] = case textRhs rhs of
+        Just title -> return evt { stevt_title = Just title }
+        _ -> withCurrentFile $ \file ->
+            throwError $ "bad title in " <> T.pack file
+    eventAddSection' evt stmt@[pdx| desc = %rhs |] =
+        let olddescs = stevt_desc evt in case rhs of
+            (textRhs -> Just desc) -> return evt { stevt_desc = olddescs ++ [StEvtDescSimple desc] }
             -- research:
             -- 1) text = key
             -- 2) trigger = { conditions }
-            CompoundRhs rhs -> 
+            CompoundRhs [] ->  throwError "bad desc: empty conditions"
+            CompoundRhs [[pdx| text = ?key |]] -> do
+                -- This form is the one usually used for multiples, e.g. pop.10
+                desc <- getGameL10n key
+                return evt { stevt_desc = olddescs ++ [StEvtDescSimple desc] }
+            CompoundRhs [[pdx| text = ?key |], [pdx| trigger = @conditions |]] ->
+                -- This is also used for multiple descriptions, where each has
+                -- a condition attached, e.g. pirate.1
+                return evt { stevt_desc = olddescs ++ [StEvtDescConditional conditions key] }
+            CompoundRhs [[pdx| text = ?key |],
+                         [pdx| show_sound = %_ |],
+                         [pdx| trigger = @conditions |]] ->
+                -- As above, but an extra clause we don't have to worry about.
+                return evt { stevt_desc = olddescs ++ [StEvtDescConditional conditions key] }
+            CompoundRhs [[pdx| trigger = @condexpr |]] ->
+                -- This is used for compact presentation of events that have
+                -- many different possibilities. Generally uses a switch, e.g.
+                -- action.39
+                return evt { stevt_desc = olddescs ++ [StEvtDescCompound condexpr] }
             _ -> throwError "bad desc"
-        "picture" -> case textRhs rhs of
+    eventAddSection' evt stmt@[pdx| picture = %rhs |] =
+        case textRhs rhs of
             Just pic -> return evt { stevt_picture = Just pic }
             _ -> throwError "bad picture"
-        "trigger" -> case rhs of
+    eventAddSection' evt stmt@[pdx| trigger = %rhs |] =
+        case rhs of
             CompoundRhs trigger_script -> case trigger_script of
                 [] -> return evt -- empty, treat as if it wasn't there
                 _ -> return evt { stevt_trigger = Just trigger_script }
             _ -> throwError "bad event trigger"
-        "is_triggered_only" -> case rhs of
+    eventAddSection' evt stmt@[pdx| is_triggered_only = %rhs |] =
+        case rhs of
             GenericRhs "yes" -> return evt { stevt_is_triggered_only = Just True }
             -- no is the default, so I don't think this is ever used
             GenericRhs "no" -> return evt { stevt_is_triggered_only = Just False }
             _ -> throwError "bad trigger"
-        "mean_time_to_happen" -> case rhs of
+    eventAddSection' evt stmt@[pdx| mean_time_to_happen = %rhs |] =
+        case rhs of
             CompoundRhs mtth -> return evt { stevt_mean_time_to_happen = Just mtth }
             _ -> throwError "bad MTTH"
-        "immediate" -> case rhs of
+    eventAddSection' evt stmt@[pdx| immediate = %rhs |] =
+        case rhs of
             CompoundRhs immediate -> return evt { stevt_immediate = Just immediate }
             _ -> throwError "bad immediate section"
-        "option" -> case rhs of
+    eventAddSection' evt stmt@[pdx| option = %rhs |] =
+        case rhs of
             CompoundRhs option -> do
                 newStellarisOptions <- addStellarisOption (stevt_options evt) option
                 return evt { stevt_options = newStellarisOptions }
             _ -> throwError "bad option"
-        "fire_only_once" -> return evt -- do nothing
-        "major" -> return evt -- do nothing
-        "is_mtth_scaled_to_size" -> return evt -- do nothing (XXX)
-        "hide_window" -> case rhs of
-            GenericRhs "yes" -> return evt { stevt_hide_window = True }
-            GenericRhs "no" -> return evt { stevt_hide_window = False }
-            _ -> do
-                traceM $ "warning: unrecognized event section: " ++ show stmt
-                return evt
-        _ -> throwError $ "unrecognized event section in " <> T.pack file <> ": " <> label
-eventAddSection evt _ = return evt
+    eventAddSection' evt stmt@[pdx| fire_only_once = %_ |] =
+        return evt -- do nothing
+    eventAddSection' evt stmt@[pdx| major = %_ |] =
+        return evt -- do nothing
+    eventAddSection' evt stmt@[pdx| is_mtth_scaled_to_size = %_ |] =
+        return evt -- do nothing (XXX)
+    eventAddSection' evt stmt@[pdx| hide_window = %rhs |]
+        | GenericRhs "yes" <- rhs = return evt { stevt_hide_window = True }
+        | GenericRhs "no"  <- rhs = return evt { stevt_hide_window = False }
+    eventAddSection' evt stmt@[pdx| show_sound = %_ |] =
+        return evt -- do nothing
+    eventAddSection' evt stmt@[pdx| location = %rhs |] =
+        return evt -- TODO: show this, and add support on the wiki
+    eventAddSection' evt stmt@[pdx| auto_opens = %_ |] =
+        return evt -- I have no idea what this means
+    eventAddSection' evt stmt@[pdx| is_advisor_event = %_ |] =
+        return evt -- probably not important to note
+    eventAddSection' evt stmt@[pdx| diplomatic = %_ |] =
+        return evt -- probably not important to note
+    eventAddSection' evt stmt@[pdx| picture_event_data = %_ |] =
+        return evt -- probably not important to note
+    eventAddSection' evt stmt@[pdx| $label = %_ |] =
+        withCurrentFile $ \file ->
+            throwError $ "unrecognized event section in " <> T.pack file <> ": " <> label
+    eventAddSection' evt _ = return evt
 
-addStellarisOption :: Monad m => Maybe [StellarisOption] -> GenericScript -> PPT m (Maybe [StellarisOption])
-addStellarisOption Nothing opt = addStellarisOption (Just []) opt
-addStellarisOption (Just opts) opt = do
+addStellarisOption :: Monad m => [StellarisOption] -> GenericScript -> PPT m [StellarisOption]
+addStellarisOption opts opt = do
     optn <- foldM optionAddStatement newStellarisOption opt
-    return $ Just (opts ++ [optn])
+    return $ opts ++ [optn]
 
 optionAddStatement :: Monad m => StellarisOption -> GenericStatement -> PPT m StellarisOption
 optionAddStatement opt stmt@[pdx| $label = %rhs |] =
@@ -198,19 +237,34 @@ optionAddEffect :: Monad m => Maybe GenericScript -> GenericStatement -> PPT m (
 optionAddEffect Nothing stmt = optionAddEffect (Just []) stmt
 optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 
+ppDescs :: Monad m => Bool -> [StEvtDesc] -> PPT m Doc
+ppDescs True _ = return "| cond_event_text = (This event is hidden and has no description.)"
+ppDescs _ [] = return "| event_text = (No description)"
+ppDescs _ [StEvtDescSimple key] = ("| event_text = " <>) . strictText <$> getGameL10n key
+ppDescs _ descs = ("| cond_event_text = " <>) .vsep <$> mapM ppDesc descs where
+    ppDesc (StEvtDescSimple key) = ("Otherwise:<br>:" <>) <$> fmtDesc key
+    ppDesc (StEvtDescConditional scr key) = mconcat <$> sequenceA
+        [pure "The following description is used if:", pure line
+        ,imsg2doc =<< ppMany scr, pure line
+        ,pure ":", fmtDesc key
+        ]
+    ppDesc (StEvtDescCompound scr) =
+        (("| cond_event_text =" <> line) <>) <$> (imsg2doc =<< ppMany scr)
+    fmtDesc key = flip liftM (getGameL10nIfPresent key) $ \case
+        Nothing -> strictText key
+        Just txt -> "''" <> strictText (nl2br txt) <> "''"
+
 -- Pretty-print an event, or fail.
 pp_event :: forall m. MonadError Text m => StellarisEvent -> PPT m Doc
-pp_event evt = case (stevt_id evt
-                    ,stevt_title evt
-                    ,stevt_options evt) of
-    (Just eid, Just title, Just options)
+pp_event evt = case stevt_id evt of
+    Just eid
         | (isJust (stevt_is_triggered_only evt) ||
            isJust (stevt_mean_time_to_happen evt)) -> do
         -- Valid event
         version <- gets gameVersion
-        (conditional, options_pp'd) <- pp_options options
-        titleLoc <- getGameL10n title
-        descLoc <- getGameL10n `mapM` stevt_desc evt
+        (conditional, options_pp'd) <- pp_options (stevt_hide_window evt) eid (stevt_options evt)
+        titleLoc <- fromMaybe eid <$> sequence (getGameL10n <$> stevt_title evt)
+        descLoc <- ppDescs (stevt_hide_window evt) (stevt_desc evt)
         let evtArg :: Text -> (StellarisEvent -> Maybe a) -> (a -> PPT m Doc) -> PPT m [Doc]
             evtArg fieldname field fmt
                 = maybe (return [])
@@ -232,12 +286,8 @@ pp_event evt = case (stevt_id evt
             ,"{{Event", line
             ,"| version = ", strictText version, line
             ,"| event_name = ", strictText titleLoc, line
+            ,descLoc, line
             ] ++
-            maybe [] (\desc ->
-                        ["| event_text = "
-                        ,text . TL.fromStrict . nl2br $ desc
-                        ,line])
-                      descLoc ++
             -- For triggered only events, mean_time_to_happen is not
             -- really mtth but instead describes weight modifiers, for
             -- scripts that trigger them with a probability based on a
@@ -263,25 +313,24 @@ pp_event evt = case (stevt_id evt
             ,"}}", line
             ,"<section end=", evtId, "/>"
             ]
+        | otherwise ->
+            throwError ("is_triggered_only and mean_time_to_happen missing for event id " <> eid)
 
-    (Nothing, _, _) -> throwError "stevt_id missing"
-    (Just eid, Nothing, _) ->
-        throwError ("title missing for event id " <> eid)
-    (Just eid, _, Nothing) ->
-        throwError ("options missing for event id " <> eid)
-    (Just eid, _, _) ->
-        throwError ("is_triggered_only and mean_time_to_happen missing for event id " <> eid)
+    Nothing -> throwError "stevt_id missing"
 
-pp_options :: MonadError Text m => [StellarisOption] -> PPT m (Bool, Doc)
-pp_options opts = do
+pp_options :: MonadError Text m => Bool -> Text -> [StellarisOption] -> PPT m (Bool, Doc)
+pp_options hidden eid opts = do
     let triggered = any (isJust . stopt_trigger) opts
-    options_pp'd <- mapM (pp_option triggered) opts
+    options_pp'd <- mapM (pp_option hidden triggered eid) opts
     return (triggered, mconcat . (line:) . intersperse line $ options_pp'd)
 
-pp_option :: MonadError Text m => Bool -> StellarisOption -> PPT m Doc
-pp_option triggered opt = do
+pp_option :: MonadError Text m => Bool -> Bool -> Text -> StellarisOption -> PPT m Doc
+pp_option hidden triggered eid opt = do
     optNameLoc <- getGameL10n `mapM` stopt_name opt
-    case optNameLoc of
+    let optNameLoc' = if hidden
+                        then maybe (Just "(No text)") Just optNameLoc
+                        else optNameLoc
+    case optNameLoc' of
         -- NB: some options have no effect, e.g. start of Peasants' War.
         Just name_loc ->
             let mtrigger = stopt_trigger opt
@@ -304,4 +353,4 @@ pp_option triggered opt = do
                     -- 1 = no
                     ["}}"
                     ]
-        Nothing -> throwError $ "some required option sections missing - dumping: " <> T.pack (show opt)
+        Nothing -> throwError $ "option for non-hidden event " <> eid <> " has no text"
