@@ -18,7 +18,7 @@ settings:
 
     # Which game we're looking at. This is the name of the directory under
     # steam_dir where the game is kept.
-    game: "Stellaris"
+    game: "Europa Universalis IV"
 
     # Language to extract in. Note that although the program can extract
     # non-English localization strings from the game, only English messages
@@ -26,4 +26,4 @@ settings:
     language: "english"
 
     # Game version (major patch number). Only used to add version templates.
-    version: "1.0"
+    version: "1.17"

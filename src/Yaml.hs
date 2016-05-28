@@ -146,7 +146,7 @@ lang = HM.singleton <$> (liftA2 (<>) (Ap.string "l_")
                             <?> "language tag")
                                          -- Stellaris has l_braz_por
                     <*> (Ap.char ':'
-                     *> newline
+                     *> Ap.many1 newline
                      *> messages)
     <?> "localization for one language"
 

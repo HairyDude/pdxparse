@@ -78,7 +78,7 @@ isPronoun s = T.map toLower s `S.member` pronouns where
 
 pp_script :: Monad m => GenericScript -> PPT m Doc
 pp_script [] = return "(Nothing)"
-pp_script script = imsg2doc =<< ppMany script
+pp_script script = imsg2doc_html =<< ppMany script
 
 -- Emit icon template.
 icon :: Text -> Doc
