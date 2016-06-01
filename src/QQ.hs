@@ -37,8 +37,8 @@ module QQ (
             $foo => foo :: Text, matches a bare_word
             ?foo => foo :: Text, matches a "string" /or/ a bare_word
                                  (goes through textRhs)
-        on the RHS only:
             !foo => foo :: Int, matches a number (goes through floatRhs)
+        on the RHS only:
             [foo] => foo :: GenericScript, matches a compound
 
 -}
@@ -79,12 +79,12 @@ type StExpR = StExp
 e_lhs :: Parser StExpL
 e_lhs = ExpHsGeneric . T.unpack <$> (Ap.string "$" *> haskell)
     <|> ExpHsDirect  . T.unpack <$> (Ap.string "%" *> haskell)
+    <|> ExpHsInt     . T.unpack <$> (Ap.string "!" *> haskell)
 
 e_rhs :: Parser StExpR
 e_rhs = ExpHsDirect   . T.unpack <$> (Ap.string "%" *> haskell)
     <|> ExpHsGeneric  . T.unpack <$> (Ap.string "$" *> haskell)
     <|> ExpHsString   . T.unpack <$> (Ap.string "?" *> haskell)
-    <|> ExpHsInt      . T.unpack <$> (Ap.string "!" *> haskell)
     <|> ExpHsCompound . T.unpack <$> (Ap.string "@" *> haskell)
 
 haskell :: Parser Text
@@ -166,9 +166,9 @@ type StPatR = StPat
 p_lhs :: Parser StPatL
 p_lhs = (PatHs          . T.unpack) <$> (Ap.string "%"  *> haskell)
     <|> (PatSomeGeneric . T.unpack) <$> (Ap.string "$"  *> haskell)
+    <|> (PatSomeInt     . T.unpack) <$> (Ap.string "!" *> haskell)
 p_rhs :: Parser StPatR
-p_rhs = (PatSomeInt     . T.unpack) <$> (Ap.string "!" *> haskell)
-    <|> (PatStringOrNum . T.unpack) <$> (Ap.string "?!" *> haskell)
+p_rhs = (PatStringOrNum . T.unpack) <$> (Ap.string "?!" *> haskell)
     <|> (PatStringlike  . T.unpack) <$> (Ap.string "?" *> haskell)
     <|> (PatCompound    . T.unpack) <$> (Ap.string "@" *> haskell)
     <|> p_lhs
@@ -186,18 +186,18 @@ propat2pat (Statement lhs op rhs) = do
 
 lhs2pat :: Lhs StPatL -> Q Pat
 lhs2pat lhs = case lhs of
-    -- @foo => any lhs, stored in a variable foo
+    -- %foo => any lhs, stored in a variable foo
     CustomLhs (PatHs hpat) -> case parsePat hpat of
         Right pat' -> return pat'
         Left err -> fail ("couldn't parse pattern: " ++ err)
-    -- ?foo => generic lhs, name stored in a variable foo
-    --  e.g. ?color = yes => Statement (GenericLhs color) (GenericRhs "yes")
+    -- $foo => generic lhs, name stored in a variable foo
+    --  e.g. $color = yes => Statement (GenericLhs color) (GenericRhs "yes")
     CustomLhs (PatSomeGeneric gen) ->
         if gen == "_"
         then wildP
         else conP 'GenericLhs [varP (mkName gen)]
     -- not supported in LHS
-    CustomLhs (PatSomeInt _) -> error "int pattern not supported on LHS"
+    CustomLhs (PatSomeInt n) -> conP 'IntLhs [varP (mkName n)]
     CustomLhs (PatCompound _) -> error "compound pattern not supported on LHS"
     CustomLhs (PatStringlike _) -> error "stringlike pattern not supported on LHS"
     CustomLhs (PatStringOrNum _) -> error "string-or-num pattern not supported on LHS"

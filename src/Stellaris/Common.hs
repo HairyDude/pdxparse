@@ -148,9 +148,9 @@ ppHandlers = Tr.fromList
         ,("limit"         ,                          compoundMessage MsgLimit) -- always needs editing
         ,("capital_scope" , scope StellarisPlanet  . compoundMessage MsgCapital)
         ,("owner"         , scope StellarisCountry . compoundMessage MsgOwner)
-        ,("random_list"   ,                          compoundMessage MsgRandom)
         -- Random
-        ,("random", random)
+        ,("random"      , random)
+        ,("random_list" , randomList) -- Works differently than EU4
         -- Simple generic statements (RHS is a localizable atom)
         ,("text"            , withLocAtom MsgTextIs)
         -- RHS is a province ID
@@ -807,6 +807,18 @@ random stmt@[pdx| %_ = @scr |]
     | otherwise = compoundMessage MsgRandom stmt
 random stmt = preStatement stmt
 
+randomList :: Monad m => GenericStatement -> PPT m IndentedMessages
+randomList stmt@[pdx| %_ = @scr |] = fmtRandomList $ map entry scr
+    where
+        entry [pdx| !weight = @scr |] = (fromIntegral weight, scr)
+        entry _ = error "Bad clause in random_list"
+        fmtRandomList entries = withCurrentIndent $ \i ->
+            let total = sum (map fst entries)
+            in (:) <$> pure (i, MsgRandom)
+                   <*> (concat <$> indentUp (mapM (fmtRandomList' total) entries))
+        fmtRandomList' total (wt, what) = withCurrentIndent $ \i ->
+            (:) <$> pure (i, MsgRandomChance ((wt / total) * 100))
+                <*> ppMany what -- has integral indentUp
 -- DLC
 
 hasDlc :: Monad m => GenericStatement -> PPT m IndentedMessages
