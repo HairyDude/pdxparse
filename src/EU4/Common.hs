@@ -1590,17 +1590,12 @@ triggerEvent evtType stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_trigger_event =<< foldM addLine newTriggerEvent scr
     where
         addLine :: TriggerEvent -> GenericStatement -> PPT m TriggerEvent
-        addLine evt [pdx| id = $eid |]
-            = (\t_loc -> evt { e_id = Just eid, e_title_loc = t_loc })
-              . msum
-              <$> mapM getGameL10nIfPresent
-                -- The following is a list of schemes that Paradox uses in
-                -- localization keys for event names. We take the first one
-                -- that exists.
-                [eid <> ".t"
-                ,let (ns,num) = T.break (=='.') eid
-                 in ns <> ".EVTNAME" <> T.drop 1 num
-                ]
+        addLine evt [pdx| id = $eid |] = do
+            mevt_t <- gets ((eu4evt_title =<<)
+                             . HM.lookup eid
+                             . eu4events . eu4data . game)
+            t_loc <- fmap join (sequence (getGameL10nIfPresent <$> mevt_t))
+            return evt { e_id = Just eid, e_title_loc = t_loc }
         addLine evt [pdx| days = %rhs |]
             = return evt { e_days = floatRhs rhs }
         addLine evt _ = return evt
