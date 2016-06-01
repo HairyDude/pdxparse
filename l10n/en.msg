@@ -111,6 +111,7 @@ CultureIsGroup what@Text: Culture is in #{what} group
 RulerIsDynasty what@Text: Ruler is of #{what} dynasty
 DisasterEnds what@Text: Disaster #{iquotes what} ends
 GovernmentIs what@Text: Government is #{what}
+GovernmentIsIcon icon@Text what@Text: Government is #{icon} #{what}
 HasAdvisor whom@Text: Has advisor #{whom}
 HasAdvisorType icon@Text what@Text: Has #{icon} #{what} advisor
 HasTerrain what@Text: Has #{what} terrain

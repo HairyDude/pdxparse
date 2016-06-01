@@ -54,6 +54,7 @@ imsg2doc_html msgs@((i,_):_)
     | i > 0     = enclose "<ul>" "</ul>" . fst <$> imsg2doc' msgs
     | otherwise = fst <$> imsg2doc' msgs
     where
+        -- Format all (remaining) messages at the current indent level.
         imsg2doc' :: IndentedMessages -> PPT m (Doc, IndentedMessages)
         imsg2doc' [] = return (mempty, [])
         imsg2doc' [(_, rm)] = do -- Last message.
@@ -68,14 +69,15 @@ imsg2doc_html msgs@((i,_):_)
                 -- Format stuff after the indent.
                 (postdoc, restmsgs) <- imsg2doc' moremsgs
                 -- Put it all together.
-                return (enclose "<li>" "</li>"
-                            (vsep
-                                [m, line
-                                ,enclose "<ul>" "</ul>" indented, line
-                                ,postdoc])
+                return (vsep
+                            [enclose "<li>" "</li>"
+                                (vsep
+                                    [m
+                                    ,enclose "<ul>" "</ul>" indented])
+                            ,postdoc]
                        , restmsgs)
             | i > i' = do
-                -- Indent finished. Just format one.
+                -- Last message at this level.
                 m <- enclose "<li>" "</li>" <$> message rm
                 return (m, msgs)
             | otherwise = do

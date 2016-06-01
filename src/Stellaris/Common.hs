@@ -4,7 +4,7 @@ module Stellaris.Common (
     ,   pp_mtth
     ,   ppOne
     ,   ppMany
-    ,   iconKey, iconFile, iconFileB
+    ,   iconKey
 --  ,   AIWillDo (..), AIModifier (..)
     ,   StellarisScope (..), Stellaris (..)
     ,   scope, getCurrentStellarisScope
@@ -140,13 +140,19 @@ ppHandlers = Tr.fromList
         -- There is a semantic distinction between "all" and "every",
         -- namely that the former means "this is true for all <type>" while
         -- the latter means "do this for every <type>."
-        ,("if"                      ,                      compoundMessage MsgIf) -- always needs editing
-        ,("limit"                   ,                      compoundMessage MsgLimit) -- always needs editing
---      ,("owner"                   , scope StellarisCountry   . compoundMessage MsgOwner)
+        ,("any_country"   , scope StellarisCountry . compoundMessage MsgAnyCountry)
+        ,("every_country" , scope StellarisCountry . compoundMessage MsgEveryCountry)
+        ,("random_country", scope StellarisCountry . compoundMessage MsgRandomCountry)
+        ,("if"            ,                          compoundMessage MsgIf) -- always needs editing
+        ,("hidden_effect" ,                          compoundMessage MsgHiddenEffect)
+        ,("limit"         ,                          compoundMessage MsgLimit) -- always needs editing
+        ,("capital_scope" , scope StellarisPlanet  . compoundMessage MsgCapital)
+        ,("owner"         , scope StellarisCountry . compoundMessage MsgOwner)
+        ,("random_list"   ,                          compoundMessage MsgRandom)
         -- Random
         ,("random", random)
         -- Simple generic statements (RHS is a localizable atom)
-        ,("text"                   , withLocAtom MsgTextIs)
+        ,("text"            , withLocAtom MsgTextIs)
         -- RHS is a province ID
 --      ,("capital"           , withProvince MsgCapitalIs)
         -- RHS is a flag OR a province ID
@@ -154,8 +160,12 @@ ppHandlers = Tr.fromList
         -- RHS is a flag or province id, but the statement's meaning depends on the scope
 --      ,("has_discovered"     , withFlagOrProvinceStellarisScope MsgHasDiscovered MsgDiscoveredBy) -- scope sensitive
         -- Simple generic statements (typewriter face)
---      ,("clr_country_flag" , withNonlocAtom2 MsgCountryFlag MsgClearFlag)
+        ,("has_country_flag"    , withNonlocAtom2 MsgCountryFlag MsgHasFlag)
+        ,("has_global_flag"     , withNonlocAtom2 MsgGlobalFlag  MsgHasFlag)
+        ,("remove_country_flag" , withNonlocAtom2 MsgCountryFlag MsgClearFlag)
+        ,("set_country_flag"    , withNonlocAtom2 MsgCountryFlag MsgSetFlag)
         -- Simple generic statements with icon
+        ,("has_government"  , withLocAtomIcon MsgGovernmentIsIcon)
 --      ,("advisor"                 , withLocAtomIcon MsgHasAdvisorType)
         -- Simple generic statements with flag
 --      ,("alliance_with"           , withFlag MsgAlliedWith)
@@ -167,6 +177,9 @@ ppHandlers = Tr.fromList
         -- Statements that may be either a tag or a province
 --      ,("is_core" , tagOrProvince MsgIsCoreOf MsgHasCoreOn)
         -- Boolean statements
+        ,("is_ai"                       , withBool MsgIsAIControlled)
+        ,("is_at_war"                   , withBool MsgAtWar)
+        ,("is_capital"                  , withBool MsgIsCapital)
         ,("always"                      , withBool MsgAlways)
         -- Statements that may be numeric or a tag
 --      ,("num_of_cities", numericOrTag MsgNumCities MsgNumCitiesThan)
@@ -180,10 +193,10 @@ ppHandlers = Tr.fromList
 --      ,("add_core"            , addCore)
         -- Special complex statements
 --      ,("add_casus_belli"              , addCB True)
---      ,("add_opinion"                  , opinion MsgAddOpinion MsgAddOpinionDur)
+        ,("add_opinion_modifier"         , opinion MsgAddOpinion MsgAddOpinionDur)
         ,("custom_trigger_tooltip"       , customTriggerTooltip)
         ,("check_variable"               , textValue "which" "value" MsgCheckVariable MsgCheckVariable tryLoc)
---      ,("country_event"                , scope StellarisCountry . triggerEvent MsgCountryEvent)
+        ,("country_event"                , scope StellarisCountry . triggerEvent MsgCountryEvent)
 --      ,("has_opinion"                  , hasOpinion)
 --      ,("has_opinion_modifier"         , opinion MsgHasOpinionMod (\what who _years -> MsgHasOpinionMod what who))
 --      ,("province_event"               , scope StellarisProvince . triggerEvent MsgProvinceEvent)
@@ -217,7 +230,6 @@ ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
             _ -> preStatement stmt
     CustomLhs _ -> preStatement stmt
 ppOne stmt = preStatement stmt
-
 
 -----------------------------------------------------------------
 -- Script handlers that should be used directly, not via ppOne --
@@ -360,7 +372,7 @@ withLocAtomIcon :: Monad m =>
         -> GenericStatement
         -> PPT m IndentedMessages
 withLocAtomIcon msg stmt@[pdx| %_ = $key |]
-    = withLocAtomAndIcon key msg stmt
+    = withLocAtomAndIcon (fromMaybe key (iconKey key)) msg stmt
 withLocAtomIcon _ stmt = preStatement stmt
 
 {-
@@ -396,63 +408,48 @@ withNonlocAtom2 _ _ stmt = preStatement stmt
 -- Table of script atom -> icon key. Only ones that are different are listed.
 scriptIconTable :: HashMap Text Text
 scriptIconTable = HM.fromList
-    [("master_of_mint", "master of mint")
-    ,("natural_scientist", "natural scientist")
-    ,("colonial_governor", "colonial governor")
-    ,("diplomat", "diplomat_adv")
-    ,("naval_reformer", "naval reformer")
-    ,("navy_reformer", "naval reformer") -- these are both used!
-    ,("army_organizer", "army organizer")
-    ,("army_reformer", "army reformer")
-    ,("grand_captain", "grand captain")
-    ,("master_recruiter", "master recruiter")
-    ,("military_engineer", "military engineer")
-    ,("spy_ideas", "espionage")
-    ,("economic_ideas", "economic")
-    ,("trade_ideas", "trade")
-    ,("administrative_ideas", "administrative")
-    ,("innovativeness_ideas", "innovative")
-    ,("aristocracy_ideas", "aristocratic")
-    ,("religious_ideas", "religious")
-    ,("diplomatic_ideas", "diplomatic")
-    ,("influence_ideas", "influence")
-    ,("estate_church", "clergy")
-    ,("estate_nobles", "nobles")
-    ,("estate_burghers", "burghers")
-    ,("estate_cossacks", "cossacks")
-    ,("estate_nomadic_tribes", "tribes")
-    ,("estate_dhimmi", "dhimmi")
-    ,("base production", "production")
-    ,("particularist", "particularists")
-    ,("is_monarch_leader", "ruler general")
-    ,("piety", "being pious") -- chosen arbitrarily
-    ,("nomad_group", "nomadic")
-    ,("tengri_pagan_reformed", "tengri")
-    ,("norse_pagan_reformed", "norse")
-    ,("mesoamerican_religion", "mayan")
+    [("ai_overlordship", "ai overlordship")
+    ,("democratic_utopia", "democratic utopia")
+    ,("despotic_empire", "despotic empire")
+    ,("despotic_hegemony", "despotic hegemony")
+    ,("direct_democracy", "direct democracy")
+    ,("divine_mandate", "divine mandate")
+    ,("enlightened_monarchy", "enlightened monarchy")
+    ,("fragmented_nations", "fragmented nations")
+    ,("illuminated_technocracy", "illuminated technocracy")
+    ,("indirect_democracy", "indirect democracy")
+    ,("irenic_democracy", "irenic democracy")
+    ,("irenic_monarchy", "irenic monarchy")
+    ,("irenic_protectorate", "irenic protectorate")
+    ,("machine_consciousness", "machine consciousness")
+    ,("martial_demarchy", "martial demarchy")
+    ,("martial_empire", "martial empire")
+    ,("mega_corporation", "mega corporation")
+    ,("military_dictatorship", "military dictatorship")
+    ,("military_junta", "military junta")
+    ,("military_order", "military order")
+    ,("military_republic", "military republic")
+    ,("moral_democracy", "moral democracy")
+    ,("neural_network_administration", "neural network administration")
+    ,("ordered_stratocracy", "ordered stratocracy")
+    ,("peaceful_bureaucracy", "peaceful bureaucracy")
+    ,("pirate_codex", "pirate codex")
+    ,("plutocratic_oligarchy", "plutocratic oligarchy")
+    ,("primitive_feudalism", "primitive feudalism")
+    ,("science_directorate", "science directorate")
+    ,("stagnant_ascendancy", "stagnant ascendancy")
+    ,("star_empire", "star empire")
+    ,("subconscious_consensus", "subconscious consensus")
+    ,("theocratic_oligarchy", "theocratic oligarchy")
+    ,("theocratic_republic", "theocratic republic")
+    ,("transcendent_empire", "transcendent empire")
+    ,("transcendent_oligarchy", "transcendent oligarchy")
+    ,("transcendent_republic", "transcendent republic")
     ]
 
 -- Given a script atom, return the corresponding icon key, if any.
 iconKey :: Text -> Maybe Text
 iconKey atom = HM.lookup atom scriptIconTable
-
-iconFileTable :: HashMap Text Text
-iconFileTable = HM.fromList
-    [("global tax modifier", "national tax modifier")
-    ,("stability cost", "stability cost modifier")
-    ,("land maintenance", "land maintenance modifier")
-    ,("tolerance of the true faith", "tolerance own")
-    ,("light ship combat ability", "light ship power")
-    ]
-
--- Given an {{icon}} key, give the corresponding icon file name.
---
--- Needed for idea groups, which don't use {{icon}}.
-iconFile :: Text -> Text
-iconFile s = HM.lookupDefault s s iconFileTable
--- ByteString version
-iconFileB :: ByteString -> ByteString
-iconFileB = TE.encodeUtf8 . iconFile . TE.decodeUtf8
 
 -- Numeric statement.
 -- TODO (if necessary): allow operators other than = and pass them to message
@@ -771,17 +768,12 @@ triggerEvent evtType stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_trigger_event =<< foldM addLine newTriggerEvent scr
     where
         addLine :: TriggerEvent -> GenericStatement -> PPT m TriggerEvent
-        addLine evt [pdx| id = $eid |]
-            = (\t_loc -> evt { e_id = Just eid, e_title_loc = t_loc })
-              . msum
-              <$> mapM getGameL10nIfPresent
-                -- The following is a list of schemes that Paradox uses in
-                -- localization keys for event names. We take the first one
-                -- that exists.
-                [eid <> ".t"
-                ,let (ns,num) = T.break (=='.') eid
-                 in ns <> ".EVTNAME" <> T.drop 1 num
-                ]
+        addLine evt [pdx| id = $eid |] = do
+            mevt_t <- gets ((stevt_title =<<)
+                             . HM.lookup eid
+                             . stevents . stdata . game)
+            t_loc <- fmap join (sequence (getGameL10nIfPresent <$> mevt_t))
+            return evt { e_id = Just eid, e_title_loc = t_loc }
         addLine evt [pdx| days = %rhs |]
             = return evt { e_days = floatRhs rhs }
         addLine evt _ = return evt
@@ -822,13 +814,7 @@ hasDlc [pdx| %_ = ?dlc |]
     = msgToPP $ MsgHasDLC dlc_icon dlc
     where
         mdlc_key = HM.lookup dlc . HM.fromList $
-            [("Conquest of Paradise", "cop")
-            ,("Wealth of Nations", "won")
-            ,("Res Publica", "rp")
-            ,("Art of War", "aow")
-            ,("El Dorado", "ed")
-            ,("Common Sense", "cs")
-            ,("The Cossacks", "cos")
+            [ -- Stellaris has no major DLC yet.
             ]
         dlc_icon = maybe "" iconText mdlc_key
 hasDlc stmt = preStatement stmt
@@ -844,9 +830,14 @@ triggerSwitch :: Monad m => GenericStatement -> PPT m IndentedMessages
 --  }
 -- }
 -- where the <statement rhs> block may be repeated several times.
+--
+-- Switches are the same, but the head is `switch` and the trigger clause is
+-- `trigger` instead of `on_trigger`. Semantically `trigger_switch` is used in
+-- triggers; `switch` is used in actions.
 triggerSwitch stmt@(Statement _ OpEq (CompoundRhs
-                    ([pdx| on_trigger = $condlhs |] -- assume this is first statement
-                    :clauses))) = do
+                    ([pdx| $triggerClause = $condlhs |] -- assume this is first statement
+                    :clauses)))
+                    | triggerClause `elem` ["trigger", "on_trigger"] = do
     statementsMsgs <- indentUp $ forM clauses $ \clause -> case clause of
         -- using next indent level, for each block <condrhs> = { ... }:
         [pdx| $condrhs = @action |] -> do
