@@ -32,6 +32,7 @@ import Localization
 import SettingsTypes
 import Paths_pdxparse
 import qualified EU4.Settings as EU4
+import qualified Stellaris.Settings as Stellaris
 
 data GameData
     = DataEU4 EU4.EU4Data
@@ -151,9 +152,7 @@ readSettings = do
             let provisionalSettings' = provisionalSettings `setGameL10n` game_l10n
             case gameFolder provisionalSettings' of
                 "Europa Universalis IV" -> EU4.fillSettings provisionalSettings'
-                "Stellaris" -> do
-                    putStrLn "Sorry, Stellaris isn't supported yet."
-                    exitFailure
+                "Stellaris" -> Stellaris.fillSettings provisionalSettings'
                 other -> do
                     putStrLn $ "I don't know how to handle " ++ other ++ "!"
                     exitFailure

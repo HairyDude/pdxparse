@@ -46,6 +46,7 @@ ProvMod: province modifier
 PermanentProvMod: permanent province modifier
 RulerMod: ruler modifier
 TradeMod: trade modifier
+AddMod modid@Text name@Text days@Double: Gain modifier #{iquotes name} <!-- #{modid} --> for #{roundNumNoSpace days} days
 GainMod modid@Text type@Text name@Text: Gain #{type} #{iquotes name} <!-- #{modid} -->
 GainModDur modid@Text type@Text name@Text days@Double: Gain #{type} #{iquotes name} <!-- #{modid} --> for #{roundNumNoSpace days} #{plural days "day" "days"}
 GainModPow modid@Text type@Text name@Text pow@Double: Gain #{type} #{iquotes name} <!-- #{modid} --> (#{colourNumSign True pow} Power)
@@ -111,6 +112,7 @@ CultureIsGroup what@Text: Culture is in #{what} group
 RulerIsDynasty what@Text: Ruler is of #{what} dynasty
 DisasterEnds what@Text: Disaster #{iquotes what} ends
 GovernmentIs what@Text: Government is #{what}
+GovernmentIsIcon icon@Text what@Text: Government is #{icon} #{what}
 HasAdvisor whom@Text: Has advisor #{whom}
 HasAdvisorType icon@Text what@Text: Has #{icon} #{what} advisor
 HasTerrain what@Text: Has #{what} terrain
@@ -626,3 +628,14 @@ SiegeAbility icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt}
 RecoverArmyMoraleSpeed icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Recover army morale speed
 TradeRange icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Trade range
 TradeSteering icon@Text amt@Double: #{icon} #{reducedNum (colourPcSign True) amt} Trade steering
+TextIs what@Text: Text is: ''#{what}''
+AnyOwnedPlanet: Any owned planet:
+AnyOwnedShip: Any owned ship:
+AnyPop: Any pop:
+EveryOwnedPlanet: Every owned planet:
+EveryOwnedPop: Every pop on owned planets:
+RandomOwnedShip: One random owned ship:
+RandomPop: One random pop:
+RandomSystem: One random system:
+RandomTile: One random tile:
+GainTrait icon@Text what@Text: Gain trait #{icon} #{what}

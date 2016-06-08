@@ -43,13 +43,6 @@ fillSettings settings = return $
 --         script.
 readEU4Scripts :: PPT IO GameScripts
 readEU4Scripts = GameScriptsEU4 <$> do
-    {-
-    concat <$> forM ["decisions"
---                               ,"missions"
-                                 ,"events"
---                               ,"policies"
-                                 ,"ideagroups"
-                                 ] $ \category -> -}
     let readEU4Script :: String -> PPT IO (HashMap String GenericScript)
         readEU4Script category = do
             settings <- get
