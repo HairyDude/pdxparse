@@ -32,6 +32,7 @@ import Localization
 import SettingsTypes
 import Paths_pdxparse
 import qualified EU4.Settings as EU4
+import qualified HOI4.Settings as HOI4
 import qualified Stellaris.Settings as Stellaris
 
 data GameData
@@ -134,11 +135,13 @@ readSettings = do
                     Unknown -> fail $ "Unknown platform: " ++ System.Info.os
             let steamAppsCanonicalized = fromMaybe "Steam/steamapps/common" (steamAppsI settingsIn)
                 lang = languageI settingsIn
+                gamefolder = gameFolderI settingsIn
                 provisionalSettings = Settings
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
                             , game = GameUnknown -- filled in later
-                            , gameFolder = gameFolderI settingsIn
+                            , gameFolder = gamefolder
+                            , gamePath = steamDirCanonicalized </> steamAppsCanonicalized </> gamefolder
                             , language = "l_" <> lang
                             , languageS = "l_" <> T.unpack lang
                             , gameVersion = T.pack (gameVersionI settingsIn)
@@ -153,6 +156,7 @@ readSettings = do
             case gameFolder provisionalSettings' of
                 "Europa Universalis IV" -> EU4.fillSettings provisionalSettings'
                 "Stellaris" -> Stellaris.fillSettings provisionalSettings'
+                "Hearts of Iron IV" -> HOI4.fillSettings provisionalSettings'
                 other -> do
                     putStrLn $ "I don't know how to handle " ++ other ++ "!"
                     exitFailure

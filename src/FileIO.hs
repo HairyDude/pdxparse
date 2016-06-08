@@ -57,7 +57,9 @@ readScript :: Settings -> FilePath -> IO GenericScript
 readScript settings file = do
     let filepath = buildPath settings file
     contents <- readFileRetry filepath
-    case Ap.parseOnly (skipSpace >> genericScript) contents of
+    case Ap.parseOnly (Ap.option undefined (Ap.char '\xFEFF') -- BOM
+                        *> skipSpace
+                        *> genericScript) contents of
         Right result -> return result
         Left err -> do
             putStrLn $ "Couldn't parse " ++ file ++ ": " ++ err

@@ -41,6 +41,7 @@ import qualified Data.HashMap.Strict as HM
 import Abstract
 import Doc
 import EU4.Types
+import HOI4.Types
 import Stellaris.Types
 import Yaml
 
@@ -91,6 +92,12 @@ data Game
         ,   writeScripts :: ScriptWriter
         ,   stdata :: StellarisData
         }
+    | GameHOI4 {
+            readScripts :: ScriptReader
+        ,   parseScripts :: ScriptParser
+        ,   writeScripts :: ScriptWriter
+        ,   hoi4data :: HOI4Data
+        }
     deriving (Show)
 
 -- State to store in a Reader.
@@ -105,11 +112,17 @@ data GameState
         ,   currentIndent :: Maybe Int
         ,   currentFile :: Maybe FilePath
         }
+    | HOI4State {
+            gHOI4 :: HOI4
+        ,   currentIndent :: Maybe Int
+        ,   currentFile :: Maybe FilePath
+        }
     deriving (Show)
 
 -- Scripts after reading.
 data GameScripts
     = GameScriptsEU4 EU4Scripts
+    | GameScriptsHOI4 HOI4Scripts
     | GameScriptsStellaris StellarisScripts
     deriving (Show)
 
@@ -118,10 +131,14 @@ data GameScripts
 ----------------------
 
 data Settings = Settings {
-        steamDir    :: FilePath
-    ,   steamApps   :: FilePath
+        steamDir    :: FilePath -- Parent of the Steam directory
+                                -- e.g. /home/username/.local/share or C:\Program Files (x86)
+    ,   steamApps   :: FilePath -- Steam apps directory under steamDir
+                                -- usually Steam/steamapps/common
     ,   game        :: Game
-    ,   gameFolder  :: String
+    ,   gameFolder  :: String   -- Folder under apps directory containing the game
+                                -- usually same as game name, e.g. "Hearts of Iron IV"
+    ,   gamePath    :: FilePath -- Full path to game directory
     ,   language    :: Text
     ,   languageS   :: String -- for FilePaths
     ,   gameVersion :: Text
