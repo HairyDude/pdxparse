@@ -86,7 +86,8 @@ data StellarisScope
     | StellarisPop
     | StellarisPopFaction
     | StellarisShip
-    -- more?
+    | StellarisSystem
+    | StellarisTile
     deriving (Show, Eq, Ord, Enum, Bounded)
 
 -- AI decision factors

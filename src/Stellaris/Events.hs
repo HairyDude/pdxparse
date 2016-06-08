@@ -12,7 +12,7 @@ import Control.Arrow ((&&&))
 import Control.Monad.Except
 import Control.Monad.State hiding (mapM)
 
-import Data.List (intersperse)
+import Data.List (intersperse, foldl')
 import Data.Maybe
 import Data.Monoid
 
@@ -113,6 +113,29 @@ parseStellarisEvent [pdx| %left = %right |] = case right of
     _ -> return (Right Nothing)
 parseStellarisEvent _ = throwError "operator other than ="
 
+data EvtDescI = EvtDescI {
+        edi_text :: Maybe Text
+    ,   edi_trigger :: Maybe GenericScript
+    }
+evtDesc :: MonadError Text m => Maybe Text -> GenericScript -> m StEvtDesc
+evtDesc meid scr = case foldl' evtDesc' (EvtDescI Nothing Nothing) scr of
+        EvtDescI (Just t) Nothing -- desc = { text = foo }
+            -> return $ StEvtDescSimple t
+        EvtDescI Nothing (Just trig) -- desc = { trigger = { .. } } (invalid)
+            -> return $ StEvtDescCompound scr
+        EvtDescI (Just t) (Just trig) -- desc = { trigger = { .. } text = foo }
+                                      -- e.g. pirate.1
+            -> return $ StEvtDescConditional trig t
+        EvtDescI Nothing Nothing -- desc = { switch { .. = { text = foo } } }
+                                 -- e.g. action.39
+            -> throwError $ "bad desc: no trigger nor text" <> case meid of
+                Just eid -> " in event " <> eid
+                Nothing -> ""
+    where
+        evtDesc' ed [pdx| trigger = @trig |] = ed { edi_trigger = Just trig }
+        evtDesc' ed [pdx| text = ?txt |] = ed { edi_text = Just txt }
+        evtDesc' ed [pdx| show_sound = %_ |] = ed
+
 eventAddSection :: MonadError Text m => Maybe StellarisEvent -> GenericStatement -> PPT m (Maybe StellarisEvent)
 eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) where
     eventAddSection' evt stmt@[pdx| id = %rhs |]
@@ -120,37 +143,23 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
             (Just tid, _) -> return evt { stevt_id = Just tid }
             (_, Just nid) -> return evt { stevt_id = Just (T.pack $ show (nid::Int)) }
             _ -> withCurrentFile $ \file ->
-                throwError $ "bad id in " <> T.pack file <> ": " <> T.pack (show rhs)
+                throwError "bad id"
     eventAddSection' evt stmt@[pdx| title = %rhs |] = case textRhs rhs of
         Just title -> return evt { stevt_title = Just title }
         _ -> withCurrentFile $ \file ->
-            throwError $ "bad title in " <> T.pack file
+            throwError $ "bad title" <> case stevt_id evt of
+                Just eid -> " in event " <> eid
+                Nothing -> ""
     eventAddSection' evt stmt@[pdx| desc = %rhs |] =
         let olddescs = stevt_desc evt in case rhs of
             (textRhs -> Just desc) -> return evt { stevt_desc = olddescs ++ [StEvtDescSimple desc] }
-            -- research:
-            -- 1) text = key
-            -- 2) trigger = { conditions }
-            CompoundRhs [] ->  throwError "bad desc: empty conditions"
-            CompoundRhs [[pdx| text = ?key |]] -> do
-                -- This form is the one usually used for multiples, e.g. pop.10
-                desc <- getGameL10n key
-                return evt { stevt_desc = olddescs ++ [StEvtDescSimple desc] }
-            CompoundRhs [[pdx| text = ?key |], [pdx| trigger = @conditions |]] ->
-                -- This is also used for multiple descriptions, where each has
-                -- a condition attached, e.g. pirate.1
-                return evt { stevt_desc = olddescs ++ [StEvtDescConditional conditions key] }
-            CompoundRhs [[pdx| text = ?key |],
-                         [pdx| show_sound = %_ |],
-                         [pdx| trigger = @conditions |]] ->
-                -- As above, but an extra clause we don't have to worry about.
-                return evt { stevt_desc = olddescs ++ [StEvtDescConditional conditions key] }
-            CompoundRhs [[pdx| trigger = @condexpr |]] ->
-                -- This is used for compact presentation of events that have
-                -- many different possibilities. Generally uses a switch, e.g.
-                -- action.39
-                return evt { stevt_desc = olddescs ++ [StEvtDescCompound condexpr] }
-            _ -> throwError "bad desc"
+            CompoundRhs scr -> do
+                let meid = stevt_id evt
+                desc <- evtDesc meid scr
+                return evt { stevt_desc = olddescs ++ [desc] }
+            _ -> throwError $ "bad desc" <> case stevt_id evt of
+                    Just eid -> " in event " <> eid
+                    Nothing -> ""
     eventAddSection' evt stmt@[pdx| picture = %rhs |] =
         case textRhs rhs of
             Just pic -> return evt { stevt_picture = Just pic }

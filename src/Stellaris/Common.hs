@@ -126,10 +126,10 @@ ppHandlers = Tr.fromList
 --      ,("add_adm_power"            , numericIcon "adm" MsgGainADM)
 --      ,("army_tradition"           , numericIconBonus "army tradition" MsgArmyTradition MsgYearlyArmyTradition)
         -- Modifiers
---      ,("add_country_modifier"           , addModifier MsgCountryMod)
+         ("add_modifier", addModifier)
         -- Simple compound statements
         -- Note that "any" can mean "all" or "one or more" depending on context.
-         ("and" , compoundMessage MsgAllOf)
+        ,("and" , compoundMessage MsgAllOf)
         ,("root", compoundMessage MsgOurCountry)
         -- These two are ugly, but without further analysis we can't know
         -- what it means.
@@ -140,14 +140,23 @@ ppHandlers = Tr.fromList
         -- There is a semantic distinction between "all" and "every",
         -- namely that the former means "this is true for all <type>" while
         -- the latter means "do this for every <type>."
-        ,("any_country"   , scope StellarisCountry . compoundMessage MsgAnyCountry)
-        ,("every_country" , scope StellarisCountry . compoundMessage MsgEveryCountry)
-        ,("random_country", scope StellarisCountry . compoundMessage MsgRandomCountry)
-        ,("if"            ,                          compoundMessage MsgIf) -- always needs editing
-        ,("hidden_effect" ,                          compoundMessage MsgHiddenEffect)
-        ,("limit"         ,                          compoundMessage MsgLimit) -- always needs editing
-        ,("capital_scope" , scope StellarisPlanet  . compoundMessage MsgCapital)
-        ,("owner"         , scope StellarisCountry . compoundMessage MsgOwner)
+        ,("any_country"         , scope StellarisCountry . compoundMessage MsgAnyCountry)
+        ,("any_owned_planet"    , scope StellarisPlanet  . compoundMessage MsgAnyOwnedPlanet)
+        ,("any_owned_ship"      , scope StellarisShip    . compoundMessage MsgAnyOwnedShip)
+        ,("any_pop"             , scope StellarisPop     . compoundMessage MsgAnyPop)
+        ,("every_country"       , scope StellarisCountry . compoundMessage MsgEveryCountry)
+        ,("every_owned_planet"  , scope StellarisPlanet  . compoundMessage MsgEveryOwnedPlanet)
+        ,("every_owned_pop"     , scope StellarisPop     . compoundMessage MsgEveryOwnedPop)
+        ,("random_country"      , scope StellarisCountry . compoundMessage MsgRandomCountry)
+        ,("random_owned_ship"   , scope StellarisShip    . compoundMessage MsgRandomOwnedShip)
+        ,("random_pop"          , scope StellarisPop     . compoundMessage MsgRandomPop)
+        ,("random_system"       , scope StellarisSystem  . compoundMessage MsgRandomSystem)
+        ,("random_tile"         , scope StellarisTile    . compoundMessage MsgRandomTile)
+        ,("if"                  ,                          compoundMessage MsgIf) -- always needs editing
+        ,("hidden_effect"       ,                          compoundMessage MsgHiddenEffect)
+        ,("limit"               ,                          compoundMessage MsgLimit) -- always needs editing
+        ,("capital_scope"       , scope StellarisPlanet  . compoundMessage MsgCapital)
+        ,("owner"               , scope StellarisCountry . compoundMessage MsgOwner)
         -- Random
         ,("random"      , random)
         ,("random_list" , randomList) -- Works differently than EU4
@@ -165,6 +174,7 @@ ppHandlers = Tr.fromList
         ,("remove_country_flag" , withNonlocAtom2 MsgCountryFlag MsgClearFlag)
         ,("set_country_flag"    , withNonlocAtom2 MsgCountryFlag MsgSetFlag)
         -- Simple generic statements with icon
+        ,("add_trait"       , withLocAtomIcon MsgGainTrait)
         ,("has_government"  , withLocAtomIcon MsgGovernmentIsIcon)
 --      ,("advisor"                 , withLocAtomIcon MsgHasAdvisorType)
         -- Simple generic statements with flag
@@ -445,6 +455,76 @@ scriptIconTable = HM.fromList
     ,("transcendent_empire", "transcendent empire")
     ,("transcendent_oligarchy", "transcendent oligarchy")
     ,("transcendent_republic", "transcendent republic")
+    ,("leader_trait_adaptable", "adaptable")
+    ,("leader_trait_aggressive", "aggressive")
+    ,("leader_trait_archaeologist", "archaeologist")
+    ,("leader_trait_architectural_interest", "architectural interest")
+    ,("leader_trait_armchair_commander", "armchair commander")
+    ,("leader_trait_army_logistician", "army logistician")
+    ,("leader_trait_arrested_development", "arrested development")
+    ,("leader_trait_attacker", "attacker")
+    ,("leader_trait_butcher", "butcher")
+    ,("leader_trait_carefree", "carefree")
+    ,("leader_trait_careful", "careful")
+    ,("leader_trait_cautious", "cautious")
+    ,("leader_trait_charismatic", "charismatic")
+    ,("leader_trait_custom_AI_assistant", "custom AI assistant")
+    ,("leader_trait_defender", "defender")
+    ,("leader_trait_engineer", "engineer")
+    ,("leader_trait_environmental_engineer", "environmental engineer")
+    ,("leader_trait_expertise_biology", "biology")
+    ,("leader_trait_expertise_computing", "computing")
+    ,("leader_trait_expertise_field_manipulation", "field manipulation")
+    ,("leader_trait_expertise_industry", "industry")
+    ,("leader_trait_expertise_materials", "materials")
+    ,("leader_trait_expertise_military_theory", "military theory")
+    ,("leader_trait_expertise_new_worlds", "new worlds")
+    ,("leader_trait_expertise_particles", "particles")
+    ,("leader_trait_expertise_psionics", "psionics")
+    ,("leader_trait_expertise_rocketry", "rocketry")
+    ,("leader_trait_expertise_statecraft", "statecraft")
+    ,("leader_trait_expertise_voidcraft", "voidcraft")
+    ,("leader_trait_fleet_logistician", "fleet logistician")
+    ,("leader_trait_fleet_organizer", "fleet organizer")
+    ,("leader_trait_gale_speed", "gale speed")
+    ,("leader_trait_glory_seeker", "glory seeker")
+    ,("leader_trait_intellectual", "intellectual")
+    ,("leader_trait_iron_fist", "iron fist")
+    ,("leader_trait_lethargic", "lethargic")
+    ,("leader_trait_maniacal", "maniacal")
+    ,("leader_trait_meticulous", "meticulous")
+    ,("leader_trait_nervous", "nervous")
+    ,("leader_trait_paranoid", "paranoid")
+    ,("leader_trait_resilient", "resilient")
+    ,("leader_trait_roamer", "roamer")
+    ,("leader_trait_scout", "scout")
+    ,("leader_trait_spark_of_genius", "spark of genius")
+    ,("leader_trait_stubborn", "stubborn")
+    ,("leader_trait_substance_abuser", "substance abuser")
+    ,("leader_trait_trickster", "trickster")
+    ,("leader_trait_unyielding", "unyielding")
+    ,("trait_ruler_architectural_sense", "architectural sense")
+    ,("trait_ruler_battleship_focus", "battleship focus")
+    ,("trait_ruler_champion_of_the_people", "champion of the people")
+    ,("trait_ruler_corvette_focus", "corvette focus")
+    ,("trait_ruler_cruiser_focus", "cruiser focus")
+    ,("trait_ruler_deep_connections", "deep connections")
+    ,("trait_ruler_destroyer_focus", "destroyer focus")
+    ,("trait_ruler_expansionist", "expansionist")
+    ,("trait_ruler_explorer", "explorer")
+    ,("trait_ruler_eye_for_talent", "eye for talent")
+    ,("trait_ruler_fertility_preacher", "fertility preacher")
+    ,("trait_ruler_fortifier", "fortifier")
+    ,("trait_ruler_from_the_ranks", "from the ranks")
+    ,("trait_ruler_frontier_spirit", "frontier spirit")
+    ,("trait_ruler_home_in_the_sky", "home in the sky")
+    ,("trait_ruler_industrialist", "industrialist")
+    ,("trait_ruler_investor", "investor")
+    ,("trait_ruler_logistic_understanding", "logistic understanding")
+    ,("trait_ruler_military_pioneer", "military pioneer")
+    ,("trait_ruler_recruiter", "recruiter")
+    ,("trait_ruler_warlike", "warlike")
+    ,("trait_ruler_world_shaper", "world shaper")
     ]
 
 -- Given a script atom, return the corresponding icon key, if any.
@@ -645,57 +725,14 @@ ppAiMod (AIModifier Nothing _) =
 
 -- Modifiers
 
-data Modifier = Modifier {
-        mod_name :: Maybe Text
-    ,   mod_key :: Maybe Text
-    ,   mod_who :: Maybe Text
-    ,   mod_duration :: Maybe Double
-    ,   mod_power :: Maybe Double
-    } deriving Show
-newModifier :: Modifier
-newModifier = Modifier Nothing Nothing Nothing Nothing Nothing
-
-addModifierLine :: Modifier -> GenericStatement -> Modifier 
-addModifierLine apm [pdx| name     = ?name     |] = apm { mod_name = Just name }
-addModifierLine apm [pdx| key      = ?key      |] = apm { mod_key = Just key }
-addModifierLine apm [pdx| who      = ?tag      |] = apm { mod_who = Just tag }
-addModifierLine apm [pdx| duration = !duration |] = apm { mod_duration = Just duration }
-addModifierLine apm [pdx| power    = !power    |] = apm { mod_power = Just power }
-addModifierLine apm _ = apm -- e.g. hidden = yes
-
-maybeM :: Monad m => (a -> m b) -> Maybe a -> m (Maybe b)
-maybeM f = maybe (return Nothing) (liftM Just . f)
-
-addModifier :: Monad m => ScriptMessage -> GenericStatement -> PPT m IndentedMessages
-addModifier kind stmt@(Statement _ OpEq (CompoundRhs scr)) = msgToPP =<<
-    let modifier = foldl' addModifierLine newModifier scr
-    in if isJust (mod_name modifier) || isJust (mod_key modifier) then do
-        let mkey = mod_key modifier
-            mname = mod_name modifier
-        tkind <- messageText kind
-        let mwho = mod_who modifier
-        mname_loc <- maybeM getGameL10n mname
-        mkey_loc <- maybeM getGameL10n mkey
-        let mdur = mod_duration modifier
-            mname_or_key = maybe mkey Just mname
-            mname_or_key_loc = maybe mkey_loc Just mname_loc
-
-        return $ case mname_or_key of
-            Just modid ->
-                -- default presented name to mod id
-                let name_loc = fromMaybe modid mname_or_key_loc
-                in case (mwho, mod_power modifier, mdur) of
-                    (Nothing,  Nothing,  Nothing)  -> MsgGainMod modid tkind name_loc
-                    (Nothing,  Nothing,  Just dur) -> MsgGainModDur modid tkind name_loc dur
-                    (Nothing,  Just pow, Nothing)  -> MsgGainModPow modid tkind name_loc pow
-                    (Nothing,  Just pow, Just dur) -> MsgGainModPowDur modid tkind name_loc pow dur
-                    (Just who, Nothing,  Nothing)  -> MsgActorGainsMod modid who tkind name_loc
-                    (Just who, Nothing,  Just dur) -> MsgActorGainsModDur modid who tkind name_loc dur
-                    (Just who, Just pow, Nothing)  -> MsgActorGainsModPow modid who tkind name_loc pow
-                    (Just who, Just pow, Just dur) -> MsgActorGainsModPowDur modid who tkind name_loc pow dur
-            _ -> preMessage stmt -- Must have mod id
-    else return (preMessage stmt)
-addModifier _ stmt = preStatement stmt
+addModifier :: Monad m => GenericStatement -> PPT m IndentedMessages
+addModifier stmt@(Statement _ OpEq (CompoundRhs
+        [[pdx| modifier = ?mod_name |]
+        ,[pdx| days     = !mod_days |]]))
+    = msgToPP =<< do
+        name_loc <- getGameL10n mod_name
+        return $ MsgAddMod mod_name name_loc mod_days
+addModifier stmt = preStatement stmt
 
 -- Opinions
 
