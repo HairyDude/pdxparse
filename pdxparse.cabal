@@ -51,6 +51,8 @@ executable pdxparse
                        Stellaris.Events,
                        Stellaris.Settings,
                        Stellaris.Types,
+                       Vic2.Settings,
+                       Vic2.Types,
                        Yaml
 
   other-extensions:    FlexibleContexts,

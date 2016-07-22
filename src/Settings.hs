@@ -139,7 +139,15 @@ readSettings = do
                 provisionalSettings = Settings
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
-                            , game = GameUnknown -- filled in later
+                            , game = case gamefolder of
+                                -- Provisional filling-in so localization knows
+                                -- what to do.
+                                "Europa Universalis IV" -> GameEU4 {}
+                                "Hearts of Iron IV" -> GameHOI4 {}
+                                "Stellaris" -> GameStellaris {}
+                                "Victoria 2" -> GameVic2 {}
+                                other -> error $ "I don't know how to handle "
+                                            ++ other ++ "!"
                             , gameFolder = gamefolder
                             , gamePath = steamDirCanonicalized </> steamAppsCanonicalized </> gamefolder
                             , language = "l_" <> lang

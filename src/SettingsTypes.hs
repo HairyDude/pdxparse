@@ -43,6 +43,7 @@ import Doc
 import EU4.Types
 import HOI4.Types
 import Stellaris.Types
+import Vic2.Types
 import Yaml
 
 -- Command line arguments.
@@ -97,6 +98,12 @@ data Game
         ,   parseScripts :: ScriptParser
         ,   writeScripts :: ScriptWriter
         ,   hoi4data :: HOI4Data
+        }
+    | GameVic2 {
+            readScripts :: ScriptReader
+        ,   parseScripts :: ScriptParser
+        ,   writeScripts :: ScriptWriter
+        ,   vic2data :: Vic2Data
         }
     deriving (Show)
 

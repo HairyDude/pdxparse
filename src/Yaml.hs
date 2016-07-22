@@ -1,15 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Yaml {-(
+module Yaml (
         LocEntry (..)
     ,   L10nLang, L10n
     ,   parseLocFile
-    ,   mergeLangs
-    ,   message
-    ,   locFile
-    )-} where
+    ,   mergeLangs, mergeLangList
+--  ,   message
+--  ,   locFile
+    ) where
 
 import Control.Applicative
 
+import Data.List
 import Data.Monoid
 
 import Data.HashMap.Strict (HashMap)
@@ -38,6 +39,12 @@ mergeLoc = HM.unionWith latest
 
 mergeLangs :: L10n -> L10n -> L10n
 mergeLangs = HM.unionWith mergeLoc
+
+-- TODO: make L10nLang and L10n type synonyms, so we can define Monoid
+-- instances for them with the above as mappend. Then this will be mconcat:
+
+mergeLangList :: [L10n] -> L10n
+mergeLangList = foldl' mergeLangs HM.empty
 
 ------------------------
 -- Parser combinators --
