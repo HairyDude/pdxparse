@@ -7,6 +7,8 @@ module Vic2.Settings (
 
 import Control.Monad.State
 
+import Data.Text (Text)
+import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
@@ -17,6 +19,8 @@ import Abstract
 import FileIO
 import SettingsTypes
 import Vic2.Types
+
+import Debug.Trace
 
 -- Handlers
 --import Vic2.Decisions (parseVic2Decisions, writeVic2Decisions)
@@ -63,7 +67,6 @@ readVic2Scripts = GameScriptsVic2 <$> do
                 return (target, content)
             return $ foldl (flip (uncurry HM.insert)) HM.empty results
 
-    ideaGroups <- readVic2Script "ideagroups"
     decisions <- readVic2Script "decisions"
     events <- readVic2Script "events"
     return $ Vic2Scripts {
@@ -86,7 +89,6 @@ parseVic2Scripts (GameScriptsVic2 (Vic2Scripts {
                     vic2data = gdata {
                         vic2events = events
                     ,   vic2decisions = decisions
-                    ,   vic2ideagroups = ideaGroups
                     }
                 }
             }
@@ -94,6 +96,18 @@ parseVic2Scripts (GameScriptsVic2 (Vic2Scripts {
 
 writeVic2Scripts :: PPT IO ()
 writeVic2Scripts = do
-    writeVic2IdeaGroups
     writeVic2Events
     writeVic2Decisions
+
+-- placeholders
+parseVic2Decisions :: Monad m => HashMap String GenericScript -> PPT m (HashMap Text Vic2Decision)
+parseVic2Decisions _ = trace "Victoria 2 decisions not yet implemented" $ return HM.empty
+
+parseVic2Events :: Monad m => HashMap String GenericScript -> PPT m (HashMap Text Vic2Event)
+parseVic2Events _ = trace "Victoria 2 events not yet implemented" $ return HM.empty
+
+writeVic2Events :: PPT IO ()
+writeVic2Events = liftIO $ putStrLn "Victoria 2 events not yet implemented"
+
+writeVic2Decisions :: PPT IO ()
+writeVic2Decisions = liftIO $ putStrLn "Victoria 2 decisions not yet implemented"

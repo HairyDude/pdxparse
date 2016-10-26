@@ -124,6 +124,11 @@ data GameState
         ,   currentIndent :: Maybe Int
         ,   currentFile :: Maybe FilePath
         }
+    | Vic2State {
+            gVic2 :: Vic2
+        ,   currentIndent :: Maybe Int
+        ,   currentFile :: Maybe FilePath
+        }
     deriving (Show)
 
 -- Scripts after reading.
@@ -131,6 +136,7 @@ data GameScripts
     = GameScriptsEU4 EU4Scripts
     | GameScriptsHOI4 HOI4Scripts
     | GameScriptsStellaris StellarisScripts
+    | GameScriptsVic2 Vic2Scripts
     deriving (Show)
 
 ----------------------
