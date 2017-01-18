@@ -21,7 +21,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
 
-import Abstract
+import Abstract -- everything
 --import Doc
 
 --------------------------------------------

@@ -14,11 +14,11 @@ module MessageTools (
     ,   iquotes, bold, boldText
     ,   PPSep (..)
     ,   module Text.Shakespeare.I18N
-    ,   module Doc
+    ,   module Text.PrettyPrint.Leijen.Text
     ) where
 
-import Data.List
-import Data.Monoid
+import Data.List (unfoldr, intersperse)
+import Data.Monoid ((<>))
 
 import Numeric (floatToDigits)
 
@@ -26,12 +26,15 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 
-import Text.Shakespeare.I18N
+import Text.Shakespeare.I18N (ToMessage (..))
 
-import Doc
+import Text.PrettyPrint.Leijen.Text (Doc)
+import qualified Text.PrettyPrint.Leijen.Text as PP
+
+import qualified Doc
 
 instance ToMessage Doc where
-    toMessage = doc2text
+    toMessage = Doc.doc2text
 
 ----------------------
 -- Printing numbers --
@@ -46,7 +49,7 @@ group3 :: [a] -> [[a]]
 group3 = unfoldr (\cs -> if null cs then Nothing else Just (splitAt 3 cs))
 
 instance PPSep Integer where
-    ppNumSep n = strictText . T.pack $
+    ppNumSep n = Doc.strictText . T.pack $
             (if n < 0 then "−" else "") <> ppNumSep' True (show (abs n))
 
 -- Split into groups of 3 and intersperse the groups with narrow no-break
@@ -72,11 +75,11 @@ instance PPSep Double where
               -- fracDigits' is [] if exp is a nonzero whole number
               fracDigits = if fracDigits' == [0] then [] else fracDigits'
           in (if n < 0 then "−" else "")
-                <> text (TL.pack . ppNumSep' True $ show (truncate absn :: Int))
+                <> PP.text (TL.pack . ppNumSep' True $ show (truncate absn :: Int))
                 <> (if null fracDigits
                     then ""
                     else "."
-                         <> text (TL.pack . ppNumSep' False $
+                         <> PP.text (TL.pack . ppNumSep' False $
                              replicate (negate expn) '0' -- zeroes after decimal
                              ++ concatMap show fracDigits))
 
@@ -100,7 +103,7 @@ roundNum = roundNum' False False
 
 -- | Round number to nearest integer, and don't add spaces.
 roundNumNoSpace :: (RealFrac n, PPSep n) => n -> Text
-roundNumNoSpace n = doc2text $ integer (round n :: Integer)
+roundNumNoSpace n = Doc.doc2text $ PP.integer (round n :: Integer)
 
 -- | Just a percentage, but make sure it's an integer by rounding it off.
 roundPc :: Double -> Doc
@@ -140,13 +143,13 @@ ppNum :: (Ord n, PPSep n) => Bool -- ^ Whether to apply a colour template (red
                                   --   or strip the - from negative ones.
                           -> n -> Doc
 ppNum colour is_pc pos pos_plus n =
-    let n_pp'd = (if pos_plus then pp_signed else pp_nosigned)
+    let n_pp'd = (if pos_plus then Doc.pp_signed else Doc.pp_nosigned)
                  ppNumSep n <> if is_pc then "%" else ""
     in (if not colour then id else
         case (if pos then n else negate n) `compare` 0 of
-            LT -> template "red" . (:[]) . doc2text
+            LT -> template "red" . (:[]) . Doc.doc2text
             EQ -> bold
-            GT -> template "green" . (:[]) . doc2text)
+            GT -> template "green" . (:[]) . Doc.doc2text)
         n_pp'd
 
 -- | If the numeric argument is singular, return the second argument; otherwise
@@ -187,18 +190,18 @@ gainsOrLoses n | n < 0     = "loses"
 -- | Template with arguments. @template "foo" ["bar","baz"]@ produces
 -- @{{foo|bar|baz}}@.
 template :: Text -> [Text] -> Doc
-template name args = templateDoc (strictText name) (map strictText args)
+template name args = templateDoc (Doc.strictText name) (map Doc.strictText args)
 
 -- | Doc version of 'template'.
 templateDoc :: Doc -> [Doc] -> Doc
-templateDoc name args = hcat $
+templateDoc name args = PP.hcat $
     "{{"
     : (intersperse "|" (name:args)
       ++ ["}}"])
 
 -- | Set text in italics, and wrap in quotation marks.
 iquotes :: Text -> Doc
-iquotes = enclose "''\"" "\"''" . strictText
+iquotes = PP.enclose "''\"" "\"''" . Doc.strictText
 
 ---- Set doc in italics.
 --italic :: Doc -> Doc
@@ -206,10 +209,10 @@ iquotes = enclose "''\"" "\"''" . strictText
 
 -- | Set doc in boldface.
 bold :: Doc -> Doc
-bold = enclose "'''" "'''"
+bold = PP.enclose "'''" "'''"
 
 boldText :: Text -> Text
-boldText = doc2text . bold . strictText
+boldText = Doc.doc2text . bold . Doc.strictText
 
 -- Produce output based on a boolean (i.e. if-then-else).
 -- Needed because the i18n templates don't understand this syntax, but instead

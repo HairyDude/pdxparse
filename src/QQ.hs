@@ -43,21 +43,21 @@ module QQ (
 
 -}
 
-import Control.Applicative
-import Data.Monoid
+import Control.Applicative (Applicative (..), Alternative (..))
+import Data.Monoid ((<>))
 
 import Data.Attoparsec.Text (Parser)
 import qualified Data.Attoparsec.Text as Ap
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.String
+import Data.String (IsString (..))
 
-import Language.Haskell.TH
+import Language.Haskell.TH -- everything
 import qualified Language.Haskell.TH.Lift as TL
-import Language.Haskell.TH.Quote
+import Language.Haskell.TH.Quote (QuasiQuoter (..))
 import Instances.TH.Lift ()
 --import Language.Haskell.Exts.QQ
-import Language.Haskell.Meta
+import Language.Haskell.Meta (parseExp, parsePat)
 
 import Abstract
 

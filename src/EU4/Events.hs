@@ -4,17 +4,16 @@ module EU4.Events (
     ,   writeEU4Events
     ) where
 
-import Prelude hiding (mapM)
-
-import Debug.Trace
+import Debug.Trace (traceM)
 
 import Control.Arrow ((&&&))
-import Control.Monad.Except
-import Control.Monad.State hiding (mapM)
+import Control.Monad (forM, foldM)
+import Control.Monad.Except (MonadError (..))
+import Control.Monad.State (MonadState (..), gets)
 
 import Data.List (intersperse)
-import Data.Maybe
-import Data.Monoid
+import Data.Maybe (isJust, fromMaybe, fromJust, catMaybes)
+import Data.Monoid ((<>))
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
@@ -22,14 +21,18 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 
-import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>), (</>))
+import Text.PrettyPrint.Leijen.Text (Doc)
+import qualified Text.PrettyPrint.Leijen.Text as PP
 
-import Abstract
-import EU4.Common
-import FileIO
-import Messages
-import QQ
-import SettingsTypes
+import Abstract -- everything
+import qualified Doc
+import EU4.Common -- everything
+import FileIO (Feature (..), writeFeatures)
+import QQ (pdx)
+import SettingsTypes ( PPT, Settings (..), Game (..)
+                     , getGameL10n
+                     , setCurrentFile, withCurrentFile
+                     , hoistErrors, hoistExceptions)
 
 -- Starts off Nothing everywhere.
 newEU4Event :: EU4Scope -> EU4Event
@@ -202,35 +205,35 @@ pp_event evt = case (eu4evt_id evt
                     (\field_content -> do
                         content_pp'd <- fmt field_content 
                         return
-                            ["| ", strictText fieldname, " = "
-                            ,line
+                            ["| ", Doc.strictText fieldname, " = "
+                            ,PP.line
                             ,content_pp'd
-                            ,line])
+                            ,PP.line])
                     (field evt)
             isTriggeredOnly = fromMaybe False $ eu4evt_is_triggered_only evt
-            evtId = strictText eid
+            evtId = Doc.strictText eid
         trigger_pp'd <- evtArg "trigger" eu4evt_trigger pp_script
         mmtth_pp'd <- mapM pp_mtth (eu4evt_mean_time_to_happen evt)
         immediate_pp'd <- evtArg "immediate" eu4evt_immediate pp_script
         return . mconcat $
-            ["<section begin=", evtId, "/>", line
-            ,"{{Event", line
-            ,"| version = ", strictText version, line
-            ,"| event_name = ", strictText titleLoc, line
+            ["<section begin=", evtId, "/>", PP.line
+            ,"{{Event", PP.line
+            ,"| version = ", Doc.strictText version, PP.line
+            ,"| event_name = ", Doc.strictText titleLoc, PP.line
             ] ++
             maybe [] (\desc ->
                         ["| event_text = "
-                        ,text . TL.fromStrict . nl2br $ desc
-                        ,line])
+                        ,PP.text . TL.fromStrict . Doc.nl2br $ desc
+                        ,PP.line])
                       descLoc ++
             -- For triggered only events, mean_time_to_happen is not
             -- really mtth but instead describes weight modifiers, for
             -- scripts that trigger them with a probability based on a
             -- weight (e.g. on_bi_yearly_pulse).
             (if isTriggeredOnly then
-                ["| triggered only = (please describe trigger here)",line
+                ["| triggered only = (please describe trigger here)", PP.line
                 ]
-                ++ maybe [] (:[line]) mmtth_pp'd
+                ++ maybe [] (:[PP.line]) mmtth_pp'd
             else []) ++
             trigger_pp'd ++
             -- mean_time_to_happen is only really mtth if it's *not*
@@ -238,14 +241,14 @@ pp_event evt = case (eu4evt_id evt
             (if isTriggeredOnly then [] else case mmtth_pp'd of
                 Nothing -> []
                 Just mtth_pp'd ->
-                    ["| mtth = ", line
+                    ["| mtth = ", PP.line
                     ,mtth_pp'd]) ++
             immediate_pp'd ++
-            (if conditional then ["| option conditions = yes", line] else []) ++
+            (if conditional then ["| option conditions = yes", PP.line] else []) ++
             -- option_conditions = no (not implemented yet)
-            ["| options = ", options_pp'd, line
-            ,"| collapse = yes", line
-            ,"}}", line
+            ["| options = ", options_pp'd, PP.line
+            ,"| collapse = yes", PP.line
+            ,"}}", PP.line
             ,"<section end=", evtId, "/>"
             ]
 
@@ -261,7 +264,7 @@ pp_options :: MonadError Text m => [EU4Option] -> PPT m (Bool, Doc)
 pp_options opts = do
     let triggered = any (isJust . eu4opt_trigger) opts
     options_pp'd <- mapM (pp_option triggered) opts
-    return (triggered, mconcat . (line:) . intersperse line $ options_pp'd)
+    return (triggered, mconcat . (PP.line:) . intersperse PP.line $ options_pp'd)
 
 pp_option :: MonadError Text m => Bool -> EU4Option -> PPT m Doc
 pp_option triggered opt = do
@@ -275,14 +278,14 @@ pp_option triggered opt = do
                 mtrigger_pp'd <- sequence (pp_script <$> mtrigger)
                 return . mconcat $
                     ["{{Option\n"
-                    ,"| option_text = ", strictText name_loc, line
-                    ,"| effect =", line, effects_pp'd, line]
+                    ,"| option_text = ", Doc.strictText name_loc, PP.line
+                    ,"| effect =", PP.line, effects_pp'd, PP.line]
                     ++ (if triggered then
                             maybe
-                                ["| trigger = Always enabled:", line] -- no trigger
+                                ["| trigger = Always enabled:", PP.line] -- no trigger
                             (\trigger_pp'd ->
-                                ["| trigger = Enabled if:", line -- trigger
-                                ,trigger_pp'd, line]
+                                ["| trigger = Enabled if:", PP.line -- trigger
+                                ,trigger_pp'd, PP.line]
                             ) mtrigger_pp'd
                         else [])
                     ++

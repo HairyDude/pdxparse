@@ -5,14 +5,14 @@ module FileIO (
     ,   readScript
     ,   Feature (..)
     ,   writeFeatures
-    ,   module System.IO
     ) where
 
-import Control.Monad
-import Control.Monad.Except
-import Control.Exception
+import Control.Monad (forM, forM_)
+import Control.Monad.Except (ExceptT)
+import Control.Monad.Trans (liftIO)
+import Control.Exception (try)
 
-import Data.Monoid
+import Data.Monoid ((<>))
 
 import qualified Data.ByteString as B
 
@@ -22,15 +22,16 @@ import qualified Data.Text.IO as TIO
 import Data.Text.Encoding.Error (UnicodeException)
 import qualified Data.Text.Encoding as TE
 
-import System.Directory
-import System.FilePath
-import System.IO
+import System.Directory (createDirectoryIfMissing)
+import System.FilePath ((</>), takeDirectory)
+import System.IO (openFile, IOMode (..), hPutStrLn, stderr, hClose)
 
 import qualified Data.Attoparsec.Text as Ap
+import Text.PrettyPrint.Leijen.Text (Doc)
+import qualified Text.PrettyPrint.Leijen.Text as PP
 
-import Abstract
-import Doc
-import SettingsTypes
+import Abstract -- everything
+import SettingsTypes (Settings (..), PPT, hoistExceptions)
 
 -- Read a file as Text. Unfortunately EU4 script files use several incompatible
 -- encodings. Try the following encodings in order:
@@ -58,7 +59,7 @@ readScript settings file = do
     let filepath = buildPath settings file
     contents <- readFileRetry filepath
     case Ap.parseOnly (Ap.option undefined (Ap.char '\xFEFF') -- BOM
-                        *> skipSpace
+                        *> Ap.skipSpace
                         *> genericScript) contents of
         Right result -> return result
         Left err -> do
@@ -82,7 +83,7 @@ writeFeature path output = do
     createDirectoryIfMissing True destinationDir
     h <- openFile destinationFile WriteMode
     result <- try $
-        displayIO h (renderPretty 0.9 80 output)
+        PP.displayIO h (PP.renderPretty 0.9 80 output)
     case result of
         Right () -> return ()
         Left err -> hPutStrLn stderr $

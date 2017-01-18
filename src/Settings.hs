@@ -2,11 +2,10 @@
 module Settings (
         Settings (..)
     ,   readSettings
-    ,   module SettingsTypes
     ) where
 
-import Data.Maybe
-import Data.Monoid
+import Data.Maybe (fromMaybe)
+import Data.Monoid ((<>))
 
 import Data.Char (toLower)
 import Data.List (intersperse)
@@ -15,22 +14,23 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Version as V
 
-import Data.Yaml
+import Data.Yaml (FromJSON (..), Value (..), decodeFileEither, (.:), (.:?))
 
-import System.Console.GetOpt
-import System.Directory
-import System.Environment
-import System.Exit
-import System.IO
+import System.Console.GetOpt (OptDescr (..), ArgDescr (..), ArgOrder (..), getOpt)
+import System.Directory (getHomeDirectory)
+import System.Environment (getArgs)
+import System.Exit (exitFailure, exitSuccess)
+import System.IO (hPutStrLn, stderr)
 import qualified System.Info
-import System.FilePath
+import System.FilePath ((</>))
 
-import Control.Monad
+import Control.Monad (when, liftM, forM_)
 
---import Abstract
-import Localization
-import SettingsTypes
-import Paths_pdxparse
+import Localization (readL10n)
+import SettingsTypes ( CLArgs (..), Settings (..), Game (..), GameState (..)
+                     , L10nScheme (..)
+                     , setGameL10n)
+import Paths_pdxparse (version, getDataFileName)
 import qualified EU4.Settings as EU4
 import qualified HOI4.Settings as HOI4
 import qualified Stellaris.Settings as Stellaris

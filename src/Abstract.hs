@@ -54,13 +54,13 @@ module Abstract (
         PREVPREV = PREV of the next scope up, etc.
 -}
 
-import Control.Applicative hiding ((<$>))
+import Control.Applicative (Applicative (..), Alternative (..))
 import Control.Monad (void)
 import qualified Data.Foldable as F
-import Data.Monoid
+import Data.Monoid (Monoid (..), (<>))
 
-import Data.Char
-import Data.List
+import Data.Char (isAlpha, isAlphaNum)
+import Data.List (intersperse)
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -69,7 +69,10 @@ import qualified Data.Text.Lazy as TL
 import Data.Attoparsec.Text (Parser, (<?>))
 import qualified Data.Attoparsec.Text as Ap
 
-import Doc
+import Text.PrettyPrint.Leijen.Text (Doc, (<++>))
+import qualified Text.PrettyPrint.Leijen.Text as PP
+
+import qualified Doc
 
 -- statement ::= lhs | lhs '=' rhs
 -- Type of statements, parametrized by two custom types, one for left-hand
@@ -92,7 +95,7 @@ showOp OpLT = "<"
 showOp OpGT = ">"
 
 showOpD :: Operator -> Doc
-showOpD = strictText . showOp
+showOpD = Doc.strictText . showOp
 
 -- lhs ::= some_custom_lhs | ident
 -- Type of statement left-hand sides (the part before the '=').
@@ -281,14 +284,14 @@ genericScript = script parse_generic parse_generic
 
 -- Pretty-printer for a script with no custom elements.
 genericScript2doc :: GenericScript -> Doc
-genericScript2doc = F.fold . intersperse line . map genericStatement2doc
+genericScript2doc = F.fold . intersperse PP.line . map genericStatement2doc
 
 genericStatement2doc :: GenericStatement -> Doc
 genericStatement2doc = statement2doc (const "") (const "")
 
 script2doc :: (lhs -> Doc) -> (rhs -> Doc) -> [Statement lhs rhs] -> Doc
 script2doc customLhs customRhs
-    = vsep . map (statement2doc customLhs customRhs)
+    = PP.vsep . map (statement2doc customLhs customRhs)
 
 statement2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Statement lhs rhs -> Doc
 statement2doc customLhs _ (StatementBare lhs)
@@ -298,19 +301,19 @@ statement2doc customLhs customRhs (Statement lhs op rhs)
 
 lhs2doc :: (lhs -> Doc) -> Lhs lhs -> Doc
 lhs2doc customLhs (CustomLhs lhs) = customLhs lhs
-lhs2doc _         (GenericLhs lhs) = text (TL.fromStrict lhs)
-lhs2doc _         (IntLhs lhs) = text (TL.pack (show lhs))
+lhs2doc _         (GenericLhs lhs) = PP.text (TL.fromStrict lhs)
+lhs2doc _         (IntLhs lhs) = PP.text (TL.pack (show lhs))
 
 rhs2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Rhs lhs rhs -> Doc
 rhs2doc _ customRhs (CustomRhs rhs) = customRhs rhs
-rhs2doc _ _ (GenericRhs rhs) = strictText rhs
-rhs2doc _ _ (StringRhs rhs) = text (TL.pack (show rhs))
-rhs2doc _ _ (IntRhs rhs) = text (TL.pack (show rhs))
-rhs2doc _ _ (FloatRhs rhs) = pp_float rhs
+rhs2doc _ _ (GenericRhs rhs) = Doc.strictText rhs
+rhs2doc _ _ (StringRhs rhs) = PP.text (TL.pack (show rhs))
+rhs2doc _ _ (IntRhs rhs) = PP.text (TL.pack (show rhs))
+rhs2doc _ _ (FloatRhs rhs) = Doc.pp_float rhs
 rhs2doc customLhs customRhs (CompoundRhs rhs)
-    = vsep ["{", indent 4 (script2doc customLhs customRhs rhs), text "}"]
+    = PP.vsep ["{", PP.indent 4 (script2doc customLhs customRhs rhs), PP.text "}"]
 rhs2doc _ _ (DateRhs (Date year month day)) =
-    mconcat . map (text . TL.pack) $ [show year, ".", show month, ".", show day]
+    mconcat . map (PP.text . TL.pack) $ [show year, ".", show month, ".", show day]
 
 displayGenericScript :: GenericScript -> Text
-displayGenericScript script = TL.toStrict . displayT . renderPretty 0.8 80 $ genericScript2doc script
+displayGenericScript script = TL.toStrict . PP.displayT . PP.renderPretty 0.8 80 $ genericScript2doc script

@@ -7,17 +7,18 @@ module Doc (
     ,   pp_float
     ,   pp_float_t
     ,   nl2br
-    ,   module PP
+    ,   Doc
     ) where
 
-import Data.List
-import Data.Monoid
+import Data.List (unfoldr)
+import Data.Monoid (Monoid (..), (<>))
 
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 
-import Text.PrettyPrint.Leijen.Text as PP hiding ((<>), (<$>), (</>), cat)
+import Text.PrettyPrint.Leijen.Text (Doc)
+import qualified Text.PrettyPrint.Leijen.Text as PP
 
 import Numeric (showFFloat)
 

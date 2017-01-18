@@ -5,18 +5,25 @@ module Stellaris.Settings (
     ,   module Stellaris.Types
     ) where
 
-import Control.Monad.State
+import Control.Monad (join, when, forM, filterM)
+import Control.Monad.Trans (liftIO)
+import Control.Monad.State (MonadState (..), modify)
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
-import System.Directory
-import System.FilePath
+import System.Directory (doesFileExist, getDirectoryContents)
+import System.FilePath ((</>))
+import System.IO (hPutStrLn, stderr)
 
-import Abstract
-import FileIO
-import SettingsTypes
-import Stellaris.Types
+import Abstract -- everything
+import FileIO (buildPath, readScript)
+import SettingsTypes ( PPT, Game (..), Settings (..), GameScripts (..), GameState (..)
+                     , ScriptReader (..) -- TODO: eliminate this
+                     , ScriptParser (..) -- TODO: eliminate this
+                     , ScriptWriter (..) -- TODO: eliminate this
+                     )
+import Stellaris.Types -- everything
 
 -- Handlers
 import Stellaris.Events (parseStellarisEvents, writeStellarisEvents)

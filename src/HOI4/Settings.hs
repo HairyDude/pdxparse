@@ -6,22 +6,29 @@ module HOI4.Settings (
     ) where
 
 import Control.Arrow (second)
-import Control.Monad.State
+import Control.Monad (join, when, forM, filterM)
+import Control.Monad.Trans (liftIO)
+import Control.Monad.State (MonadState (..), modify)
 
-import Data.List
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import System.Directory
-import System.FilePath
+import System.Directory (doesFileExist, getDirectoryContents)
+import System.FilePath ((</>), takeFileName, dropExtension)
+import System.IO (hPutStrLn, stderr)
 
-import Abstract
-import FileIO
-import SettingsTypes
-import HOI4.Types
-import Yaml
+import Abstract -- everything
+import FileIO (buildPath, readScript)
+import SettingsTypes (PPT, Settings (..), Game (..), GameScripts (..), GameState (..)
+                     , L10n
+                     , ScriptReader (..) -- TODO: get rid of this
+                     , ScriptParser (..) -- TODO: get rid of this
+                     , ScriptWriter (..) -- TODO: get rid of this
+                     )
+import HOI4.Types -- everything
+import Yaml (LocEntry (..))
 
 -- Handlers
 import HOI4.Events (parseHOI4Events, writeHOI4Events)

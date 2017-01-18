@@ -26,26 +26,28 @@ module SettingsTypes (
     ,   fromReaderT, toReaderT
     ) where
 
-import Control.Monad.Except
-import Control.Monad.Identity (runIdentity)
-import Control.Monad.Reader
-import Control.Monad.State
+import Control.Monad (liftM)
+import Control.Monad.Except (ExceptT, runExceptT)
+import Control.Monad.Identity (Identity (..))
+import Control.Monad.Reader (Reader (..), ReaderT (..), MonadReader (..), asks)
+import Control.Monad.State (StateT (..), MonadState (..), gets)
 
 import Data.Foldable (fold)
-import Data.Maybe
+import Data.Maybe (isNothing, fromJust)
 
 import Data.Text (Text)
 import Text.Shakespeare.I18N (Lang)
+import Text.PrettyPrint.Leijen.Text (Doc)
+--import qualified Text.PrettyPrint.Leijen.Text as PP
 
 import qualified Data.HashMap.Strict as HM
 
-import Abstract
-import Doc
-import EU4.Types
-import HOI4.Types
-import Stellaris.Types
-import Vic2.Types
-import Yaml
+import Abstract -- everything
+import EU4.Types (EU4Data, EU4Scripts, EU4)
+import HOI4.Types (HOI4Data, HOI4Scripts, HOI4)
+import Stellaris.Types (StellarisData, StellarisScripts, Stellaris)
+import Vic2.Types (Vic2Data, Vic2Scripts, Vic2)
+import Yaml (L10n, L10nLang, LocEntry (..))
 
 -- Command line arguments.
 data CLArgs

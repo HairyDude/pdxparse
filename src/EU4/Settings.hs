@@ -5,18 +5,27 @@ module EU4.Settings (
     ,   module EU4.Types
     ) where
 
-import Control.Monad.State
+import Control.Monad (join, when, forM, filterM)
+import Control.Monad.Trans (liftIO)
+import Control.Monad.State (MonadState (..), modify)
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
-import System.Directory
-import System.FilePath
+import System.Directory (getDirectoryContents, doesFileExist)
+import System.FilePath ((</>))
+import System.IO (hPutStrLn, stderr)
 
-import Abstract
-import FileIO
-import SettingsTypes
-import EU4.Types
+import Abstract -- everything
+import FileIO (buildPath, readScript)
+import SettingsTypes (PPT, Settings (..), Game (..), GameScripts (..), GameState (..)
+                     , ScriptReader (..) -- TODO: get rid of this
+                     , ScriptParser (..) -- TODO: get rid of this
+                     , ScriptWriter (..) -- TODO: get rid of this
+                     )
+import EU4.Types -- everything
+--import Text.PrettyPrint.Leijen.Text (Doc)
+--import qualified Text.PrettyPrint.Leijen.Text as PP
 
 -- Handlers
 import EU4.Decisions (parseEU4Decisions, writeEU4Decisions)

@@ -8,10 +8,10 @@ module Yaml (
 --  ,   locFile
     ) where
 
-import Control.Applicative
+import Control.Applicative (Applicative (..), Alternative (..), liftA2)
 
-import Data.List
-import Data.Monoid
+import Data.List (foldl')
+import Data.Monoid (Monoid (..), (<>))
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM

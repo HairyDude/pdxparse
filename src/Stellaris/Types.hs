@@ -18,8 +18,7 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
 
-import Abstract
---import Doc
+import Abstract -- everything
 
 --------------------------------------------
 -- Types used by toplevel Settings module --

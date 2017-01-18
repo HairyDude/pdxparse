@@ -4,15 +4,15 @@ module EU4.IO (
     ,   module FileIO
     ) where
 
-import Control.Monad
+import Control.Monad (filterM, forM, when)
 
-import System.Directory
-import System.FilePath
-import System.IO
+import System.Directory (doesFileExist, getDirectoryContents)
+import System.FilePath ((</>))
+import System.IO (hPutStrLn, stderr)
 
-import Abstract
-import FileIO
-import SettingsTypes
+import Abstract -- everything
+import FileIO (buildPath, readScript)
+import SettingsTypes (Settings (..))
 
 -- Read all scripts in a directory.
 -- Return: for each file, its path relative to the game root and the parsed

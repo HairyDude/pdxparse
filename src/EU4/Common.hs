@@ -13,21 +13,19 @@ module EU4.Common (
     ,   module EU4.Types
     ) where
 
-import Prelude hiding (sequence, mapM)
-
-import Debug.Trace
+import Debug.Trace (trace)
 
 import Control.Applicative (liftA2)
-import Control.Arrow
-import Control.Monad.Reader hiding (sequence, mapM, forM)
-import Control.Monad.State hiding (sequence, mapM, forM)
+import Control.Arrow (first)
+import Control.Monad (liftM, MonadPlus (..), forM, foldM, join)
+import Control.Monad.Reader (MonadReader (..), asks)
+import Control.Monad.State (MonadState (..), gets)
 
-import Data.Char
-import Data.List
-import Data.Maybe
-import Data.Monoid
-import Data.Foldable
-import Data.Traversable
+import Data.Char (isUpper, toUpper, toLower)
+import Data.List (foldl', intersperse)
+import Data.Maybe (isJust, fromMaybe, listToMaybe)
+import Data.Monoid ((<>))
+import Data.Foldable (fold)
 
 import Data.ByteString (ByteString)
 
@@ -44,15 +42,19 @@ import qualified Data.Trie as Tr
 
 import qualified Data.Set as S
 
-import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>), int, double)
+import Text.PrettyPrint.Leijen.Text (Doc)
 import qualified Text.PrettyPrint.Leijen.Text as PP
 
-import Abstract
-import Localization
-import Messages
+import Abstract -- everything
+import qualified Doc
+import Messages -- everything
 import MessageTools (plural)
-import QQ
-import EU4.Types
+import QQ (pdx)
+import SettingsTypes ( PPT, Settings (..), GameState (..), Game (..)
+                     , getGameL10n, getGameL10nIfPresent, getGameL10nDefault
+                     , indentUp, indentDown, alsoIndent', withCurrentIndent, withCurrentIndentZero
+                     , unfoldM)
+import EU4.Types -- everything
 
 isGeographic :: EU4Scope -> Bool
 isGeographic EU4Country = False
@@ -110,16 +112,16 @@ flag name =
                 "ROOT" -> "(Our country)" -- will need editing for capitalization in some cases
                 "PREV" -> "(Previously mentioned country)"
                 -- Suggestions of a description for FROM are welcome.
-                _ -> strictText name
+                _ -> Doc.strictText name
 
 flagText :: Monad m => Text -> PPT m Text
-flagText = fmap doc2text . flag
+flagText = fmap Doc.doc2text . flag
 
 -- Emit icon template.
 icon :: Text -> Doc
 icon what = template "icon" [HM.lookupDefault what what scriptIconTable, "28px"]
 iconText :: Text -> Text
-iconText = doc2text . icon
+iconText = Doc.doc2text . icon
 
 plainMsg :: Monad m => Text -> PPT m IndentedMessages
 plainMsg msg = (:[]) <$> (alsoIndent' . MsgUnprocessed $ msg)
@@ -128,7 +130,7 @@ plainMsg msg = (:[]) <$> (alsoIndent' . MsgUnprocessed $ msg)
 pre_statement :: GenericStatement -> Doc
 pre_statement stmt = "<pre>" <> genericStatement2doc stmt <> "</pre>"
 
--- Don't use doc2text, because it uses renderCompact which is not what we want
+-- Don't use Doc.doc2text, because it uses renderCompact which is not what we want
 -- here.
 preMessage :: GenericStatement -> ScriptMessage
 preMessage = MsgUnprocessed
@@ -142,7 +144,7 @@ preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
 
 -- Text version
 pre_statement' :: GenericStatement -> Text
-pre_statement' = doc2text . pre_statement
+pre_statement' = Doc.doc2text . pre_statement
 
 ppMany :: Monad m => GenericScript -> PPT m IndentedMessages
 ppMany scr = indentUp (concat <$> mapM ppOne scr)
@@ -803,7 +805,7 @@ pp_mtth = pp_mtth' . foldl' addField newMTTH
             addMTTHModField mtthmod stmt -- anything else is a condition
                 = mtthmod { mtthmod_conditions = mtthmod_conditions mtthmod ++ [stmt] }
         pp_mtth' (MTTH myears mmonths mdays modifiers) = do
-            modifiers_pp'd <- intersperse line <$> mapM pp_mtthmod modifiers
+            modifiers_pp'd <- intersperse PP.line <$> mapM pp_mtthmod modifiers
             let hasYears = isJust myears
                 hasMonths = isJust mmonths
                 hasDays = isJust mdays
@@ -811,28 +813,28 @@ pp_mtth = pp_mtth' . foldl' addField newMTTH
             return . mconcat $
                 case myears of
                     Just years ->
-                        [PP.int years, space, strictText $ plural years "year" "years"]
+                        [PP.int years, PP.space, Doc.strictText $ plural years "year" "years"]
                         ++
-                        if hasMonths && hasDays then [",", space]
-                        else if hasMonths || hasDays then ["and", space]
+                        if hasMonths && hasDays then [",", PP.space]
+                        else if hasMonths || hasDays then ["and", PP.space]
                         else []
                     Nothing -> []
                 ++
                 case mmonths of
                     Just months ->
-                        [PP.int months, space, strictText $ plural months "month" "months"]
+                        [PP.int months, PP.space, Doc.strictText $ plural months "month" "months"]
                     _ -> []
                 ++
                 case mdays of
                     Just days ->
-                        (if hasYears && hasMonths then ["and", space]
+                        (if hasYears && hasMonths then ["and", PP.space]
                          else []) -- if years but no months, already added "and"
                         ++
-                        [PP.int days, space, strictText $ plural days "day" "days"]
+                        [PP.int days, PP.space, Doc.strictText $ plural days "day" "days"]
                     _ -> []
                 ++
                 (if hasModifiers then
-                    [line, "<br/>'''Modifiers'''", line]
+                    [PP.line, "<br/>'''Modifiers'''", PP.line]
                     ++ modifiers_pp'd
                  else [])
         pp_mtthmod (MTTHModifier (Just factor) conditions) =
@@ -841,14 +843,14 @@ pp_mtth = pp_mtth' . foldl' addField newMTTH
                     conditions_pp'd <- pp_script conditions
                     return . mconcat $
                         [conditions_pp'd
-                        ,enclose ": '''×" "'''" (pp_float factor)
+                        ,PP.enclose ": '''×" "'''" (Doc.pp_float factor)
                         ]
                 _ -> do
                     conditions_pp'd <- indentUp (pp_script conditions)
                     return . mconcat $
                         ["*"
-                        ,enclose "'''×" "''':" (pp_float factor)
-                        ,line
+                        ,PP.enclose "'''×" "''':" (Doc.pp_float factor)
+                        ,PP.line
                         ,conditions_pp'd
                         ]
         pp_mtthmod (MTTHModifier Nothing _)
@@ -1021,7 +1023,7 @@ iconOrFlag :: Monad m =>
 iconOrFlag iconmsg flagmsg [pdx| %_ = $name |] = msgToPP =<< do
     nflag <- flag name -- laziness means this might not get evaluated
     if isTag name || isPronoun name
-        then return . flagmsg . doc2text $ nflag
+        then return . flagmsg . Doc.doc2text $ nflag
         else iconmsg <$> return (iconText . HM.lookupDefault name name $ scriptIconTable)
                      <*> getGameL10n name
 iconOrFlag _ _ stmt = plainMsg $ pre_statement' stmt
@@ -1035,7 +1037,7 @@ tagOrProvince tagmsg provmsg stmt@[pdx| %_ = ?!eobject |]
     = msgToPP =<< case eobject of
             Just (Right tag) -> do -- is a tag
                 tagflag <- flag tag
-                return . tagmsg . doc2text $ tagflag
+                return . tagmsg . Doc.doc2text $ tagflag
             Just (Left provid) -> do -- is a province id
                 prov_loc <- getProvLoc provid
                 return . provmsg $ prov_loc
@@ -1063,7 +1065,7 @@ numericOrTag numMsg tagMsg stmt@[pdx| %_ = %rhs |] = msgToPP =<<
         Nothing -> case textRhs rhs of
             Just t -> do -- assume it's a country
                 tflag <- flag t
-                return $ tagMsg (doc2text tflag)
+                return $ tagMsg (Doc.doc2text tflag)
             Nothing -> return (preMessage stmt)
 numericOrTag _ _ stmt = preStatement stmt
 
@@ -1074,7 +1076,7 @@ withFlag :: Monad m =>
         -> PPT m IndentedMessages
 withFlag msg [pdx| %_ = $who |] = msgToPP =<< do
     whoflag <- flag who
-    return . msg . doc2text $ whoflag
+    return . msg . Doc.doc2text $ whoflag
 withFlag _ stmt = plainMsg $ pre_statement' stmt
 
 withBool :: Monad m =>
@@ -1355,7 +1357,7 @@ addModifier kind stmt@(Statement _ OpEq (CompoundRhs scr)) = msgToPP =<<
         let mkey = mod_key modifier
             mname = mod_name modifier
         tkind <- messageText kind
-        mwho <- maybe (return Nothing) (fmap (Just . doc2text) . flag) (mod_who modifier)
+        mwho <- maybe (return Nothing) (fmap (Just . Doc.doc2text) . flag) (mod_who modifier)
         mname_loc <- maybeM getGameL10n mname
         mkey_loc <- maybeM getGameL10n mkey
         let mdur = mod_duration modifier
@@ -1417,7 +1419,7 @@ opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
         addLine op _ = op
         pp_add_opinion op = case (op_who op, op_modifier op) of
             (Just whom, Just modifier) -> do
-                whomflag <- doc2text <$> flag whom
+                whomflag <- Doc.doc2text <$> flag whom
                 mod_loc <- getGameL10n modifier
                 case op_years op of
                     Nothing -> return $ msgIndef mod_loc whomflag
@@ -1444,7 +1446,7 @@ hasOpinion stmt@(Statement _ OpEq (CompoundRhs scr))
         pp_hasOpinion hop = case (hop_who hop, hop_value hop) of
             (Just who, Just value) -> do
                 who_flag <- flag who
-                return (MsgHasOpinion value (doc2text who_flag))
+                return (MsgHasOpinion value (Doc.doc2text who_flag))
             _ -> return (preMessage stmt)
 hasOpinion stmt = preStatement stmt
 
@@ -1644,7 +1646,7 @@ addCB direct stmt@[pdx| %_ = @scr |]
         addLine acb [pdx| target = $target |]
             = (\target_loc -> acb
                   { acb_target = Just target
-                  , acb_target_flag = Just (doc2text target_loc) })
+                  , acb_target_flag = Just (Doc.doc2text target_loc) })
               <$> flag target
         addLine acb [pdx| type = $cbtype |]
             = (\cbtype_loc -> acb
@@ -1985,7 +1987,7 @@ declareWarWithCB stmt@[pdx| %_ = @scr |]
         pp_declare_war_with_cb dwcb
               = case (dwcb_who dwcb, dwcb_cb dwcb) of
                 (Just who, Just cb) -> do
-                    whoflag <- doc2text <$> flag who
+                    whoflag <- Doc.doc2text <$> flag who
                     cb_loc <- getGameL10n cb
                     return (MsgDeclareWarWithCB whoflag cb_loc)
                 _ -> return $ preMessage stmt
@@ -2117,7 +2119,7 @@ defineHeir [pdx| %_ = @scr |]
         addLine heir _ = heir
         pp_heir :: Heir -> PPT m ScriptMessage
         pp_heir heir = do
-            dynasty_flag <- fmap doc2text <$> maybeM flag (heir_dynasty heir)
+            dynasty_flag <- fmap Doc.doc2text <$> maybeM flag (heir_dynasty heir)
             case (heir_age heir, dynasty_flag, heir_claim heir) of
                 (Nothing,  Nothing,   Nothing)     -> return $ MsgNewHeir
                 (Nothing,  Nothing,   Just claim)  -> return $ MsgNewHeirClaim claim

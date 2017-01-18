@@ -12,21 +12,17 @@ module HOI4.Common (
     ,   module HOI4.Types
     ) where
 
-import Prelude hiding (sequence, mapM)
-
-import Debug.Trace
+import Debug.Trace (trace)
 
 import Control.Applicative (liftA2)
-import Control.Arrow
-import Control.Monad.Reader hiding (sequence, mapM, forM)
-import Control.Monad.State hiding (sequence, mapM, forM)
+import Control.Monad (mapM, forM, sequence, join, foldM)
+import Control.Monad.Reader (MonadReader (..), asks)
+import Control.Monad.State (MonadState (..), gets)
 
-import Data.Char
-import Data.List
-import Data.Maybe
-import Data.Monoid
-import Data.Foldable
-import Data.Traversable
+import Data.Char (isUpper, toUpper, toLower)
+import Data.List (intersperse, foldl')
+import Data.Maybe (isJust, fromMaybe, listToMaybe)
+import Data.Monoid ((<>))
 
 import Data.ByteString (ByteString)
 
@@ -43,15 +39,18 @@ import qualified Data.Trie as Tr
 
 import qualified Data.Set as S
 
-import Text.PrettyPrint.Leijen.Text hiding ((<>), (<$>), int, double)
+import Text.PrettyPrint.Leijen.Text (Doc)
 import qualified Text.PrettyPrint.Leijen.Text as PP
 
-import Abstract
-import Localization
-import Messages
+import Abstract -- everything
+import qualified Doc
+import Messages -- everything
 import MessageTools (plural)
-import QQ
-import HOI4.Types
+import QQ (pdx)
+import SettingsTypes ( PPT, GameState (..), Settings (..), Game (..)
+                     , getGameL10n, getGameL10nDefault, getGameL10nIfPresent
+                     , indentUp, indentDown, alsoIndent', withCurrentIndent)
+import HOI4.Types -- everything
 
 scope :: Monad m => HOI4Scope -> PPT m a -> PPT m a
 scope s = local $ \st ->
@@ -92,13 +91,13 @@ flag name =
                 "ROOT" -> "(Our country)" -- will need editing for capitalization in some cases
                 "PREV" -> "(Previously mentioned country)"
                 -- Suggestions of a description for FROM are welcome.
-                _ -> strictText name
+                _ -> Doc.strictText name
 
 -- Emit icon template.
 icon :: Text -> Doc
 icon what = template "icon" [HM.lookupDefault what what scriptIconTable, "28px"]
 iconText :: Text -> Text
-iconText = doc2text . icon
+iconText = Doc.doc2text . icon
 
 plainMsg :: Monad m => Text -> PPT m IndentedMessages
 plainMsg msg = (:[]) <$> (alsoIndent' . MsgUnprocessed $ msg)
@@ -107,7 +106,7 @@ plainMsg msg = (:[]) <$> (alsoIndent' . MsgUnprocessed $ msg)
 pre_statement :: GenericStatement -> Doc
 pre_statement stmt = "<pre>" <> genericStatement2doc stmt <> "</pre>"
 
--- Don't use doc2text, because it uses renderCompact which is not what we want
+-- Don't use Doc.doc2text, because it uses renderCompact which is not what we want
 -- here.
 preMessage :: GenericStatement -> ScriptMessage
 preMessage = MsgUnprocessed
@@ -121,7 +120,7 @@ preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
 
 -- Text version
 pre_statement' :: GenericStatement -> Text
-pre_statement' = doc2text . pre_statement
+pre_statement' = Doc.doc2text . pre_statement
 
 ppMany :: Monad m => GenericScript -> PPT m IndentedMessages
 ppMany scr = indentUp (concat <$> mapM ppOne scr)
@@ -290,7 +289,7 @@ pp_mtth = pp_mtth' . foldl' addField newMTTH
             addMTTHModField mtthmod stmt -- anything else is a condition
                 = mtthmod { mtthmod_conditions = mtthmod_conditions mtthmod ++ [stmt] }
         pp_mtth' (MTTH myears mmonths mdays modifiers) = do
-            modifiers_pp'd <- intersperse line <$> mapM pp_mtthmod modifiers
+            modifiers_pp'd <- intersperse PP.line <$> mapM pp_mtthmod modifiers
             let hasYears = isJust myears
                 hasMonths = isJust mmonths
                 hasDays = isJust mdays
@@ -298,28 +297,28 @@ pp_mtth = pp_mtth' . foldl' addField newMTTH
             return . mconcat $
                 case myears of
                     Just years ->
-                        [PP.int years, space, strictText $ plural years "year" "years"]
+                        [PP.int years, PP.space, Doc.strictText $ plural years "year" "years"]
                         ++
-                        if hasMonths && hasDays then [",", space]
-                        else if hasMonths || hasDays then ["and", space]
+                        if hasMonths && hasDays then [",", PP.space]
+                        else if hasMonths || hasDays then ["and", PP.space]
                         else []
                     Nothing -> []
                 ++
                 case mmonths of
                     Just months ->
-                        [PP.int months, space, strictText $ plural months "month" "months"]
+                        [PP.int months, PP.space, Doc.strictText $ plural months "month" "months"]
                     _ -> []
                 ++
                 case mdays of
                     Just days ->
-                        (if hasYears && hasMonths then ["and", space]
+                        (if hasYears && hasMonths then ["and", PP.space]
                          else []) -- if years but no months, already added "and"
                         ++
-                        [PP.int days, space, strictText $ plural days "day" "days"]
+                        [PP.int days, PP.space, Doc.strictText $ plural days "day" "days"]
                     _ -> []
                 ++
                 (if hasModifiers then
-                    [line, "<br/>'''Modifiers'''", line]
+                    [PP.line, "<br/>'''Modifiers'''", PP.line]
                     ++ modifiers_pp'd
                  else [])
         pp_mtthmod (MTTHModifier (Just factor) conditions) =
@@ -328,14 +327,14 @@ pp_mtth = pp_mtth' . foldl' addField newMTTH
                     conditions_pp'd <- pp_script conditions
                     return . mconcat $
                         [conditions_pp'd
-                        ,enclose ": '''×" "'''" (pp_float factor)
+                        ,PP.enclose ": '''×" "'''" (Doc.pp_float factor)
                         ]
                 _ -> do
                     conditions_pp'd <- indentUp (pp_script conditions)
                     return . mconcat $
                         ["*"
-                        ,enclose "'''×" "''':" (pp_float factor)
-                        ,line
+                        ,PP.enclose "'''×" "''':" (Doc.pp_float factor)
+                        ,PP.line
                         ,conditions_pp'd
                         ]
         pp_mtthmod (MTTHModifier Nothing _)
@@ -466,7 +465,7 @@ withFlag :: Monad m =>
         -> PPT m IndentedMessages
 withFlag msg [pdx| %_ = $who |] = msgToPP =<< do
     whoflag <- flag who
-    return . msg . doc2text $ whoflag
+    return . msg . Doc.doc2text $ whoflag
 withFlag _ stmt = plainMsg $ pre_statement' stmt
 
 withBool :: Monad m =>

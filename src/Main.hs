@@ -1,14 +1,19 @@
 {-# LANGUAGE OverloadedStrings, LambdaCase #-}
 module Main where
 
-import Control.Monad
-import Control.Monad.Reader
-import Control.Monad.State
+import Control.Monad (join)
+import Control.Monad.Reader (MonadReader (..), runReaderT)
+import Control.Monad.State (MonadState (..), gets, evalStateT)
 
-import System.Directory
+import System.Directory (createDirectoryIfMissing)
 
-import Platform
-import Settings
+import Platform (initPlatform)
+import Settings (readSettings)
+import SettingsTypes ( Settings (..)
+                     , ScriptReader (..) -- TODO: get rid of this
+                     , ScriptParser (..) -- TODO: get rid of this
+                     , ScriptWriter (..) -- TODO: get rid of this
+                     , readScripts, parseScripts, writeScripts)
 
 main :: IO ()
 main = do

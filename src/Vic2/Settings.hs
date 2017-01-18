@@ -5,22 +5,31 @@ module Vic2.Settings (
     ,   module Vic2.Types
     ) where
 
-import Control.Monad.State
+import Control.Monad (filterM, forM, join, when)
+import Control.Monad.Trans (liftIO)
+import Control.Monad.State (MonadState (..), modify)
 
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
-import System.Directory
-import System.FilePath
+import System.Directory (doesFileExist, getDirectoryContents)
+import System.FilePath ((</>))
+import System.IO (hPutStrLn, stderr)
 
-import Abstract
-import FileIO
-import SettingsTypes
-import Vic2.Types
+import Abstract -- everything
+import FileIO (buildPath, readScript)
+import SettingsTypes ( PPT, Settings (..), GameState (..), Game (..)
+                     , GameScripts (..)
+                     , ScriptReader (..) -- TODO: eliminate this
+                     , ScriptParser (..) -- TODO: eliminate this
+                     , ScriptWriter (..) -- TODO: eliminate this
+                     , readScripts, parseScripts, writeScripts)
+import Vic2.Types ( Vic2 (..), Vic2Scripts (..), Vic2Data (..)
+                  , Vic2Decision (..), Vic2Event (..))
 
-import Debug.Trace
+import Debug.Trace (trace)
 
 -- Handlers
 --import Vic2.Decisions (parseVic2Decisions, writeVic2Decisions)

@@ -7,13 +7,14 @@ module EU4.IdeaGroups (
     ) where
 
 import Control.Arrow (first)
-import Control.Monad
-import Control.Monad.Except
-import Control.Monad.State
+import Control.Monad (forM, forM_, foldM)
+import Control.Monad.Trans (MonadTrans (..))
+import Control.Monad.Except (ExceptT (..), runExceptT, MonadError (..))
+import Control.Monad.State (MonadState (..), gets)
 
 import Data.Array ((!))
-import Data.Either
-import Data.Monoid
+import Data.Either (partitionEithers)
+import Data.Monoid ((<>))
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
@@ -24,19 +25,23 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 
+import Text.PrettyPrint.Leijen.Text (Doc)
+import qualified Text.PrettyPrint.Leijen.Text as PP
+
 import Text.Regex.TDFA (Regex)
 import qualified Text.Regex.TDFA as RE
 
-import Debug.Trace
+import Debug.Trace (traceM)
 
-import Abstract
-import Doc
-import EU4.Common
-import EU4.IO
---import EU4.SuperCommon
-import Messages
-import QQ
-import SettingsTypes
+import Abstract -- everything
+import qualified Doc
+import EU4.Common -- everything
+import FileIO (Feature (..), writeFeatures)
+import Messages -- everything
+import QQ (pdx)
+import SettingsTypes ( PPT, Settings (..), Game (..)
+                     , getGameL10n
+                     , setCurrentFile, withCurrentFile)
 
 -- Starts off Nothing everywhere, except name (will get filled in immediately).
 newIdeaGroup :: IdeaGroup
@@ -110,7 +115,7 @@ iconForIdea' idea = case idea_effects idea of
 iconForIdea :: Idea -> Doc
 iconForIdea idea = case iconForIdea' idea of
     Nothing -> mempty
-    Just icon -> strictText icon
+    Just icon -> Doc.strictText icon
 
 -- Do some text substitutions to add 'ideaNicon' args to the idea group
 -- template, and remove/comment out undesirable icon templates.
@@ -118,11 +123,11 @@ iconForIdea idea = case iconForIdea' idea of
 -- TODO: convert icon keys to icon file names.
 -- XXX: do this properly in the first place.
 fixup :: Doc -> Doc
-fixup = strictText . T.unlines . map (TE.decodeUtf8
+fixup = Doc.strictText . T.unlines . map (TE.decodeUtf8
             -- . mungIdeaIcons multiIdeaIcons
             . mungIdeaIcons singleIdeaIcons
             . killIcons
-        . TE.encodeUtf8) . T.lines . doc2text where
+        . TE.encodeUtf8) . T.lines . Doc.doc2text where
     badIcons, singleIdeaIcons, multiIdeaIcons{-, multiIdeaStartIcons -} :: Regex
     badIcons = RE.makeRegex ("((tradition.|bonus) = |\\* )({{icon[^}]*}}) "::ByteString)
     singleIdeaIcons = RE.makeRegex ("idea(.)effect = {{icon\\|([a-z ]*)\\|28px}} "::ByteString)
@@ -189,14 +194,14 @@ ppIdeaGroup ig = fixup <$> do
                     (msg:msgs) -> do
                         firstmsg <- imsg2doc (unindent [msg])
                         rest <- mapM (\m -> (":" <>) <$> imsg2doc [m]) (unindent msgs)
-                        return (firstmsg <> line <> vsep rest)
+                        return (firstmsg <> PP.line <> PP.vsep rest)
             bonus_pp'd <- imsg2doc . unindent =<< ppMany bonus
             mtrigger_pp'd <- case ig_trigger ig of
                 Nothing -> return Nothing
                 Just trigger -> Just <$> (imsg2doc =<< ppMany trigger)
-            let name_loc = strictText . T.replace " Ideas" "" $ name
+            let name_loc = Doc.strictText . T.replace " Ideas" "" $ name
                 ig_id_t = ig_name ig
-                ig_id = strictText ig_id_t
+                ig_id = Doc.strictText ig_id_t
             trads <- case ig_start ig of
                 Just [trad1s, trad2s] -> do
                     trad1 <- imsg2doc . map (first (const 0)) =<< ppOne trad1s
@@ -205,55 +210,55 @@ ppIdeaGroup ig = fixup <$> do
                 Just trads -> return . Left . Just . length $ trads
                 Nothing -> return (Left Nothing)
             return . mconcat $
-                ["<section begin=", ig_id, "/>", line
-                ,"{{Idea group", line
-                ,"| name = ", name_loc, line
-                ,"| version = ", strictText version, line
+                ["<section begin=", ig_id, "/>", PP.line
+                ,"{{Idea group", PP.line
+                ,"| name = ", name_loc, PP.line
+                ,"| version = ", Doc.strictText version, PP.line
                 ,case ig_category ig of
                     Nothing -> case trads of
                         Right (trad1, trad2) -> mconcat -- assume groups with no category are country ideas
-                            ["| country = yes", line
-                            ,"| tradition1 = ", trad1, line
-                            ,"| tradition2 = ", trad2, line
+                            ["| country = yes", PP.line
+                            ,"| tradition1 = ", trad1, PP.line
+                            ,"| tradition2 = ", trad2, PP.line
                             ]
                         Left (Just ntrads) -> mconcat
                             ["<!-- Looks like a country idea group, but has non-standard number of traditions ("
-                            ,strictText (T.pack (show ntrads))
-                            ,") -->", line]
+                            ,Doc.strictText (T.pack (show ntrads))
+                            ,") -->", PP.line]
                         Left Nothing -> mconcat
-                            ["<!-- Looks like a country idea group, but has no traditions -->", line]
+                            ["<!-- Looks like a country idea group, but has no traditions -->", PP.line]
                     Just cat -> mconcat
-                        ["<!-- Category: ", pp_string (show cat), " -->", line
-                        ,"| events = ", name_loc, " idea group events", line]
-                ,"| idea1 = ", strictText (idea_name_loc (rawideas !! 0)), line
+                        ["<!-- Category: ", Doc.pp_string (show cat), " -->", PP.line
+                        ,"| events = ", name_loc, " idea group events", PP.line]
+                ,"| idea1 = ", Doc.strictText (idea_name_loc (rawideas !! 0)), PP.line
                 ,iconForIdea (rawideas !! 0)
-                ,"| idea1effect = ", ideas !! 0, line
-                ,"| idea2 = ", strictText (idea_name_loc (rawideas !! 1)), line
+                ,"| idea1effect = ", ideas !! 0, PP.line
+                ,"| idea2 = ", Doc.strictText (idea_name_loc (rawideas !! 1)), PP.line
                 ,iconForIdea (rawideas !! 1)
-                ,"| idea2effect = ", ideas !! 1, line
-                ,"| idea3 = ", strictText (idea_name_loc (rawideas !! 2)), line
+                ,"| idea2effect = ", ideas !! 1, PP.line
+                ,"| idea3 = ", Doc.strictText (idea_name_loc (rawideas !! 2)), PP.line
                 ,iconForIdea (rawideas !! 2)
-                ,"| idea3effect = ", ideas !! 2, line
-                ,"| idea4 = ", strictText (idea_name_loc (rawideas !! 3)), line
+                ,"| idea3effect = ", ideas !! 2, PP.line
+                ,"| idea4 = ", Doc.strictText (idea_name_loc (rawideas !! 3)), PP.line
                 ,iconForIdea (rawideas !! 3)
-                ,"| idea4effect = ", ideas !! 3, line
-                ,"| idea5 = ", strictText (idea_name_loc (rawideas !! 4)), line
+                ,"| idea4effect = ", ideas !! 3, PP.line
+                ,"| idea5 = ", Doc.strictText (idea_name_loc (rawideas !! 4)), PP.line
                 ,iconForIdea (rawideas !! 4)
-                ,"| idea5effect = ", ideas !! 4, line
-                ,"| idea6 = ", strictText (idea_name_loc (rawideas !! 5)), line
+                ,"| idea5effect = ", ideas !! 4, PP.line
+                ,"| idea6 = ", Doc.strictText (idea_name_loc (rawideas !! 5)), PP.line
                 ,iconForIdea (rawideas !! 5)
-                ,"| idea6effect = ", ideas !! 5, line
-                ,"| idea7 = ", strictText (idea_name_loc (rawideas !! 6)), line
+                ,"| idea6effect = ", ideas !! 5, PP.line
+                ,"| idea7 = ", Doc.strictText (idea_name_loc (rawideas !! 6)), PP.line
                 ,iconForIdea (rawideas !! 6)
-                ,"| idea7effect = ", ideas !! 6, line
-                ,"| bonus = ", bonus_pp'd, line
+                ,"| idea7effect = ", ideas !! 6, PP.line
+                ,"| bonus = ", bonus_pp'd, PP.line
                 ] ++ (case mtrigger_pp'd of
                     Just trigger_pp'd ->
-                        ["| notes = Can be selected only if the following are true:", line
+                        ["| notes = Can be selected only if the following are true:", PP.line
                         ,trigger_pp'd
-                        ,line]
+                        ,PP.line]
                     Nothing -> [])
-                ++ ["}}", line
+                ++ ["}}", PP.line
                 ,"<section end=", ig_id, "/>"]
         (Nothing, _) -> throwError $ "Idea group " <> name <> " has no bonus"
         (_, n) -> throwError $ "Idea group " <> name <> " has non-standard number of ideas (" <> T.pack (show n) <> ")"

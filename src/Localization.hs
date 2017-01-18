@@ -1,13 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Localization (
         readL10n -- :: Settings -> IO L10n
-    ,   module SettingsTypes
+    ,   L10n -- re-exported from Yaml
     ) where
 
-import Control.Monad
-import Data.Monoid
+import Control.Monad (liftM, filterM, forM)
 
-import Data.List
+import Data.List (isInfixOf, foldl')
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
@@ -23,13 +22,13 @@ import qualified Data.Yaml as Y
 import Data.Attoparsec.Text (Parser)
 import qualified Data.Attoparsec.Text as Ap
 
-import System.Directory
-import System.FilePath
-import System.Exit
+import System.Directory (doesFileExist, getDirectoryContents)
+import System.FilePath ((</>))
+import System.Exit (exitFailure)
 import System.IO (hPutStrLn, stderr)
 
-import SettingsTypes
-import Yaml
+import SettingsTypes (Settings (..), L10nScheme (..))
+import Yaml (L10n, LocEntry (..), parseLocFile, mergeLangs, mergeLangList)
 
 readL10n :: Settings -> IO L10n
 readL10n settings = do

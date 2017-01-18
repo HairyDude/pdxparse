@@ -4,27 +4,33 @@ module EU4.Decisions (
     ,   writeEU4Decisions
     ) where
 
-import Debug.Trace
+import Debug.Trace (trace, traceM)
 
 import Control.Arrow ((&&&))
-import Control.Monad.Except
-import Control.Monad.State
+import Control.Monad (foldM, forM)
+import Control.Monad.Except (ExceptT (..), MonadError (..))
+import Control.Monad.State (MonadState (..), gets)
 
-import Data.Maybe
-import Data.Monoid
+import Data.Maybe (catMaybes)
+import Data.Monoid ((<>))
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Data.Text (Text)
 import qualified Data.Text as T
+import Text.PrettyPrint.Leijen.Text (Doc)
+import qualified Text.PrettyPrint.Leijen.Text as PP
 
-import Abstract
-import Doc
-import FileIO
-import Messages
-import QQ
-import SettingsTypes
-import EU4.Common
+import Abstract -- everything
+import qualified Doc
+import FileIO (Feature (..), writeFeatures)
+import Messages -- everything
+import QQ (pdx)
+import SettingsTypes ( PPT, Settings (..), Game (..)
+                     , getGameL10n, getGameL10nIfPresent
+                     , setCurrentFile, withCurrentFile
+                     , hoistExceptions)
+import EU4.Common -- everything
 
 -- Starts off Nothing/empty everywhere, except name (will get filled in immediately).
 newDecision :: EU4Decision
@@ -117,23 +123,23 @@ pp_decision dec = do
     effect_pp'd <- scope EU4Country (pp_script (dec_effect dec))
     mawd_pp'd    <- mapM ((imsg2doc =<<) . ppAiWillDo) (dec_ai_will_do dec)
     let name = dec_name dec
-        nameD = strictText name
+        nameD = Doc.strictText name
     name_loc <- getGameL10n (name <> "_title")
     return . mconcat $
         ["<section begin=", nameD, "/>"
-        ,"{{Decision", line
-        ,"| version = ", strictText version, line
-        ,"| decision_name = ", strictText name_loc, line
+        ,"{{Decision", PP.line
+        ,"| version = ", Doc.strictText version, PP.line
+        ,"| decision_name = ", Doc.strictText name_loc, PP.line
         ,maybe mempty
-               (\txt -> mconcat ["| decision_text = ", strictText txt, line])
+               (\txt -> mconcat ["| decision_text = ", Doc.strictText txt, PP.line])
                (dec_text dec) 
-        ,"| potential = ", line, pot_pp'd, line
-        ,"| allow = ", line, allow_pp'd, line
-        ,"| effect = ", line, effect_pp'd, line
+        ,"| potential = ", PP.line, pot_pp'd, PP.line
+        ,"| allow = ", PP.line, allow_pp'd, PP.line
+        ,"| effect = ", PP.line, effect_pp'd, PP.line
         ] ++
         flip (maybe []) mawd_pp'd (\awd_pp'd ->
-            ["| comment = AI decision factors:", line
-            ,awd_pp'd, line]) ++
+            ["| comment = AI decision factors:", PP.line
+            ,awd_pp'd, PP.line]) ++
         ["}}" -- no line, causes unwanted extra space
         ,"<section end=", nameD, "/>"
         ]
