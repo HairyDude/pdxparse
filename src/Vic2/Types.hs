@@ -40,7 +40,6 @@ data Vic2 = Vic2
 data Vic2Scripts = Vic2Scripts {
         vic2eventScripts :: HashMap String GenericScript
     ,   vic2decisionScripts :: HashMap String GenericScript
-    ,   vic2ideaGroupScripts :: HashMap String GenericScript
     } deriving (Show)
 
 -------------------

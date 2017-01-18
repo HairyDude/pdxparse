@@ -37,55 +37,51 @@ readL10n settings = do
               </> steamApps settings
               </> gameFolder settings
               </> "localisation"
-        usesCSV = case game settings of
-            -- EU4 (and probably later games) uses Yaml localization.
-            --  l_english: # or l_french, etc.
-            --      KEY: "content"
-            GameEU4 {} -> False
-            GameHOI4 {} -> False
-            GameStellaris {} -> False
-            -- Older games use semicolon-separated CSV.
-            --  KEY;English;French;German;;Spanish;;;;;;;;x;
-            GameVic2 {} -> True
-            GameUnknown {} ->
-                error "Unknown game while reading l10n"
     files <- filterM doesFileExist
                 . map (dir </>)
-                . (if not usesCSV then
-                    filter (T.unpack (language settings) `isInfixOf`)
-                   else id)
+                . (case l10nScheme settings of
+                    -- CK2 and earlier use semicolon-delimited CSV.
+                    --  KEY;English;French;German;;Spanish;;;;;;;;;x
+                    L10nCSV -> id
+                    -- EU4 and later use a quasi-YAML format, one file per language.
+                    --  l_language: (e.g. l_english)
+                    --   KEY:0 "Content with "unescaped" quotation marks"
+                    -- where the 0 is a version number. We discard languages we
+                    -- don't care about.
+                    L10nQYAML -> filter (T.unpack (language settings) `isInfixOf`))
                     =<< getDirectoryContents dir
-    if usesCSV then
-        let csvField :: Parser Text
-            csvField = Ap.takeWhile (/=';')
-            langs = [(0, "l_english")
-                    ,(1, "l_french")
-                    ,(2, "l_german")
-                    ,(4, "l_spanish")]
-            -- Key and value in the chosen language
-            parseLine :: Parser L10n
-            parseLine = do
-                tag:fields <- csvField `Ap.sepBy` (Ap.string ";")
-                -- fields :: [Text]
-                let addField (fieldnum, lang)
-                        = HM.singleton
-                            lang
-                            (HM.singleton tag (LocEntry 0 (fields!!fieldnum)))
-                return $ mergeLangList (map addField langs)
-        in liftM mconcat . forM files $ \file -> do
-            fileContents <- T.lines <$> TIO.readFile file
-            let parsedLines = mapM (Ap.parseOnly parseLine) fileContents
-            case parsedLines of
-                Left err -> do
-                    hPutStrLn stderr ("Error reading localization file "
-                        ++ file
-                        ++ ": " ++ err)
-                    exitFailure
-                Right lines -> return (mconcat lines)
-    else liftM (foldl' mergeLangs HM.empty) . forM files $ \file -> do
-        parseResult <- parseLocFile <$> TIO.readFile file
-        case parseResult of
-            Left exc -> do
-                hPutStrLn stderr $ "Parsing localisation file " ++ file ++ " failed: " ++ show exc
-                return HM.empty
-            Right contents -> return contents
+    case l10nScheme settings of
+        L10nCSV ->
+            let csvField :: Parser Text
+                csvField = Ap.takeWhile (/=';')
+                langs = [(0, "l_english")
+                        ,(1, "l_french")
+                        ,(2, "l_german")
+                        ,(4, "l_spanish")]
+                -- Key and value in the chosen language
+                parseLine :: Parser L10n
+                parseLine = do
+                    tag:fields <- csvField `Ap.sepBy` (Ap.string ";")
+                    -- fields :: [Text]
+                    let addField (fieldnum, lang)
+                            = HM.singleton
+                                lang
+                                (HM.singleton tag (LocEntry 0 (fields!!fieldnum)))
+                    return $ mergeLangList (map addField langs)
+            in liftM mconcat . forM files $ \file -> do
+                fileContents <- T.lines <$> TIO.readFile file
+                let parsedLines = mapM (Ap.parseOnly parseLine) fileContents
+                case parsedLines of
+                    Left err -> do
+                        hPutStrLn stderr ("Error reading localization file "
+                            ++ file
+                            ++ ": " ++ err)
+                        exitFailure
+                    Right lines -> return (mconcat lines)
+        L10nQYAML -> liftM (foldl' mergeLangs HM.empty) . forM files $ \file -> do
+            parseResult <- parseLocFile <$> TIO.readFile file
+            case parseResult of
+                Left exc -> do
+                    hPutStrLn stderr $ "Parsing localisation file " ++ file ++ " failed: " ++ show exc
+                    return HM.empty
+                Right contents -> return contents

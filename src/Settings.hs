@@ -139,15 +139,16 @@ readSettings = do
                 provisionalSettings = Settings
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
-                            , game = case gamefolder of
+                            , l10nScheme = case gamefolder of
                                 -- Provisional filling-in so localization knows
                                 -- what to do.
-                                "Europa Universalis IV" -> GameEU4 {}
-                                "Hearts of Iron IV" -> GameHOI4 {}
-                                "Stellaris" -> GameStellaris {}
-                                "Victoria 2" -> GameVic2 {}
+                                "Europa Universalis IV" -> L10nQYAML
+                                "Hearts of Iron IV" -> L10nQYAML
+                                "Stellaris" -> L10nQYAML
+                                "Victoria 2" -> L10nCSV
                                 other -> error $ "I don't know how to handle "
                                             ++ other ++ "!"
+                            , game = GameUnknown -- we know, but can't fill this in
                             , gameFolder = gamefolder
                             , gamePath = steamDirCanonicalized </> steamAppsCanonicalized </> gamefolder
                             , language = "l_" <> lang

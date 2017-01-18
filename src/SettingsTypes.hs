@@ -2,6 +2,7 @@
 module SettingsTypes (
         L10n
     ,   CLArgs (..)
+    ,   L10nScheme (..)
     ,   Game (..)
     ,   GameState (..)
     ,   GameScripts (..)
@@ -50,6 +51,12 @@ import Yaml
 data CLArgs
     = Paths
     | Version
+    deriving (Show, Eq)
+
+-- Choice of localization scheme
+data L10nScheme
+    = L10nCSV   -- CSV (semicolon-delimited), for CK2 and earlier
+    | L10nQYAML -- quasi-YAML, for EU4 and later
     deriving (Show, Eq)
 
 ----------------------------
@@ -148,6 +155,7 @@ data Settings = Settings {
                                 -- e.g. /home/username/.local/share or C:\Program Files (x86)
     ,   steamApps   :: FilePath -- Steam apps directory under steamDir
                                 -- usually Steam/steamapps/common
+    ,   l10nScheme  :: L10nScheme
     ,   game        :: Game
     ,   gameFolder  :: String   -- Folder under apps directory containing the game
                                 -- usually same as game name, e.g. "Hearts of Iron IV"
