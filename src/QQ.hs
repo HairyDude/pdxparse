@@ -201,6 +201,7 @@ lhs2pat lhs = case lhs of
     CustomLhs (PatCompound _) -> error "compound pattern not supported on LHS"
     CustomLhs (PatStringlike _) -> error "stringlike pattern not supported on LHS"
     CustomLhs (PatStringOrNum _) -> error "string-or-num pattern not supported on LHS"
+    AtLhs label -> error "statement starting with @ not supported on LHS"
     IntLhs _ -> error "int pattern not supported on LHS"
     GenericLhs gen -> conP 'GenericLhs [litP (stringL (T.unpack gen))]
 

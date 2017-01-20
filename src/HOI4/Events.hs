@@ -83,13 +83,14 @@ writeHOI4Events = do
         _ -> error "writeHOI4Events passed wrong game's data!"
 
 -- Parse a statement in an events file. Some statements aren't events; for
--- those, and for any obvious errors, return Nothing.
+-- those, and for any obvious errors, return Right Nothing.
 parseHOI4Event :: MonadError Text m => GenericStatement -> PPT m (Either Text (Maybe HOI4Event))
 parseHOI4Event (StatementBare _) = throwError "bare statement at top level"
 parseHOI4Event [pdx| %left = %right |] = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
+        AtLhs _ -> return (Right Nothing)
         GenericLhs etype ->
             let mescope = case etype of
                     "country_event" -> Just HOI4Country
@@ -118,7 +119,7 @@ data EvtDescI = EvtDescI {
     ,   edi_trigger :: Maybe GenericScript
     }
 evtDesc :: MonadError Text m => Maybe Text -> GenericScript -> m HOI4EvtDesc
-evtDesc meid scr = case foldl' evtDesc' (EvtDescI Nothing Nothing) scr of
+evtDesc meid scr = case foldl' (evtDesc' meid) (EvtDescI Nothing Nothing) scr of
         EvtDescI (Just t) Nothing -- desc = { text = foo }
             -> return $ HOI4EvtDescSimple t
         EvtDescI Nothing (Just trig) -- desc = { trigger = { .. } } (invalid)
@@ -132,9 +133,12 @@ evtDesc meid scr = case foldl' evtDesc' (EvtDescI Nothing Nothing) scr of
                 Just eid -> " in event " <> eid
                 Nothing -> ""
     where
-        evtDesc' ed [pdx| trigger = @trig |] = ed { edi_trigger = Just trig }
-        evtDesc' ed [pdx| text = ?txt |] = ed { edi_text = Just txt }
-        evtDesc' ed [pdx| show_sound = %_ |] = ed
+        evtDesc' _ ed [pdx| trigger = @trig |] = ed { edi_trigger = Just trig }
+        evtDesc' _ ed [pdx| text = ?txt |] = ed { edi_text = Just txt }
+        evtDesc' _ ed [pdx| show_sound = %_ |] = ed
+        evtDesc' meid _ stmt = error ("evtDesc passed strange statement"
+                                     ++ maybe "" (\eid -> "in " ++ T.unpack eid) meid
+                                     ++ ": " ++ show stmt)
 
 eventAddSection :: MonadError Text m => Maybe HOI4Event -> GenericStatement -> PPT m (Maybe HOI4Event)
 eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) where

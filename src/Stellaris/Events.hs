@@ -38,9 +38,9 @@ import SettingsTypes ( Settings (..), PPT, Game (..)
 
 -- Starts off Nothing everywhere.
 newStellarisEvent :: StellarisScope -> StellarisEvent
-newStellarisEvent escope = StellarisEvent Nothing Nothing [] Nothing escope Nothing Nothing Nothing Nothing False [] Nothing
+newStellarisEvent escope = StellarisEvent Nothing Nothing [] Nothing escope Nothing Nothing Nothing Nothing Nothing False [] Nothing
 newStellarisOption :: StellarisOption
-newStellarisOption = StellarisOption Nothing Nothing Nothing Nothing
+newStellarisOption = StellarisOption Nothing Nothing Nothing Nothing False
 
 -- Parse events and return them.
 parseStellarisEvents :: Monad m => HashMap String GenericScript -> PPT m (HashMap Text StellarisEvent)
@@ -84,13 +84,14 @@ writeStellarisEvents = do
         _ -> error "writeStellarisEvents passed wrong game's data!"
 
 -- Parse a statement in an events file. Some statements aren't events; for
--- those, and for any obvious errors, return Nothing.
+-- those, and for any obvious errors, return Right Nothing.
 parseStellarisEvent :: MonadError Text m => GenericStatement -> PPT m (Either Text (Maybe StellarisEvent))
 parseStellarisEvent (StatementBare _) = throwError "bare statement at top level"
 parseStellarisEvent [pdx| %left = %right |] = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
+        AtLhs _ -> return (Right Nothing)
         GenericLhs etype ->
             let mescope = case etype of
                     "country_event" -> Just StellarisCountry
@@ -123,7 +124,7 @@ data EvtDescI = EvtDescI {
     ,   edi_trigger :: Maybe GenericScript
     }
 evtDesc :: MonadError Text m => Maybe Text -> GenericScript -> m StEvtDesc
-evtDesc meid scr = case foldl' evtDesc' (EvtDescI Nothing Nothing) scr of
+evtDesc meid scr = case foldl' (evtDesc' meid) (EvtDescI Nothing Nothing) scr of
         EvtDescI (Just t) Nothing -- desc = { text = foo }
             -> return $ StEvtDescSimple t
         EvtDescI Nothing (Just trig) -- desc = { trigger = { .. } } (invalid)
@@ -137,9 +138,11 @@ evtDesc meid scr = case foldl' evtDesc' (EvtDescI Nothing Nothing) scr of
                 Just eid -> " in event " <> eid
                 Nothing -> ""
     where
-        evtDesc' ed [pdx| trigger = @trig |] = ed { edi_trigger = Just trig }
-        evtDesc' ed [pdx| text = ?txt |] = ed { edi_text = Just txt }
-        evtDesc' ed [pdx| show_sound = %_ |] = ed
+        evtDesc' _ ed [pdx| trigger = @trig |] = ed { edi_trigger = Just trig }
+        evtDesc' _ ed [pdx| text = ?txt |] = ed { edi_text = Just txt }
+        evtDesc' _ ed [pdx| show_sound = %_ |] = ed
+        evtDesc' meid _  _ = error ("evtDesc got strange description"
+                               ++ maybe "" (\eid -> " for event " ++ T.unpack eid) meid)
 
 eventAddSection :: MonadError Text m => Maybe StellarisEvent -> GenericStatement -> PPT m (Maybe StellarisEvent)
 eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) where
@@ -189,6 +192,10 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
         case rhs of
             CompoundRhs immediate -> return evt { stevt_immediate = Just immediate }
             _ -> throwError "bad immediate section"
+    eventAddSection' evt stmt@[pdx| after = %rhs |] =
+        case rhs of
+            CompoundRhs after -> return evt { stevt_after = Just after }
+            _ -> throwError "bad after section"
     eventAddSection' evt stmt@[pdx| option = %rhs |] =
         case rhs of
             CompoundRhs option -> do
@@ -295,6 +302,7 @@ pp_event evt = case stevt_id evt of
         trigger_pp'd <- evtArg "trigger" stevt_trigger pp_script
         mmtth_pp'd <- mapM pp_mtth (stevt_mean_time_to_happen evt)
         immediate_pp'd <- evtArg "immediate" stevt_immediate pp_script
+        after_pp'd <- evtArg "after" stevt_after pp_script
         return . mconcat $
             ["<section begin=", evtId, "/>", PP.line
             ,"{{Event", PP.line
@@ -320,6 +328,7 @@ pp_event evt = case stevt_id evt of
                     ["| mtth = ", PP.line
                     ,mtth_pp'd]) ++
             immediate_pp'd ++
+            after_pp'd ++
             (if conditional then ["| option conditions = yes", PP.line] else []) ++
             -- option_conditions = no (not implemented yet)
             ["| options = ", options_pp'd, PP.line
@@ -335,7 +344,9 @@ pp_event evt = case stevt_id evt of
 pp_options :: MonadError Text m => Bool -> Text -> [StellarisOption] -> PPT m (Bool, Doc)
 pp_options hidden eid opts = do
     let triggered = any (isJust . stopt_trigger) opts
-    options_pp'd <- mapM (pp_option hidden triggered eid) opts
+    options_pp'd <- case reverse opts of
+        [] -> return []
+        (last:rest) -> mapM (pp_option hidden triggered eid) (reverse (last { stopt_last = True } : opts))
     return (triggered, mconcat . (PP.line:) . intersperse PP.line $ options_pp'd)
 
 pp_option :: MonadError Text m => Bool -> Bool -> Text -> StellarisOption -> PPT m Doc
@@ -352,7 +363,7 @@ pp_option hidden triggered eid opt = do
                 effects_pp'd <- pp_script (fromMaybe [] (stopt_effects opt))
                 mtrigger_pp'd <- sequence (pp_script <$> mtrigger)
                 return . mconcat $
-                    ["{{Option\n"
+                    ["{{Option", if stopt_last opt then "|end\n" else "\n"
                     ,"| option_text = ", Doc.strictText name_loc, PP.line
                     ,"| effect =", PP.line, effects_pp'd, PP.line]
                     ++ (if triggered then

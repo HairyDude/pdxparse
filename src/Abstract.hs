@@ -102,6 +102,7 @@ showOpD = Doc.strictText . showOp
 data Lhs lhs
     = CustomLhs lhs
     | GenericLhs Text
+    | AtLhs Text
     | IntLhs Int -- used frequently in EU4
     deriving (Eq, Ord, Show, Read)
 type GenericLhs = Lhs ()
@@ -174,7 +175,7 @@ skipSpace = Ap.skipMany
             <|> comment)
 
 comment :: Parser ()
-comment = Ap.char '#' >> restOfLine >> return ()
+comment = "#" >> restOfLine >> return ()
 
 -- Parse the entire rest of the line, and also consume any number of following
 -- blank lines.
@@ -240,14 +241,15 @@ script customLhs customRhs = statement customLhs customRhs `Ap.sepBy` skipSpace
 
 lhs :: Parser lhs -> Parser (Lhs lhs)
 lhs custom = CustomLhs <$> custom
+         <|> AtLhs <$> ("@" *> ident) -- guessing at the syntax here...
          <|> GenericLhs <$> ident
          <|> IntLhs <$> Ap.decimal
     <?> "statement LHS"
 
 operator :: Parser Operator
-operator = Ap.string "=" *> pure OpEq
-       <|> Ap.string "<" *> pure OpLT
-       <|> Ap.string ">" *> pure OpGT
+operator = "=" *> pure OpEq
+       <|> "<" *> pure OpLT
+       <|> ">" *> pure OpGT
    <?> "operator"
 
 rhs :: Parser lhs -> Parser rhs -> Parser (Rhs lhs rhs)
@@ -301,6 +303,7 @@ statement2doc customLhs customRhs (Statement lhs op rhs)
 
 lhs2doc :: (lhs -> Doc) -> Lhs lhs -> Doc
 lhs2doc customLhs (CustomLhs lhs) = customLhs lhs
+lhs2doc _         (AtLhs lhs) = PP.text (TL.fromStrict ("@" <> lhs))
 lhs2doc _         (GenericLhs lhs) = PP.text (TL.fromStrict lhs)
 lhs2doc _         (IntLhs lhs) = PP.text (TL.pack (show lhs))
 

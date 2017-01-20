@@ -217,6 +217,7 @@ ppHandlers = Tr.fromList
 
 ppOne :: Monad m => GenericStatement -> PPT m IndentedMessages
 ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
+    AtLhs _ -> return [] -- Don't know how to deal with these
     GenericLhs label -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
         Just handler -> handler stmt
         -- default
@@ -853,6 +854,9 @@ randomList stmt@[pdx| %_ = @scr |] = fmtRandomList $ map entry scr
         fmtRandomList' total (wt, what) = withCurrentIndent $ \i ->
             (:) <$> pure (i, MsgRandomChance ((wt / total) * 100))
                 <*> ppMany what -- has integral indentUp
+randomList _ = withCurrentFile $ \file ->
+    error ("randomList sent strange statement in " ++ file)
+
 -- DLC
 
 hasDlc :: Monad m => GenericStatement -> PPT m IndentedMessages

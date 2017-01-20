@@ -83,13 +83,14 @@ writeEU4Events = do
         _ -> error "writeEU4Events passed wrong game's data!"
 
 -- Parse a statement in an events file. Some statements aren't events; for
--- those, and for any obvious errors, return Nothing.
+-- those, and for any obvious errors, return Right Nothing.
 parseEU4Event :: MonadError Text m => GenericStatement -> PPT m (Either Text (Maybe EU4Event))
 parseEU4Event (StatementBare _) = throwError "bare statement at top level"
 parseEU4Event [pdx| %left = %right |] = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
+        AtLhs _ -> return (Right Nothing)
         GenericLhs etype ->
             let mescope = case etype of
                     "country_event" -> Just EU4Country
@@ -138,6 +139,9 @@ evtDesc meid scr = case foldl' evtDesc' (EvtDescI Nothing Nothing) scr of
         evtDesc' ed [pdx| $label = %_ |]
             = error ("unrecognized desc section " ++ T.unpack label
                      ++ " in " ++ maybe "(unknown)" T.unpack meid)
+        evtDesc' ed stmt
+            = error ("unrecognized desc section in " ++ maybe "(unknown)" T.unpack meid
+                    ++ ": " ++ show stmt)
 
 eventAddSection :: MonadError Text m => Maybe EU4Event -> GenericStatement -> PPT m (Maybe EU4Event)
 eventAddSection Nothing _ = return Nothing
@@ -197,6 +201,9 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
     eventAddSection' evt stmt@[pdx| $label = %_ |] =
         withCurrentFile $ \file ->
             throwError $ "unrecognized event section in " <> T.pack file <> ": " <> label
+    eventAddSection' evt stmt =
+        withCurrentFile $ \file ->
+            throwError $ "unrecognized event section in " <> T.pack file <> ": " <> T.pack (show stmt)
 
 addEU4Option :: Monad m => Maybe [EU4Option] -> GenericScript -> PPT m (Maybe [EU4Option])
 addEU4Option Nothing opt = addEU4Option (Just []) opt

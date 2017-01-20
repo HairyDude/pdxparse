@@ -116,7 +116,7 @@ writeEU4Decisions = do
                                             ,   featureId = Just (dec_name dec)
                                             ,   theFeature = Right dec })
                                       (HM.elems decisions)
-        GameUnknown -> error "writeEU4Decisions: unknown game!"
+        _ -> error "writeEU4Decisions: unknown game!"
 
 pp_decision :: Monad m => EU4Decision -> PPT m Doc
 pp_decision dec = do

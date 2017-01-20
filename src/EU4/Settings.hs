@@ -104,6 +104,7 @@ parseEU4Scripts (GameScriptsEU4 (EU4Scripts {
                 }
             }
         _ -> error "parseEU4Scripts passed wrong kind of scripts!"
+parseEU4Scripts _ = error "parseEU4Scripts passed wrong kind of scripts!"
 
 writeEU4Scripts :: PPT IO ()
 writeEU4Scripts = do

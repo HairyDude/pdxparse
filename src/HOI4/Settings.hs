@@ -133,6 +133,7 @@ parseHOI4Scripts (GameScriptsHOI4 (HOI4Scripts {
                 }
             }
         _ -> error "parseHOI4Scripts passed wrong kind of scripts!"
+parseHOI4Scripts _ = error "parseHOI4Scripts passed wrong kind of scripts!"
 
 writeHOI4Scripts :: PPT IO ()
 writeHOI4Scripts = do

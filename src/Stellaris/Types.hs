@@ -61,6 +61,7 @@ data StellarisEvent = StellarisEvent
     ,   stevt_is_triggered_only :: Maybe Bool
     ,   stevt_mean_time_to_happen :: Maybe GenericScript
     ,   stevt_immediate :: Maybe GenericScript
+    ,   stevt_after :: Maybe GenericScript
     ,   stevt_hide_window :: Bool
     ,   stevt_options :: [StellarisOption]
     ,   stevt_path :: Maybe FilePath -- source file
@@ -70,6 +71,7 @@ data StellarisOption = StellarisOption
     ,   stopt_trigger :: Maybe GenericScript
     ,   stopt_ai_chance :: Maybe GenericScript
     ,   stopt_effects :: Maybe GenericScript
+    ,   stopt_last :: Bool -- is the last option for the event
     } deriving (Show)
 
 ------------------------------

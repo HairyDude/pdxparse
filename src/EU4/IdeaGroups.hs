@@ -66,6 +66,7 @@ parseIdeaGroup [pdx| %left = %right |] = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
+        AtLhs _ -> throwError "statement starting with @ in idea group file"
         GenericLhs name -> do
             name_loc <- lift $ getGameL10n name
             ig <- foldM (curry (lift . uncurry ideaGroupAddSection))

@@ -49,7 +49,8 @@ import MessageTools (plural)
 import QQ (pdx)
 import SettingsTypes ( PPT, GameState (..), Settings (..), Game (..)
                      , getGameL10n, getGameL10nDefault, getGameL10nIfPresent
-                     , indentUp, indentDown, alsoIndent', withCurrentIndent)
+                     , indentUp, indentDown, alsoIndent', withCurrentIndent
+                     , withCurrentFile)
 import HOI4.Types -- everything
 
 scope :: Monad m => HOI4Scope -> PPT m a -> PPT m a
@@ -243,6 +244,7 @@ ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
                 -- Check for localizable atoms, e.g. regions
                 Just loc -> compound loc stmt
                 Nothing -> preStatement stmt
+    AtLhs _ -> return [] -- don't know how to handle these
     IntLhs n -> do -- Treat as a province tag
         let provN = T.pack (show n)
         prov_loc <- getGameL10nDefault ("Province " <> provN) ("PROV" <> provN)
@@ -793,6 +795,9 @@ randomList stmt@[pdx| %_ = @scr |] = fmtRandomList $ map entry scr
         fmtRandomList' total (wt, what) = withCurrentIndent $ \i ->
             (:) <$> pure (i, MsgRandomChance ((wt / total) * 100))
                 <*> ppMany what -- has integral indentUp
+randomList stmt = withCurrentFile $ \file ->
+    error ("error: randomList passed strange statement in " ++ file ++ ": " ++ show stmt)
+
 -- DLC
 
 hasDlc :: Monad m => GenericStatement -> PPT m IndentedMessages

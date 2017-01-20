@@ -88,6 +88,7 @@ parseStellarisScripts (GameScriptsStellaris (StellarisScripts {
                 }
             }
         _ -> error "parseStellarisScripts passed wrong kind of scripts!"
+parseStellarisScripts _ = error "parseStellarisScripts passed wrong kind of scripts!"
 
 writeStellarisScripts :: PPT IO ()
 writeStellarisScripts = do

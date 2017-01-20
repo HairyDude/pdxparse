@@ -758,6 +758,7 @@ ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
                     -- Check for localizable atoms, e.g. regions
                     Just loc -> compound loc stmt
                     Nothing -> preStatement stmt
+    AtLhs _ -> return [] -- don't know how to handle these
     IntLhs n -> do -- Treat as a province tag
         let provN = T.pack (show n)
         prov_loc <- getGameL10nDefault ("Province " <> provN) ("PROV" <> provN)
