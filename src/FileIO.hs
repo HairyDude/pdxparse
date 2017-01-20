@@ -59,7 +59,7 @@ readScript settings file = do
     let filepath = buildPath settings file
     contents <- readFileRetry filepath
     case Ap.parseOnly (Ap.option undefined (Ap.char '\xFEFF') -- BOM
-                        *> Ap.skipSpace
+                        *> skipSpace
                         *> genericScript) contents of
         Right result -> return result
         Left err -> do

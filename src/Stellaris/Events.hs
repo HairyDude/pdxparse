@@ -148,7 +148,7 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
             (Just tid, _) -> return evt { stevt_id = Just tid }
             (_, Just nid) -> return evt { stevt_id = Just (T.pack $ show (nid::Int)) }
             _ -> withCurrentFile $ \file ->
-                throwError "bad id"
+                throwError $ "bad id in " <> T.pack file <> ": " <> T.pack (show rhs)
     eventAddSection' evt stmt@[pdx| title = %rhs |] = case textRhs rhs of
         Just title -> return evt { stevt_title = Just title }
         _ -> withCurrentFile $ \file ->

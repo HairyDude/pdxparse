@@ -2007,6 +2007,8 @@ hasDlc [pdx| %_ = ?dlc |]
             ,("El Dorado", "ed")
             ,("Common Sense", "cs")
             ,("The Cossacks", "cos")
+            ,("Mare Nostrum", "mn")
+            ,("Rights of Man", "rom")
             ]
         dlc_icon = maybe "" iconText mdlc_key
 hasDlc stmt = preStatement stmt

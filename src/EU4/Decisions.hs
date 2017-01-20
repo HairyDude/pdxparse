@@ -42,6 +42,7 @@ parseEU4Decisions scripts = do
                     setCurrentFile f (concat <$> mapM parseEU4DecisionGroup script)
     case tryParse of
         Left err -> do
+            -- TODO: use logging instead of trace
             traceM $ "Completely failed parsing decisions: " ++ T.unpack err
             return HM.empty
         Right files -> fmap (HM.unions . HM.elems) . flip HM.traverseWithKey files $
@@ -49,6 +50,7 @@ parseEU4Decisions scripts = do
                     fmap (HM.fromList . map (dec_name &&& id) . catMaybes)
                         . forM edecs $ \case
                 Left err -> do
+                    -- TODO: use logging instead of trace
                     traceM $ "Error parsing " ++ sourceFile
                              ++ ": " ++ T.unpack err
                     return Nothing
@@ -82,21 +84,22 @@ parseEU4Decision [pdx| $decName = %rhs |] = case rhs of
 parseEU4Decision _ = throwError "unrecognized form for decision (LHS)"
 
 decisionAddSection :: Monad m => EU4Decision -> GenericStatement -> PPT m EU4Decision
-decisionAddSection dec [pdx| $sectname = @scr |]
-    = case sectname of
-        "potential" -> return dec { dec_potential = scr }
-        "allow" -> return dec { dec_allow = scr }
-        "effect" -> return dec { dec_effect = scr }
-        "ai_will_do" -> return dec { dec_ai_will_do = Just (aiWillDo scr) }
-        _ -> trace ("warning: unrecognized decision section: " ++ T.unpack sectname) $
-             return dec
+decisionAddSection dec [pdx| potential        = @scr |] = return dec { dec_potential = scr }
+decisionAddSection dec [pdx| allow            = @scr |] = return dec { dec_allow = scr }
+decisionAddSection dec [pdx| effect           = @scr |] = return dec { dec_effect = scr }
+decisionAddSection dec [pdx| ai_will_do       = @scr |] = return dec { dec_ai_will_do = Just (aiWillDo scr) }
+decisionAddSection dec [pdx| do_not_integrate = %_ |]   = return dec -- maybe mention this in AI notes
+decisionAddSection dec [pdx| do_not_core      = %_ |]   = return dec -- maybe mention this in AI notes
 decisionAddSection dec (Statement (GenericLhs "major") OpEq _)
         = return dec -- currently no field in the template for this
 decisionAddSection dec (Statement (GenericLhs "ai_importance") OpEq _)
+            -- TODO: use logging instead of trace
         = trace "notice: ai_importance not yet implemented" $
           return dec
-decisionAddSection dec stmt = trace ("warning: unrecognized decision section: " ++ show stmt) $
-                              return dec
+decisionAddSection dec stmt = withCurrentFile $ \file -> do
+    -- TODO: use logging instead of trace
+    traceM ("warning: unrecognized decision section in " ++ file ++ ": " ++ show stmt)
+    return dec
 
 writeEU4Decisions :: PPT IO ()
 writeEU4Decisions = do

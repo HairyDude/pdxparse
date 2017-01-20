@@ -5,7 +5,7 @@ module EU4.Types (
     ,   EU4 (..)
     ,   EU4Scripts (..)
         -- Features
-    ,   EU4Event (..), EU4Option (..)
+    ,   EU4EvtDesc (..), EU4Event (..), EU4Option (..)
     ,   EU4Decision (..)
     ,   IdeaGroup (..), Idea (..), IdeaTable
         -- Low level
@@ -50,17 +50,26 @@ data EU4Scripts = EU4Scripts {
 -- Feature types --
 -------------------
 
+data EU4EvtDesc
+    = EU4EvtDescSimple Text  -- desc = key
+    | EU4EvtDescConditional GenericScript Text
+            -- desc = { text = key trigger = conditions }
+    | EU4EvtDescCompound GenericScript
+            -- desc = { trigger = { conditional_expressions } }
+    deriving (Show)
+
 -- Object that accumulates info about an event.
 data EU4Event = EU4Event
     {   eu4evt_id :: Maybe Text -- event id
     ,   eu4evt_title :: Maybe Text -- event title l10n key
-    ,   eu4evt_desc :: Maybe Text -- event description l10n key
-    ,   eu4evt_picture :: Maybe Text -- event picture
+    ,   eu4evt_desc :: [EU4EvtDesc]
+--    ,   eu4evt_picture :: Maybe Text -- event picture
     ,   eu4evt_scope :: EU4Scope -- type of thing the event happens to
     ,   eu4evt_trigger :: Maybe GenericScript
     ,   eu4evt_is_triggered_only :: Maybe Bool
     ,   eu4evt_mean_time_to_happen :: Maybe GenericScript
     ,   eu4evt_immediate :: Maybe GenericScript
+    ,   eu4evt_hide_window :: Bool
     ,   eu4evt_options :: Maybe [EU4Option]
     ,   eu4evt_path :: Maybe FilePath -- source file
     } deriving (Show)
