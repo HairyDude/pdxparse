@@ -13,5 +13,5 @@ import Text.PrettyPrint.Leijen.Text (Doc)
 import Abstract -- everything
 import SettingsTypes (PPT)
 
-processPolicy :: MonadError Text m => GenericStatement -> PPT m [Either Text (FilePath, Doc)]
+processPolicy :: MonadError Text m => GenericStatement -> PPT g m [Either Text (FilePath, Doc)]
 processPolicy _ = throwError "not implemented"

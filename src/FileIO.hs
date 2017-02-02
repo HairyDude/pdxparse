@@ -9,7 +9,7 @@ module FileIO (
 
 import Control.Monad (forM, forM_)
 import Control.Monad.Except (ExceptT)
-import Control.Monad.Trans (liftIO)
+import Control.Monad.Trans (MonadIO (..))
 import Control.Exception (try)
 
 import Data.Monoid ((<>))
@@ -90,11 +90,12 @@ writeFeature path output = do
             "Error writing " ++ show (err::IOError)
     hClose h
 
-writeFeatures :: Text -- ^ Name of feature (e.g. "idea groups")
-    -> [Feature a]
-    -> (a -> PPT (ExceptT Text IO) Doc) -- ^ Rendering function
-    -- PPT (ExceptT Text IO) = StateT Settings (ReaderT GameState (ExceptT Text IO))
-    -> PPT IO ()
+writeFeatures :: MonadIO m =>
+    Text -- ^ Name of feature (e.g. "idea groups")
+        -> [Feature a]
+        -> (a -> PPT g (ExceptT Text m) Doc) -- ^ Rendering function
+        -- PPT g (ExceptT Text IO) = StateT Settings (ReaderT GameState (ExceptT Text IO))
+        -> PPT g m ()
 writeFeatures featureName features pprint = do
     efeatures_pathed_pp'd <- forM features $ \feature ->
         case theFeature feature of

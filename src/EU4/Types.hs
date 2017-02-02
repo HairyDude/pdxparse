@@ -1,9 +1,8 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleContexts #-}
 module EU4.Types (
         -- Used by Settings
-        EU4Data (..)
-    ,   EU4 (..)
-    ,   EU4Scripts (..)
+        EU4Data (..), EU4State (..)
+    ,   EU4Info (..)
         -- Features
     ,   EU4EvtDesc (..), EU4Event (..), EU4Option (..)
     ,   EU4Decision (..)
@@ -22,6 +21,8 @@ import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
 
 import Abstract -- everything
+import SettingsTypes ( PPT, Settings
+                     , IsGame (..), IsGameData (..), IsGameState (..))
 --import Doc
 
 --------------------------------------------
@@ -29,22 +30,36 @@ import Abstract -- everything
 --------------------------------------------
 
 data EU4Data = EU4Data {
-        eu4events :: HashMap Text EU4Event
+        eu4settings :: Settings
+    ,   eu4events :: HashMap Text EU4Event
     ,   eu4decisions :: HashMap Text EU4Decision
-    ,   eu4ideagroups :: IdeaTable
-    -- etc.
-    } deriving (Show)
-
--- State
-data EU4 = EU4
-    { scopeStack :: [EU4Scope]
-    } deriving (Show)
-
-data EU4Scripts = EU4Scripts {
-        eu4eventScripts :: HashMap String GenericScript
+    ,   eu4ideaGroups :: IdeaTable
+    ,   eu4eventScripts :: HashMap String GenericScript
     ,   eu4decisionScripts :: HashMap String GenericScript
     ,   eu4ideaGroupScripts :: HashMap String GenericScript
+    -- etc.
+    }
+
+-- State
+data EU4State = EU4State {
+        eu4scopeStack :: [EU4Scope]
+    ,   eu4currentFile :: Maybe FilePath
+    ,   eu4currentIndent :: Maybe Int
     } deriving (Show)
+
+class (IsGame g,
+       Scope g ~ EU4Scope,
+       IsGameData (GameData g),
+       IsGameState (GameState g)) => EU4Info g where
+    getEventTitle :: Monad m => Text -- ^ Event ID
+                                -> PPT g m (Maybe Text)
+    getEventScripts :: Monad m => PPT g m (HashMap FilePath GenericScript)
+    setEventScripts :: Monad m => HashMap FilePath GenericScript -> PPT g m ()
+    getEvents :: Monad m => PPT g m (HashMap Text EU4Event)
+    getIdeaGroupScripts :: Monad m => PPT g m (HashMap FilePath GenericScript)
+    getIdeaGroups :: Monad m => PPT g m IdeaTable
+    getDecisionScripts :: Monad m => PPT g m (HashMap FilePath GenericScript)
+    getDecisions :: Monad m => PPT g m (HashMap Text EU4Decision)
 
 -------------------
 -- Feature types --

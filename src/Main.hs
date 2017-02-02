@@ -4,16 +4,19 @@ module Main where
 import Control.Monad (join)
 import Control.Monad.Reader (MonadReader (..), runReaderT)
 import Control.Monad.State (MonadState (..), gets, evalStateT)
+import Control.Monad.Trans (MonadIO (..))
 
 import System.Directory (createDirectoryIfMissing)
+import System.Exit (exitFailure)
+import System.IO (hPutStrLn, stderr)
+
+import Data.Text (Text, unpack)
 
 import Platform (initPlatform)
 import Settings (readSettings)
-import SettingsTypes ( Settings (..)
-                     , ScriptReader (..) -- TODO: get rid of this
-                     , ScriptParser (..) -- TODO: get rid of this
-                     , ScriptWriter (..) -- TODO: get rid of this
-                     , readScripts, parseScripts, writeScripts)
+import SettingsTypes ( Settings (..), Game (..), IsGame (..)
+                     , readScripts, parseScripts, writeScripts
+                     , hoistExceptions)
 
 main :: IO ()
 main = do
@@ -21,18 +24,24 @@ main = do
     initPlatform
 
     -- Read the settings file
-    (settings, initState) <- readSettings
+    settings <- readSettings
 
     createDirectoryIfMissing False "output"
 
     -- StateT Settings (ReaderT GameState IO) ()
-    flip runReaderT initState $ flip evalStateT settings $ do
-        -- 1) Read the game's scripts
-        scripts <- join (runScriptReader <$> gets (readScripts . game))
+    case game settings of
+        Game g -> runWithInitState g settings $ do
+            -- 1) Read the game's scripts
+            errs <- hoistExceptions readScripts
+            case errs of
+                Right () -> return () -- carry on
+                Left e -> liftIO $ do
+                    hPutStrLn stderr $ "Failed reading scripts: " ++ unpack e
+                    exitFailure
 
-        -- 2) Parse the game's scripts (into state)
-        ($ scripts) . runScriptParser =<< gets (parseScripts . game)
+            -- 2) Parse the game's scripts (into state)
+            parseScripts
 
-        -- 3) Output the result of parsing and/or report errors
-        join (runScriptWriter <$> gets (writeScripts . game))
+            -- 3) Output the result of parsing and/or report errors
+            writeScripts
 

@@ -1,4 +1,5 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, QuasiQuotes, LambdaCase, ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, TypeFamilies #-}
+{-# LANGUAGE QuasiQuotes, LambdaCase, ViewPatterns #-}
 module Stellaris.Events (
         parseStellarisEvents
     ,   writeStellarisEvents
@@ -10,6 +11,7 @@ import Control.Arrow ((&&&))
 import Control.Monad (liftM, mapM, forM, foldM)
 import Control.Monad.Except (MonadError (..))
 import Control.Monad.State (MonadState (..), gets)
+import Control.Monad.Trans (MonadIO (..))
 
 import Data.List (intersperse, foldl')
 import Data.Maybe (fromMaybe, isJust, fromJust, catMaybes)
@@ -32,6 +34,7 @@ import FileIO (Feature (..), writeFeatures)
 import Messages -- everything
 import QQ (pdx)
 import SettingsTypes ( Settings (..), PPT, Game (..)
+                     , IsGame (..), IsGameData (..), IsGameState (..)
                      , getGameL10n, getGameL10nIfPresent
                      , withCurrentFile, setCurrentFile
                      , hoistErrors, hoistExceptions)
@@ -43,8 +46,10 @@ newStellarisOption :: StellarisOption
 newStellarisOption = StellarisOption Nothing Nothing Nothing Nothing False
 
 -- Parse events and return them.
-parseStellarisEvents :: Monad m => HashMap String GenericScript -> PPT m (HashMap Text StellarisEvent)
-parseStellarisEvents scripts = HM.unions . HM.elems <$> do
+parseStellarisEvents :: (StellarisInfo g, Monad m) =>
+    PPT g m (HashMap Text StellarisEvent)
+parseStellarisEvents = HM.unions . HM.elems <$> do
+    scripts <- getEventScripts
     tryParse <- hoistExceptions $
         HM.traverseWithKey
             (\sourceFile scr ->
@@ -66,26 +71,23 @@ parseStellarisEvents scripts = HM.unions . HM.elems <$> do
                       mkEvtMap = HM.fromList . map (fromJust . stevt_id &&& id)
                         -- Events returned from parseEvent are guaranteed to have an id.
 
-writeStellarisEvents :: PPT IO ()
+writeStellarisEvents :: (MonadIO m, StellarisInfo g) => PPT g m ()
 writeStellarisEvents = do
-    gdata <- gets game
-    case gdata of
-        GameStellaris { stdata = StellarisData { stevents = events } } ->
-            writeFeatures "events"
-                          pathedEvents
-                          (\e -> scope (stevt_scope e) $ pp_event e)
-            where
-                pathedEvents :: [Feature StellarisEvent]
-                pathedEvents = map (\evt -> Feature {
-                                            featurePath = stevt_path evt
-                                        ,   featureId = stevt_id evt
-                                        ,   theFeature = Right evt })
-                                    (HM.elems events)
-        _ -> error "writeStellarisEvents passed wrong game's data!"
+    events <- getEvents
+    let pathedEvents :: [Feature StellarisEvent]
+        pathedEvents = map (\evt -> Feature {
+                                    featurePath = stevt_path evt
+                                ,   featureId = stevt_id evt
+                                ,   theFeature = Right evt })
+                            (HM.elems events)
+    writeFeatures "events"
+                  pathedEvents
+                  (\e -> scope (stevt_scope e) $ pp_event e)
 
 -- Parse a statement in an events file. Some statements aren't events; for
 -- those, and for any obvious errors, return Right Nothing.
-parseStellarisEvent :: MonadError Text m => GenericStatement -> PPT m (Either Text (Maybe StellarisEvent))
+parseStellarisEvent :: (IsGameState (GameState g), MonadError Text m) =>
+    GenericStatement -> PPT g m (Either Text (Maybe StellarisEvent))
 parseStellarisEvent (StatementBare _) = throwError "bare statement at top level"
 parseStellarisEvent [pdx| %left = %right |] = case right of
     CompoundRhs parts -> case left of
@@ -144,7 +146,8 @@ evtDesc meid scr = case foldl' (evtDesc' meid) (EvtDescI Nothing Nothing) scr of
         evtDesc' meid _  _ = error ("evtDesc got strange description"
                                ++ maybe "" (\eid -> " for event " ++ T.unpack eid) meid)
 
-eventAddSection :: MonadError Text m => Maybe StellarisEvent -> GenericStatement -> PPT m (Maybe StellarisEvent)
+eventAddSection :: (IsGameState (GameState g), MonadError Text m) =>
+    Maybe StellarisEvent -> GenericStatement -> PPT g m (Maybe StellarisEvent)
 eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) where
     eventAddSection' evt stmt@[pdx| id = %rhs |]
         = case (textRhs rhs, floatRhs rhs) of
@@ -228,12 +231,12 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
             throwError $ "unrecognized event section in " <> T.pack file <> ": " <> label
     eventAddSection' evt _ = return evt
 
-addStellarisOption :: Monad m => [StellarisOption] -> GenericScript -> PPT m [StellarisOption]
+addStellarisOption :: Monad m => [StellarisOption] -> GenericScript -> PPT g m [StellarisOption]
 addStellarisOption opts opt = do
     optn <- foldM optionAddStatement newStellarisOption opt
     return $ opts ++ [optn]
 
-optionAddStatement :: Monad m => StellarisOption -> GenericStatement -> PPT m StellarisOption
+optionAddStatement :: Monad m => StellarisOption -> GenericStatement -> PPT g m StellarisOption
 optionAddStatement opt stmt@[pdx| $label = %rhs |] =
     case label of
         "name" -> case textRhs rhs of
@@ -254,11 +257,11 @@ optionAddStatement opt stmt = do
     effects_pp'd <- optionAddEffect (stopt_effects opt) stmt
     return $ opt { stopt_effects = effects_pp'd }
 
-optionAddEffect :: Monad m => Maybe GenericScript -> GenericStatement -> PPT m (Maybe GenericScript)
+optionAddEffect :: Monad m => Maybe GenericScript -> GenericStatement -> PPT g m (Maybe GenericScript)
 optionAddEffect Nothing stmt = optionAddEffect (Just []) stmt
 optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 
-ppDescs :: Monad m => Bool -> [StEvtDesc] -> PPT m Doc
+ppDescs :: (StellarisInfo g, Monad m) => Bool -> [StEvtDesc] -> PPT g m Doc
 ppDescs True _ = return "| cond_event_text = (This event is hidden and has no description.)"
 ppDescs _ [] = return "| event_text = (No description)"
 ppDescs _ [StEvtDescSimple key] = ("| event_text = " <>) . Doc.strictText <$> getGameL10n key
@@ -276,17 +279,18 @@ ppDescs _ descs = ("| cond_event_text = " <>) .PP.vsep <$> mapM ppDesc descs whe
         Just txt -> "''" <> Doc.strictText (Doc.nl2br txt) <> "''"
 
 -- Pretty-print an event, or fail.
-pp_event :: forall m. MonadError Text m => StellarisEvent -> PPT m Doc
+pp_event :: forall g m. (StellarisInfo g, MonadError Text m) =>
+    StellarisEvent -> PPT g m Doc
 pp_event evt = case stevt_id evt of
     Just eid
         | (isJust (stevt_is_triggered_only evt) ||
            isJust (stevt_mean_time_to_happen evt)) -> do
         -- Valid event
-        version <- gets gameVersion
+        version <- gameVersion <$> gets getSettings
         (conditional, options_pp'd) <- pp_options (stevt_hide_window evt) eid (stevt_options evt)
         titleLoc <- fromMaybe eid <$> sequence (getGameL10n <$> stevt_title evt)
         descLoc <- ppDescs (stevt_hide_window evt) (stevt_desc evt)
-        let evtArg :: Text -> (StellarisEvent -> Maybe a) -> (a -> PPT m Doc) -> PPT m [Doc]
+        let evtArg :: Text -> (StellarisEvent -> Maybe a) -> (a -> PPT g m Doc) -> PPT g m [Doc]
             evtArg fieldname field fmt
                 = maybe (return [])
                     (\field_content -> do
@@ -341,7 +345,8 @@ pp_event evt = case stevt_id evt of
 
     Nothing -> throwError "stevt_id missing"
 
-pp_options :: MonadError Text m => Bool -> Text -> [StellarisOption] -> PPT m (Bool, Doc)
+pp_options :: (StellarisInfo g, MonadError Text m) =>
+    Bool -> Text -> [StellarisOption] -> PPT g m (Bool, Doc)
 pp_options hidden eid opts = do
     let triggered = any (isJust . stopt_trigger) opts
     options_pp'd <- case reverse opts of
@@ -349,7 +354,8 @@ pp_options hidden eid opts = do
         (last:rest) -> mapM (pp_option hidden triggered eid) (reverse (last { stopt_last = True } : opts))
     return (triggered, mconcat . (PP.line:) . intersperse PP.line $ options_pp'd)
 
-pp_option :: MonadError Text m => Bool -> Bool -> Text -> StellarisOption -> PPT m Doc
+pp_option :: (StellarisInfo g, MonadError Text m) =>
+    Bool -> Bool -> Text -> StellarisOption -> PPT g m Doc
 pp_option hidden triggered eid opt = do
     optNameLoc <- getGameL10n `mapM` stopt_name opt
     let optNameLoc' = if hidden

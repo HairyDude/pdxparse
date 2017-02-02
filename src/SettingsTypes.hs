@@ -1,15 +1,14 @@
-{-# LANGUAGE OverloadedStrings, RankNTypes #-}
+{-# LANGUAGE OverloadedStrings #-}
+--, RankNTypes, 
+{-# LANGUAGE GADTs, TypeFamilies #-}
+{-# LANGUAGE StandaloneDeriving, FlexibleContexts, FlexibleInstances  #-}
 module SettingsTypes (
         L10n
     ,   CLArgs (..)
     ,   L10nScheme (..)
-    ,   Game (..)
-    ,   GameState (..)
-    ,   GameScripts (..)
-    ,   ScriptReader (..)
-    ,   ScriptParser (..)
-    ,   ScriptWriter (..)
-    ,   Handler (..)
+    ,   Game (..), IsGame (..)
+    ,   IsGameData (..)
+    ,   IsGameState (..)
     ,   Settings (..)
     ,   setGameL10n
     ,   PP, PPT
@@ -26,14 +25,15 @@ module SettingsTypes (
     ,   fromReaderT, toReaderT
     ) where
 
-import Control.Monad (liftM)
+import Control.Monad (liftM, join, void)
+import Control.Monad.Trans (MonadIO)
 import Control.Monad.Except (ExceptT, runExceptT)
 import Control.Monad.Identity (Identity (..))
 import Control.Monad.Reader (Reader (..), ReaderT (..), MonadReader (..), asks)
-import Control.Monad.State (StateT (..), MonadState (..), gets)
+import Control.Monad.State (StateT (..), MonadState (..), execStateT, gets)
 
 import Data.Foldable (fold)
-import Data.Maybe (isNothing, fromJust)
+import Data.Maybe (isNothing, fromJust, listToMaybe)
 
 import Data.Text (Text)
 import Text.Shakespeare.I18N (Lang)
@@ -43,10 +43,6 @@ import Text.PrettyPrint.Leijen.Text (Doc)
 import qualified Data.HashMap.Strict as HM
 
 import Abstract -- everything
-import EU4.Types (EU4Data, EU4Scripts, EU4)
-import HOI4.Types (HOI4Data, HOI4Scripts, HOI4)
-import Stellaris.Types (StellarisData, StellarisScripts, Stellaris)
-import Vic2.Types (Vic2Data, Vic2Scripts, Vic2)
 import Yaml (L10n, L10nLang, LocEntry (..))
 
 -- Command line arguments.
@@ -65,29 +61,7 @@ data L10nScheme
 -- Game specific settings --
 ----------------------------
 
-newtype ScriptReader = ScriptReader {
-        runScriptReader :: PPT IO GameScripts
-    }
-instance Show ScriptReader where
-    show _ = "<script reader>"
-newtype Handler = Handler {
-        runHandler :: GenericStatement -> PPT (Either Text) [Either Text (FilePath, Doc)]
-    }
-instance Show Handler where
-    show _ = "<feature handler>"
-
-newtype ScriptParser = ScriptParser {
-        runScriptParser :: forall m. Monad m => GameScripts -> PPT m ()
-    }
-instance Show ScriptParser where
-    show _ = "<script parser>"
-
-newtype ScriptWriter = ScriptWriter {
-        runScriptWriter :: PPT IO ()
-    }
-instance Show ScriptWriter where
-    show _ = "<script parser>"
-
+{- Old settings types
 data Game
     = GameUnknown
     | GameEU4 {
@@ -115,38 +89,80 @@ data Game
         ,   vic2data :: Vic2Data
         }
     deriving (Show)
+-}
 
--- State to store in a Reader.
-data GameState
-    = EU4State {
-            gEU4 :: EU4
-        ,   currentIndent :: Maybe Int
-        ,   currentFile :: Maybe FilePath
-        }
-    | StellarisState {
-            gStellaris :: Stellaris
-        ,   currentIndent :: Maybe Int
-        ,   currentFile :: Maybe FilePath
-        }
-    | HOI4State {
-            gHOI4 :: HOI4
-        ,   currentIndent :: Maybe Int
-        ,   currentFile :: Maybe FilePath
-        }
-    | Vic2State {
-            gVic2 :: Vic2
-        ,   currentIndent :: Maybe Int
-        ,   currentFile :: Maybe FilePath
-        }
-    deriving (Show)
+-- Type for the Reader
+class IsGameState s where
+    currentFile :: s -> Maybe FilePath
+    modifyCurrentFile :: Maybe FilePath -> s -> s
+    currentIndent :: s -> Maybe Int
+    modifyCurrentIndent :: Maybe Int -> s -> s
 
--- Scripts after reading.
-data GameScripts
-    = GameScriptsEU4 EU4Scripts
-    | GameScriptsHOI4 HOI4Scripts
-    | GameScriptsStellaris StellarisScripts
-    | GameScriptsVic2 Vic2Scripts
-    deriving (Show)
+-- Type for the State
+class IsGameData d where
+    getSettings :: d -> Settings
+
+class IsGame g where
+    locScheme :: g -> L10nScheme
+    readScripts :: MonadIO m => PPT g (ExceptT Text m) ()
+    parseScripts :: Monad m => PPT g m ()
+    writeScripts :: MonadIO m => PPT g m ()
+    data GameData g -- should be IsGameData
+    data GameState g -- should be IsGameState
+    runWithInitState :: g -> Settings -> PPT g IO () -> IO ()
+    type Scope g -- synonym rather than data, because the statement handlers need to know it.
+    scope :: Monad m => Scope g -> PPT g m a -> PPT g m a
+    getCurrentScope :: Monad m => PPT g m (Maybe (Scope g))
+
+-- Example game. Define this in the Settings module, with the Game instance.
+-- Do NOT define it in Types. Instead, have game-specific code be polymorphic
+-- over Game.
+data UnknownGame = UnknownGame
+instance IsGame UnknownGame where
+    locScheme _ = L10nQYAML
+    readScripts = return ()
+    parseScripts = return ()
+    writeScripts = return ()
+    newtype GameData UnknownGame = UGD { ugd :: UnknownGameData }
+    newtype GameState UnknownGame = UGS { ugs :: UnknownGameState }
+    runWithInitState UnknownGame settings st =
+        void (runReaderT
+                (runStateT st (UGD $ UnknownGameData {
+                    ugSettings = settings
+                }))
+                (UGS $ UnknownGameState {
+                    ugScopeStack = []
+                ,   ugCurrentFile = Nothing
+                ,   ugCurrentIndent = Nothing
+                }))
+    type Scope UnknownGame = UnknownGameScope
+    scope s = local $ \(UGS st) ->
+        UGS $ st { ugScopeStack = s : ugScopeStack st }
+    getCurrentScope = asks $ listToMaybe . ugScopeStack . ugs
+
+-- Define these in the Types module, including instances.
+data UnknownGameScope = UnknownGameScope
+
+data UnknownGameData = UnknownGameData {
+            ugSettings :: Settings
+        }
+instance IsGameData (GameData UnknownGame) where
+    getSettings (UGD d) = ugSettings d
+
+data UnknownGameState = UnknownGameState {
+            ugScopeStack :: [Scope UnknownGame]
+        ,   ugCurrentFile :: Maybe FilePath
+        ,   ugCurrentIndent :: Maybe Int
+        }
+instance IsGameState (GameState UnknownGame) where
+    currentFile (UGS s) = ugCurrentFile s
+    modifyCurrentFile mcf (UGS s) = UGS $ s { ugCurrentFile = mcf }
+    currentIndent (UGS s) = ugCurrentIndent s
+    modifyCurrentIndent mci (UGS s) = UGS $ s { ugCurrentIndent = mci }
+
+-- | Existentially quantified game info type.
+data Game where
+    Game :: IsGame g => g -> Game
 
 ----------------------
 -- Generic settings --
@@ -170,25 +186,27 @@ data Settings = Settings {
     ,   settingsFile :: FilePath
     ,   clargs      :: [CLArgs]
     ,   filesToProcess :: [FilePath]
-    } deriving (Show)
+    }
 
 setGameL10n :: Settings -> L10n -> Settings
 setGameL10n settings l10n = settings { gameL10n = l10n }
 
 -- Pretty-printing monad, and its transformer version
-type PP = StateT Settings (Reader GameState) -- equal to PPT Identity a
-type PPT m = StateT Settings (ReaderT GameState m)
+-- Normally s will be an instance of IsGameState, either SomeGameState or a
+-- game-specific instance.
+type PP g = StateT (GameData g) (Reader (GameState g)) -- equal to PPT g Identity a
+type PPT g m = StateT (GameData g) (ReaderT (GameState g) m)
 
 -- Convert a PP wrapping errors into a PP returning Either.
 -- TODO: generalize
-hoistErrors :: Monad m => PPT (Either e) a -> PPT m (Either e a)
+hoistErrors :: Monad m => PPT g (Either e) a -> PPT g m (Either e a)
 hoistErrors (StateT rd) =
     StateT $ \settings ->
         ReaderT $ \st -> case runReaderT (rd settings) st of
             Left err -> return (Left err, settings)
             Right (res, settings') -> return (Right res, settings')
 
-hoistExceptions :: Monad m => PPT (ExceptT e m) a -> PPT m (Either e a)
+hoistExceptions :: Monad m => PPT g (ExceptT e m) a -> PPT g m (Either e a)
 hoistExceptions (StateT rd) =
     StateT $ \settings ->
         ReaderT $ \st -> do
@@ -199,75 +217,80 @@ hoistExceptions (StateT rd) =
 
 -- Increase current indentation by 1 for the given action.
 -- If there is no current indentation, set it to 1.
-indentUp :: Monad m => PPT m a -> PPT m a
+indentUp :: (IsGameState (GameState g), Monad m) => PPT g m a -> PPT g m a
 indentUp go = do
     mindent <- asks currentIndent
     let mindent' = Just (maybe 1 succ mindent)
-    local (\s -> s { currentIndent = mindent' }) go
+    local (modifyCurrentIndent mindent') go
 
 -- Decrease current indent level by 1 for the given action.
 -- For use where a level of indentation should be skipped.
-indentDown :: Monad m => PPT m a -> PPT m a
+indentDown :: (IsGameState (GameState g), Monad m) => PPT g m a -> PPT g m a
 indentDown go = do
     mindent <- asks currentIndent
     let mindent' = Just (maybe 0 pred mindent)
-    local (\s -> s { currentIndent = mindent' }) go
+    local (modifyCurrentIndent mindent') go
 
 -- | Pass the current indent to the action.
 -- If there is no current indent, set it to 1.
-withCurrentIndent :: Monad m => (Int -> PPT m a) -> PPT m a
+withCurrentIndent ::
+    (IsGameState (GameState g), Monad m) => (Int -> PPT g m a) -> PPT g m a
 withCurrentIndent = withCurrentIndentBaseline 1
 
 -- | Pass the current indent to the action.
 -- If there is no current indent, set it to 0.
-withCurrentIndentZero :: Monad m => (Int -> PPT m a) -> PPT m a
+withCurrentIndentZero ::
+    (IsGameState (GameState g), Monad m) => (Int -> PPT g m a) -> PPT g m a
 withCurrentIndentZero = withCurrentIndentBaseline 0
 
-withCurrentIndentBaseline :: Monad m => Int -> (Int -> PPT m a) -> PPT m a
+withCurrentIndentBaseline ::
+    (IsGameState (GameState g), Monad m) =>
+        Int -> (Int -> PPT g m a) -> PPT g m a
 withCurrentIndentBaseline base go =
     local (\s ->
             if isNothing (currentIndent s)
-            then s { currentIndent = Just base }
+            then modifyCurrentIndent (Just base) s
             else s)
           -- fromJust guaranteed to succeed
           (go . fromJust =<< asks currentIndent)
 
 -- Bundle a value with the current indentation level.
-alsoIndent :: Monad m => PPT m a -> PPT m (Int, a)
+alsoIndent ::
+    (IsGameState (GameState g), Monad m) => PPT g m a -> PPT g m (Int, a)
 alsoIndent mx = withCurrentIndent $ \i -> mx >>= \x -> return (i,x)
-alsoIndent' :: Monad m => a -> PPT m (Int, a)
+alsoIndent' :: (IsGameState (GameState g), Monad m) => a -> PPT g m (Int, a)
 alsoIndent' x = withCurrentIndent $ \i -> return (i,x)
 
-getCurrentLang :: Monad m => PPT m L10nLang
-getCurrentLang = HM.lookupDefault HM.empty <$> gets language <*> gets gameL10n
+getCurrentLang :: (IsGameData (GameData g), Monad m) => PPT g m L10nLang
+getCurrentLang = HM.lookupDefault HM.empty <$> gets (language . getSettings) <*> gets (gameL10n . getSettings)
 
-getGameL10n :: Monad m => Text -> PPT m Text
+getGameL10n :: (IsGameData (GameData g), Monad m) => Text -> PPT g m Text
 getGameL10n key = content <$> HM.lookupDefault (LocEntry 0 key) key <$> getCurrentLang
 
-getGameL10nDefault :: Monad m => Text -> Text -> PPT m Text
+getGameL10nDefault :: (IsGameData (GameData g), Monad m) => Text -> Text -> PPT g m Text
 getGameL10nDefault def key = content <$> HM.lookupDefault (LocEntry 0 def) key <$> getCurrentLang
 
-getGameL10nIfPresent :: Monad m => Text -> PPT m (Maybe Text)
+getGameL10nIfPresent :: (IsGameData (GameData g), Monad m) => Text -> PPT g m (Maybe Text)
 getGameL10nIfPresent key = fmap content <$> HM.lookup key <$> getCurrentLang
 
 -- Pass the current file to the action.
 -- If there is no current file, set it to "(unknown)".
-withCurrentFile :: Monad m => (String -> PPT m a) -> PPT m a
+withCurrentFile :: (IsGameState (GameState g), Monad m) => (String -> PPT g m a) -> PPT g m a
 withCurrentFile go = do
     mfile <- asks currentFile
     local (\s -> if isNothing mfile
-                    then s { currentFile = Just "(unknown)" }
+                    then modifyCurrentFile (Just "(unknown)") s
                     else s)
           -- fromJust guaranteed to succeed
           (go . fromJust =<< asks currentFile)
 
 -- Set the current file for the action.
-setCurrentFile :: Monad m => String -> PPT m a -> PPT m a
-setCurrentFile f = local (\s -> s { currentFile = Just f })
+setCurrentFile :: (IsGameState (GameState g), Monad m) => String -> PPT g m a -> PPT g m a
+setCurrentFile f = local (modifyCurrentFile (Just f))
 
 -- Get the list of output languages.
-getLangs :: Monad m => PPT m [Lang]
-getLangs = gets langs
+getLangs :: (IsGameData (GameData g), Monad m) => PPT g m [Lang]
+getLangs = gets (langs . getSettings)
 
 -- Misc. utilities
 

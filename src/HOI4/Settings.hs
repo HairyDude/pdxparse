@@ -1,14 +1,14 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleInstances, ScopedTypeVariables #-}
 module HOI4.Settings (
-        fillSettings
-    ,   writeHOI4Scripts
+        HOI4 (..)
     ,   module HOI4.Types
     ) where
 
 import Control.Arrow (second)
-import Control.Monad (join, when, forM, filterM)
-import Control.Monad.Trans (liftIO)
-import Control.Monad.State (MonadState (..), modify)
+import Control.Monad (join, when, forM, filterM, void)
+import Control.Monad.Trans (MonadIO (..))
+import Control.Monad.Reader (MonadReader (..), ReaderT (..))
+import Control.Monad.State (MonadState (..), StateT (..), modify, gets)
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
@@ -21,11 +21,10 @@ import System.IO (hPutStrLn, stderr)
 
 import Abstract -- everything
 import FileIO (buildPath, readScript)
-import SettingsTypes (PPT, Settings (..), Game (..), GameScripts (..), GameState (..)
-                     , L10n
-                     , ScriptReader (..) -- TODO: get rid of this
-                     , ScriptParser (..) -- TODO: get rid of this
-                     , ScriptWriter (..) -- TODO: get rid of this
+import SettingsTypes (PPT, Settings (..), L10nScheme (..), Game (..)
+                     ,  IsGame (..), IsGameData (..), IsGameState (..)
+                     ,  L10n
+                     ,  getGameL10nIfPresent
                      )
 import HOI4.Types -- everything
 import Yaml (LocEntry (..))
@@ -33,23 +32,63 @@ import Yaml (LocEntry (..))
 -- Handlers
 import HOI4.Events (parseHOI4Events, writeHOI4Events)
 
-fillSettings :: Settings -> IO (Settings, GameState)
-fillSettings settings = do
-    l10n' <- addTags (gamePath settings) (gameL10n settings)
-    return $
-        (settings {
-                game = GameHOI4 {
-                    readScripts = ScriptReader readHOI4Scripts
-                ,   parseScripts = ScriptParser parseHOI4Scripts
-                ,   writeScripts = ScriptWriter writeHOI4Scripts
-                ,   hoi4data = HOI4Data HM.empty
-                }
-            ,   gameL10n = l10n'
-            }
-        , HOI4State (HOI4 {
-                scopeStack = []
-            }) Nothing Nothing
-        )
+data HOI4 = HOI4
+instance IsGame HOI4 where
+    locScheme HOI4 = L10nQYAML
+    readScripts = readHOI4Scripts
+    parseScripts = parseHOI4Scripts
+    writeScripts = writeHOI4Scripts
+    data GameData HOI4 = HOI4D { hoi4d :: HOI4Data }
+    data GameState HOI4 = HOI4S { hoi4s :: HOI4State }
+    runWithInitState HOI4 settings hoi4 =
+        void (runReaderT
+                (runStateT hoi4 (HOI4D $ HOI4Data {
+                    hoi4events = HM.empty
+                ,   hoi4settings = settings
+                ,   hoi4eventScripts = HM.empty
+                }))
+                (HOI4S $ HOI4State {
+                    hoi4currentFile = Nothing
+                ,   hoi4currentIndent = Nothing
+                ,   hoi4scopeStack = []
+                }))
+    type Scope HOI4 = HOI4Scope
+    scope s = local $ \(HOI4S st) -> HOI4S $
+        st { hoi4scopeStack = s : hoi4scopeStack st }
+    getCurrentScope = do
+        HOI4S ss <- ask
+        return $ case hoi4scopeStack ss of
+            [] -> Nothing
+            (sc:_) -> Just sc
+
+instance HOI4Info HOI4 where
+    getEventTitle eid = do
+        mevt_t <- gets ((hoi4evt_title =<<)
+                         . HM.lookup eid
+                         . hoi4events . hoi4d)
+        fmap join (sequence (getGameL10nIfPresent <$> mevt_t))
+    getEventScripts = do
+        HOI4D sd <- get
+        return (hoi4eventScripts sd)
+    setEventScripts scr = modify $ \(HOI4D sd) -> HOI4D $ sd {
+            hoi4eventScripts = scr
+        }
+    getEvents = do
+        HOI4D sd <- get
+        return (hoi4events sd)
+
+instance IsGameData (GameData HOI4) where
+    getSettings (HOI4D sd) = hoi4settings sd
+
+instance IsGameState (GameState HOI4) where
+    currentFile (HOI4S st) = hoi4currentFile st
+    modifyCurrentFile cf (HOI4S st) = HOI4S $ st {
+            hoi4currentFile = cf
+        }
+    currentIndent (HOI4S st) = hoi4currentIndent st
+    modifyCurrentIndent ci (HOI4S st) = HOI4S $ st {
+            hoi4currentIndent = ci
+        }
 
 -- | Add localizations for plain tags.
 --
@@ -89,11 +128,11 @@ addTags path l10n = do
 -- Read all scripts in a directory.
 -- Return: for each file, its path relative to the game root and the parsed
 --         script.
-readHOI4Scripts :: PPT IO GameScripts
-readHOI4Scripts = GameScriptsHOI4 <$> do
-    let readHOI4Script :: String -> PPT IO (HashMap String GenericScript)
+readHOI4Scripts :: forall m. MonadIO m => PPT HOI4 m ()
+readHOI4Scripts = do
+    let readHOI4Script :: String -> PPT HOI4 m (HashMap String GenericScript)
         readHOI4Script category = do
-            settings <- get
+            settings <- gets getSettings
             let sourceSubdir = {-case category of
                     "policies" -> "common" </> "policies"
                     "ideagroups" -> "common" </> "ideas"
@@ -103,7 +142,7 @@ readHOI4Scripts = GameScriptsHOI4 <$> do
                                      =<< getDirectoryContents sourceDir)
             results <- forM files $ \filename -> do
                 let target = sourceSubdir </> filename
-                content <- join (liftIO . flip readScript target <$> get)
+                content <- liftIO $ readScript settings target
                 when (null content) $
                     liftIO $ hPutStrLn stderr $
                         "Warning: " ++ target
@@ -113,28 +152,17 @@ readHOI4Scripts = GameScriptsHOI4 <$> do
             return $ foldl (flip (uncurry HM.insert)) HM.empty results
 
     events <- readHOI4Script "events"
-    return $ HOI4Scripts {
+    modify $ \(HOI4D st) -> HOI4D $ st {
             hoi4eventScripts = events
         }
 
-parseHOI4Scripts :: Monad m => GameScripts -> PPT m ()
-parseHOI4Scripts (GameScriptsHOI4 (HOI4Scripts {
-                    hoi4eventScripts = eventScripts
-                })) = do
-    events <- parseHOI4Events eventScripts
+parseHOI4Scripts :: Monad m => PPT HOI4 m ()
+parseHOI4Scripts = do
+    events <- parseHOI4Events
+    modify $ \(HOI4D s) -> HOI4D $ s {
+            hoi4events = events
+        }
 
-    modify $ \s -> case game s of
-        GameHOI4 { hoi4data = gdata }
-            -> s {
-                game = (game s) {
-                    hoi4data = gdata {
-                        hoi4events = events
-                    }
-                }
-            }
-        _ -> error "parseHOI4Scripts passed wrong kind of scripts!"
-parseHOI4Scripts _ = error "parseHOI4Scripts passed wrong kind of scripts!"
-
-writeHOI4Scripts :: PPT IO ()
+writeHOI4Scripts :: (HOI4Info g, MonadIO m) => PPT g m ()
 writeHOI4Scripts = do
     writeHOI4Events

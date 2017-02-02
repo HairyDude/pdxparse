@@ -1,9 +1,9 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleContexts #-}
 module Stellaris.Types (
         -- Used by Settings
-        StellarisData (..)
-    ,   Stellaris (..)
-    ,   StellarisScripts (..)
+        StellarisInfo (..)
+    ,   StellarisData (..)
+    ,   StellarisState (..)
         -- Features
     ,   StEvtDesc (..), StellarisEvent (..), StellarisOption (..)
         -- Low level
@@ -19,6 +19,10 @@ import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
 
 import Abstract -- everything
+import SettingsTypes (Settings, PPT
+                     , IsGame (..)
+                     , IsGameData (..)
+                     , IsGameState (..))
 
 --------------------------------------------
 -- Types used by toplevel Settings module --
@@ -26,17 +30,25 @@ import Abstract -- everything
 
 data StellarisData = StellarisData {
         stevents :: HashMap Text StellarisEvent
+    ,   stsettings :: Settings
+    ,   steventScripts :: HashMap String GenericScript
     -- etc.
+    }
+data StellarisState = StellarisState {
+        stScopeStack :: [StellarisScope]
+    ,   stCurrentFile :: Maybe FilePath
+    ,   stCurrentIndent :: Maybe Int
     } deriving (Show)
 
--- State
-data Stellaris = Stellaris
-    { scopeStack :: [StellarisScope]
-    } deriving (Show)
-
-data StellarisScripts = StellarisScripts {
-        steventScripts :: HashMap String GenericScript
-    } deriving (Show)
+class (IsGame g,
+       Scope g ~ StellarisScope,
+       IsGameData (GameData g),
+       IsGameState (GameState g)) => StellarisInfo g where
+    getEventTitle :: Monad m => Text -- ^ Event ID
+                                -> PPT g m (Maybe Text)
+    getEventScripts :: Monad m => PPT g m (HashMap FilePath GenericScript)
+    setEventScripts :: Monad m => HashMap FilePath GenericScript -> PPT g m ()
+    getEvents :: Monad m => PPT g m (HashMap Text StellarisEvent)
 
 -------------------
 -- Feature types --

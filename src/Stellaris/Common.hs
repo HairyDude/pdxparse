@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, QuasiQuotes, FlexibleContexts, TypeFamilies #-}
 module Stellaris.Common (
         pp_script
     ,   pp_mtth
@@ -6,8 +6,7 @@ module Stellaris.Common (
     ,   ppMany
     ,   iconKey
 --  ,   AIWillDo (..), AIModifier (..)
-    ,   StellarisScope (..), Stellaris (..)
-    ,   scope, getCurrentStellarisScope
+    ,   StellarisScope (..)
 --  ,   ppAiWillDo, ppAiMod
     ,   module Stellaris.Types
     ) where
@@ -50,18 +49,10 @@ import QQ (pdx)
 import SettingsTypes -- everything
 import Stellaris.Types -- everything
 
-scope :: Monad m => StellarisScope -> PPT m a -> PPT m a
-scope s = local $ \st ->
-    let oldststate = gStellaris st
-    in  st { gStellaris = oldststate { scopeStack = s : scopeStack oldststate } }
-
--- Get current scope, if there is one.
-getCurrentStellarisScope :: Monad m => PPT m (Maybe StellarisScope)
-getCurrentStellarisScope = asks (listToMaybe . scopeStack . gStellaris)
-
 -- no particular order from here... TODO: organize this!
 
-msgToPP :: Monad m => ScriptMessage -> PPT m IndentedMessages
+msgToPP :: (IsGameState (GameState g), Monad m) =>
+    ScriptMessage -> PPT g m IndentedMessages
 msgToPP msg = (:[]) <$> alsoIndent' msg
 
 isPronoun :: Text -> Bool
@@ -73,7 +64,7 @@ isPronoun s = T.map toLower s `S.member` pronouns where
         ,"controller"
         ]
 
-pp_script :: Monad m => GenericScript -> PPT m Doc
+pp_script :: (StellarisInfo g, Monad m) => GenericScript -> PPT g m Doc
 pp_script [] = return "(Nothing)"
 pp_script script = imsg2doc_html =<< ppMany script
 
@@ -83,7 +74,8 @@ icon what = template "icon" [HM.lookupDefault what what scriptIconTable, "28px"]
 iconText :: Text -> Text
 iconText = Doc.doc2text . icon
 
-plainMsg :: Monad m => Text -> PPT m IndentedMessages
+plainMsg :: (IsGameState (GameState g), Monad m) =>
+    Text -> PPT g m IndentedMessages
 plainMsg msg = (:[]) <$> (alsoIndent' . MsgUnprocessed $ msg)
 
 -- Surround a doc in a <pre> element.
@@ -99,20 +91,23 @@ preMessage = MsgUnprocessed
             . PP.renderPretty 0.8 80
             . pre_statement
 
-preStatement :: Monad m => GenericStatement -> PPT m IndentedMessages
+preStatement :: (IsGameState (GameState g), Monad m) =>
+    GenericStatement -> PPT g m IndentedMessages
 preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
 
 -- Text version
 pre_statement' :: GenericStatement -> Text
 pre_statement' = Doc.doc2text . pre_statement
 
-ppMany :: Monad m => GenericScript -> PPT m IndentedMessages
+ppMany :: (StellarisInfo g, Monad m) =>
+    GenericScript -> PPT g m IndentedMessages
 ppMany scr = indentUp (concat <$> mapM ppOne scr)
 
 -- Table of handlers for statements.
 -- Dispatch on strings is /much/ quicker using a lookup table than a
 -- huge case statement, which uses (==) on each one in turn.
-ppHandlers :: Monad m => Trie (GenericStatement -> PPT m IndentedMessages)
+ppHandlers :: (StellarisInfo g, Monad m) =>
+    Trie (GenericStatement -> PPT g m IndentedMessages)
 ppHandlers = Tr.fromList
         [
         -- Statements where RHS is irrelevant (usually "yes")
@@ -215,7 +210,8 @@ ppHandlers = Tr.fromList
         ,("tooltip"       , const (plainMsg "(explanatory tooltip - delete this line)"))
         ]
 
-ppOne :: Monad m => GenericStatement -> PPT m IndentedMessages
+ppOne :: (StellarisInfo g, Monad m) =>
+    GenericStatement -> PPT g m IndentedMessages
 ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
     AtLhs _ -> return [] -- Don't know how to deal with these
     GenericLhs label -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
@@ -257,7 +253,7 @@ newMTTH :: MTTH
 newMTTH = MTTH Nothing Nothing Nothing []
 newMTTHMod :: MTTHModifier
 newMTTHMod = MTTHModifier Nothing []
-pp_mtth :: Monad m => GenericScript -> PPT m Doc
+pp_mtth :: (StellarisInfo g, Monad m) => GenericScript -> PPT g m Doc
 pp_mtth = pp_mtth' . foldl' addField newMTTH
     where
         addField mtth [pdx| years    = !n   |] = mtth { mtth_years = Just n }
@@ -328,8 +324,8 @@ pp_mtth = pp_mtth' . foldl' addField newMTTH
 -- General statement handlers --
 --------------------------------
 
-compound :: Monad m =>
-    Text -> GenericStatement -> PPT m IndentedMessages
+compound :: (StellarisInfo g, Monad m) =>
+    Text -> GenericStatement -> PPT g m IndentedMessages
 compound header [pdx| %_ = @scr |]
     = withCurrentIndent $ \_ -> do -- force indent level at least 1
         headerMsg <- plainMsg (header <> ":")
@@ -337,8 +333,8 @@ compound header [pdx| %_ = @scr |]
         return $ headerMsg ++ scriptMsgs
 compound _ stmt = preStatement stmt
 
-compoundMessage :: Monad m =>
-    ScriptMessage -> GenericStatement -> PPT m IndentedMessages
+compoundMessage :: (StellarisInfo g, Monad m) =>
+    ScriptMessage -> GenericStatement -> PPT g m IndentedMessages
 compoundMessage header [pdx| %_ = @scr |]
     = withCurrentIndent $ \i -> do
         script_pp'd <- ppMany scr
@@ -346,39 +342,47 @@ compoundMessage header [pdx| %_ = @scr |]
 compoundMessage _ stmt = preStatement stmt
 
 -- RHS is a localizable atom.
-withLocAtom :: Monad m =>
+withLocAtom :: (IsGameData (GameData g),
+                IsGameState (GameState g),
+                Monad m) =>
     (Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT m IndentedMessages
+        -> PPT g m IndentedMessages
 withLocAtom msg [pdx| %_ = ?key |]
     = msgToPP =<< msg <$> getGameL10n key
 withLocAtom _ stmt = preStatement stmt
 
 -- RHS is a localizable atom and we need a second one (passed to message as
 -- first arg).
-withLocAtom2 :: Monad m =>
+withLocAtom2 :: (IsGameData (GameData g),
+                 IsGameState (GameState g),
+                 Monad m) =>
     ScriptMessage
         -> (Text -> Text -> Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT m IndentedMessages
+        -> PPT g m IndentedMessages
 withLocAtom2 inMsg msg [pdx| %_ = ?key |]
     = msgToPP =<< msg <$> pure key <*> messageText inMsg <*> getGameL10n key
 withLocAtom2 _ _ stmt = preStatement stmt
 
-withLocAtomAndIcon :: Monad m =>
+withLocAtomAndIcon :: (IsGameData (GameData g),
+                       IsGameState (GameState g),
+                       Monad m) =>
     Text
         -> (Text -> Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT m IndentedMessages
+        -> PPT g m IndentedMessages
 withLocAtomAndIcon iconkey msg [pdx| %_ = $key |]
     = do what <- getGameL10n key
          msgToPP $ msg (iconText iconkey) what
 withLocAtomAndIcon _ _ stmt = preStatement stmt
 
-withLocAtomIcon :: Monad m =>
+withLocAtomIcon :: (IsGameData (GameData g),
+                    IsGameState (GameState g),
+                    Monad m) =>
     (Text -> Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT m IndentedMessages
+        -> PPT g m IndentedMessages
 withLocAtomIcon msg stmt@[pdx| %_ = $key |]
     = withLocAtomAndIcon (fromMaybe key (iconKey key)) msg stmt
 withLocAtomIcon _ stmt = preStatement stmt
@@ -387,9 +391,9 @@ withLocAtomIcon _ stmt = preStatement stmt
 withLocAtomIconStellarisScope :: Monad m =>
     (Text -> Text -> ScriptMessage)
         -> (Text -> Text -> ScriptMessage)
-        -> GenericStatement -> PPT m IndentedMessages
+        -> GenericStatement -> PPT g m IndentedMessages
 withLocAtomIconStellarisScope countrymsg provincemsg stmt = do
-    thescope <- getCurrentStellarisScope
+    thescope <- getCurrentScope
     case thescope of
         Just StellarisCountry -> withLocAtomIcon countrymsg stmt
         Just StellarisProvince -> withLocAtomIcon provincemsg stmt
@@ -403,11 +407,13 @@ withLocAtomIconStellarisScope countrymsg provincemsg stmt = do
 --withNonlocAtom _ stmt = preStatement stmt
 
 -- As withNonlocAtom but with an additional bit of text.
-withNonlocAtom2 :: Monad m =>
+withNonlocAtom2 :: (IsGameData (GameData g),
+                    IsGameState (GameState g),
+                    Monad m) =>
     ScriptMessage
         -> (Text -> Text -> ScriptMessage)
         -> GenericStatement
-        -> PPT m IndentedMessages
+        -> PPT g m IndentedMessages
 withNonlocAtom2 submsg msg [pdx| %_ = ?txt |] = do
     extratext <- messageText submsg
     msgToPP $ msg extratext txt
@@ -532,27 +538,27 @@ iconKey atom = HM.lookup atom scriptIconTable
 -- Numeric statement.
 -- TODO (if necessary): allow operators other than = and pass them to message
 -- handler
-numeric :: Monad m =>
+numeric :: (IsGameState (GameState g), Monad m) =>
     (Double -> ScriptMessage)
         -> GenericStatement
-        -> PPT m IndentedMessages
+        -> PPT g m IndentedMessages
 numeric msg [pdx| %_ = !n |] = msgToPP $ msg n
 numeric _ stmt = plainMsg $ pre_statement' stmt
 
-withBool :: Monad m =>
+withBool :: (IsGameState (GameState g), Monad m) =>
     (Bool -> ScriptMessage)
         -> GenericStatement
-        -> PPT m IndentedMessages
+        -> PPT g m IndentedMessages
 withBool msg stmt = do
     fullmsg <- withBool' msg stmt
     maybe (preStatement stmt)
           return
           fullmsg
 
-withBool' :: Monad m =>
+withBool' :: (IsGameState (GameState g), Monad m) =>
     (Bool -> ScriptMessage)
         -> GenericStatement
-        -> PPT m (Maybe IndentedMessages)
+        -> PPT g m (Maybe IndentedMessages)
 withBool' msg [pdx| %_ = ?yn |] | T.map toLower yn `elem` ["yes","no","false"]
     = fmap Just . msgToPP $ case T.toCaseFold yn of
         "yes" -> msg True
@@ -561,24 +567,27 @@ withBool' msg [pdx| %_ = ?yn |] | T.map toLower yn `elem` ["yes","no","false"]
         _     -> error "impossible: withBool matched a string that wasn't yes, no or false"
 withBool' _ _ = return Nothing
 
-numericIcon :: Monad m =>
+numericIcon :: (IsGameState (GameState g), Monad m) =>
     Text
         -> (Text -> Double -> ScriptMessage)
         -> GenericStatement
-        -> PPT m IndentedMessages
+        -> PPT g m IndentedMessages
 numericIcon the_icon msg [pdx| %_ = !amt |]
     = msgToPP $ msg (iconText the_icon) amt
 numericIcon _ _ stmt = plainMsg $ pre_statement' stmt
 
-numericIconBonus :: Monad m =>
+numericIconBonus :: (IsGame g,
+                     IsGameData (GameData g),
+                     IsGameState (GameState g),
+                     Monad m) =>
     Text
         -> (Text -> Double -> ScriptMessage)
         -> (Text -> Double -> ScriptMessage)
         -> GenericStatement
-        -> PPT m IndentedMessages
+        -> PPT g m IndentedMessages
 numericIconBonus the_icon plainmsg yearlymsg [pdx| %_ = !amt |]
     = do
-        mscope <- getCurrentStellarisScope
+        mscope <- getCurrentScope
         let icont = iconText the_icon
             yearly = msgToPP $ yearlymsg icont amt
         case mscope of
@@ -615,7 +624,8 @@ numericIconBonus _ _ _ stmt = plainMsg $ pre_statement' stmt
 -- localization string, it gets wrapped in a tt element instead.
 
 -- convenience synonym
-tryLoc :: Monad m => Text -> PPT m (Maybe Text)
+tryLoc :: (IsGameData (GameData g), Monad m) =>
+    Text -> PPT g m (Maybe Text)
 tryLoc = getGameL10nIfPresent
 
 data TextValue = TextValue
@@ -624,13 +634,13 @@ data TextValue = TextValue
         }
 newTV :: TextValue
 newTV = TextValue Nothing Nothing
-textValue :: forall m. Monad m =>
+textValue :: forall g m. (IsGameState (GameState g), Monad m) =>
     Text                                             -- ^ Label for "what"
         -> Text                                      -- ^ Label for "how much"
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value < 1
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value >= 1
-        -> (Text -> PPT m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
-        -> GenericStatement -> PPT m IndentedMessages
+        -> (Text -> PPT g m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
+        -> GenericStatement -> PPT g m IndentedMessages
 textValue whatlabel vallabel smallmsg bigmsg loc stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_tv (foldl' addLine newTV scr)
     where
@@ -640,7 +650,7 @@ textValue whatlabel vallabel smallmsg bigmsg loc stmt@[pdx| %_ = @scr |]
         addLine tv [pdx| $label = !val |] | label == vallabel
             = tv { tv_value = Just val }
         addLine nor _ = nor
-        pp_tv :: TextValue -> PPT m ScriptMessage
+        pp_tv :: TextValue -> PPT g m ScriptMessage
         pp_tv tv = case (tv_what tv, tv_value tv) of
             (Just what, Just value) -> do
                 mwhat_loc <- loc what
@@ -661,12 +671,15 @@ data TextAtom = TextAtom
         }
 newTA :: TextAtom
 newTA = TextAtom Nothing Nothing
-textAtom :: forall m. Monad m =>
+textAtom :: forall g m.
+        (IsGameData (GameData g),
+         IsGameState (GameState g),
+         Monad m) =>
     Text -- ^ Label for "what"
         -> Text -- ^ Label for atom
         -> (Text -> Text -> Text -> ScriptMessage) -- ^ Message constructor
-        -> (Text -> PPT m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
-        -> GenericStatement -> PPT m IndentedMessages
+        -> (Text -> PPT g m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
+        -> GenericStatement -> PPT g m IndentedMessages
 textAtom whatlabel atomlabel msg loc stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_ta (foldl' addLine newTA scr)
     where
@@ -678,7 +691,7 @@ textAtom whatlabel atomlabel msg loc stmt@[pdx| %_ = @scr |]
             | label == atomlabel
             = ta { ta_atom = Just at }
         addLine nor _ = nor
-        pp_ta :: TextAtom -> PPT m ScriptMessage
+        pp_ta :: TextAtom -> PPT g m ScriptMessage
         pp_ta ta = case (ta_what ta, ta_atom ta) of
             (Just what, Just atom) -> do
                 mwhat_loc <- loc what
@@ -694,7 +707,7 @@ textAtom _ _ _ _ stmt = preStatement stmt
 -- Most of the code for this is in Stellaris.SuperCommon and re-exported here,
 -- because Stellaris.IdeaGroups needs them. But only Stellaris.Common needs output
 -- functions.
-ppAiWillDo :: Monad m => AIWillDo -> PPT m IndentedMessages
+ppAiWillDo :: Monad m => AIWillDo -> PPT g m IndentedMessages
 ppAiWillDo (AIWillDo mbase mods) = do
     mods_pp'd <- fold <$> traverse ppAiMod mods
     let baseWtMsg = case mbase of
@@ -703,7 +716,7 @@ ppAiWillDo (AIWillDo mbase mods) = do
     iBaseWtMsg <- msgToPP baseWtMsg
     return $ iBaseWtMsg ++ mods_pp'd
 
-ppAiMod :: Monad m => AIModifier -> PPT m IndentedMessages
+ppAiMod :: Monad m => AIModifier -> PPT g m IndentedMessages
 ppAiMod (AIModifier (Just multiplier) triggers) = do
     triggers_pp'd <- ppMany triggers
     case triggers_pp'd of
@@ -723,7 +736,8 @@ ppAiMod (AIModifier Nothing _) =
 
 -- Modifiers
 
-addModifier :: Monad m => GenericStatement -> PPT m IndentedMessages
+addModifier :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
+    GenericStatement -> PPT g m IndentedMessages
 addModifier stmt@(Statement _ OpEq (CompoundRhs
         [[pdx| modifier = ?mod_name |]
         ,[pdx| days     = !mod_days |]]))
@@ -743,10 +757,10 @@ data AddOpinion = AddOpinion {
 newAddOpinion :: AddOpinion
 newAddOpinion = AddOpinion Nothing Nothing Nothing
 
-opinion :: Monad m =>
+opinion :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
     (Text -> Text -> ScriptMessage)
         -> (Text -> Text -> Double -> ScriptMessage)
-        -> GenericStatement -> PPT m IndentedMessages
+        -> GenericStatement -> PPT g m IndentedMessages
 opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_add_opinion (foldl' addLine newAddOpinion scr)
     where
@@ -770,8 +784,8 @@ data HasOpinion = HasOpinion
         }
 newHasOpinion :: HasOpinion
 newHasOpinion = HasOpinion Nothing Nothing
-hasOpinion :: forall m. Monad m =>
-    GenericStatement -> PPT m IndentedMessages
+hasOpinion :: forall g m. (IsGameState (GameState g), Monad m) =>
+    GenericStatement -> PPT g m IndentedMessages
 hasOpinion stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_hasOpinion (foldl' addLine newHasOpinion scr)
     where
@@ -779,7 +793,7 @@ hasOpinion stmt@(Statement _ OpEq (CompoundRhs scr))
         addLine hop [pdx| who   = ?who |] = hop { hop_who = Just who }
         addLine hop [pdx| value = !val |] = hop { hop_value = Just val }
         addLine hop _ = trace "warning: unrecognized has_opinion clause" hop
-        pp_hasOpinion :: HasOpinion -> PPT m ScriptMessage
+        pp_hasOpinion :: HasOpinion -> PPT g m ScriptMessage
         pp_hasOpinion hop = case (hop_who hop, hop_value hop) of
             (Just who, Just value) ->
                 return (MsgHasOpinion value who)
@@ -795,24 +809,25 @@ data TriggerEvent = TriggerEvent
         }
 newTriggerEvent :: TriggerEvent
 newTriggerEvent = TriggerEvent Nothing Nothing Nothing
-triggerEvent :: forall m. Monad m =>
+triggerEvent :: forall g m.
+        (StellarisInfo g,
+         IsGameData (GameData g),
+         IsGameState (GameState g),
+         Monad m) =>
     ScriptMessage
         -> GenericStatement
-        -> PPT m IndentedMessages
+        -> PPT g m IndentedMessages
 triggerEvent evtType stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_trigger_event =<< foldM addLine newTriggerEvent scr
     where
-        addLine :: TriggerEvent -> GenericStatement -> PPT m TriggerEvent
+        addLine :: TriggerEvent -> GenericStatement -> PPT g m TriggerEvent
         addLine evt [pdx| id = $eid |] = do
-            mevt_t <- gets ((stevt_title =<<)
-                             . HM.lookup eid
-                             . stevents . stdata . game)
-            t_loc <- fmap join (sequence (getGameL10nIfPresent <$> mevt_t))
+            t_loc <- getEventTitle eid
             return evt { e_id = Just eid, e_title_loc = t_loc }
         addLine evt [pdx| days = %rhs |]
             = return evt { e_days = floatRhs rhs }
         addLine evt _ = return evt
-        pp_trigger_event :: TriggerEvent -> PPT m ScriptMessage
+        pp_trigger_event :: TriggerEvent -> PPT g m ScriptMessage
         pp_trigger_event evt = do
             evtType_t <- messageText evtType
             case e_id evt of
@@ -826,7 +841,8 @@ triggerEvent _ stmt = preStatement stmt
 
 -- Random
 
-random :: Monad m => GenericStatement -> PPT m IndentedMessages
+random :: (StellarisInfo g, Monad m) =>
+    GenericStatement -> PPT g m IndentedMessages
 random stmt@[pdx| %_ = @scr |]
     | (front, back) <- break
                         (\substmt -> case substmt of 
@@ -842,7 +858,13 @@ random stmt@[pdx| %_ = @scr |]
     | otherwise = compoundMessage MsgRandom stmt
 random stmt = preStatement stmt
 
-randomList :: Monad m => GenericStatement -> PPT m IndentedMessages
+randomList :: (Scope g ~ StellarisScope,
+               IsGame g,
+               StellarisInfo g,
+               IsGameData (GameData g),
+               IsGameState (GameState g),
+               Monad m) =>
+    GenericStatement -> PPT g m IndentedMessages
 randomList stmt@[pdx| %_ = @scr |] = fmtRandomList $ map entry scr
     where
         entry [pdx| !weight = @scr |] = (fromIntegral weight, scr)
@@ -859,7 +881,8 @@ randomList _ = withCurrentFile $ \file ->
 
 -- DLC
 
-hasDlc :: Monad m => GenericStatement -> PPT m IndentedMessages
+hasDlc :: (IsGameState (GameState g), Monad m) =>
+    GenericStatement -> PPT g m IndentedMessages
 hasDlc [pdx| %_ = ?dlc |]
     = msgToPP $ MsgHasDLC dlc_icon dlc
     where
@@ -871,7 +894,13 @@ hasDlc stmt = preStatement stmt
 
 -- Switch / Trigger switch
 
-triggerSwitch :: Monad m => GenericStatement -> PPT m IndentedMessages
+triggerSwitch :: (Scope g ~ StellarisScope,
+                  IsGame g,
+                  StellarisInfo g,
+                  IsGameData (GameData g),
+                  IsGameState (GameState g),
+                  Monad m) =>
+    GenericStatement -> PPT g m IndentedMessages
 -- A trigger switch must be of the form
 -- trigger_switch = {
 --  on_trigger = <statement lhs>
@@ -902,7 +931,10 @@ triggerSwitch stmt@(Statement _ OpEq (CompoundRhs
     withCurrentIndent $ \i -> return $ (i, MsgTriggerSwitch) : concat statementsMsgs
 triggerSwitch stmt = preStatement stmt
 
-isMonth :: Monad m => GenericStatement -> PPT m IndentedMessages
+isMonth :: (IsGameData (GameData g),
+            IsGameState (GameState g),
+            Monad m) =>
+    GenericStatement -> PPT g m IndentedMessages
 isMonth [pdx| %_ = !(num :: Int) |] | num >= 1, num <= 12
     = do
         month_loc <- getGameL10n $ case num of
@@ -922,7 +954,8 @@ isMonth [pdx| %_ = !(num :: Int) |] | num >= 1, num <= 12
         msgToPP $ MsgIsMonth month_loc
 isMonth stmt = preStatement stmt
 
-customTriggerTooltip :: Monad m => GenericStatement -> PPT m IndentedMessages
+customTriggerTooltip :: (StellarisInfo g, Monad m) =>
+    GenericStatement -> PPT g m IndentedMessages
 customTriggerTooltip [pdx| %_ = @scr |]
     -- ignore the custom tooltip
     = let rest = flip filter scr $ \stmt -> case stmt of

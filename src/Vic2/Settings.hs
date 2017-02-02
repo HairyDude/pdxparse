@@ -1,13 +1,17 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TypeFamilies, ScopedTypeVariables #-}
 module Vic2.Settings (
-        fillSettings
+        Vic2 (..)
     ,   writeVic2Scripts
     ,   module Vic2.Types
     ) where
 
-import Control.Monad (filterM, forM, join, when)
-import Control.Monad.Trans (liftIO)
-import Control.Monad.State (MonadState (..), modify)
+import Control.Monad (filterM, forM, join, when, void)
+import Control.Monad.Except (ExceptT)
+import Control.Monad.Trans (MonadIO (..))
+import Control.Monad.Reader (MonadReader (..), ReaderT (..), asks)
+import Control.Monad.State (MonadState (..), StateT (..), modify, gets)
+
+import Data.Maybe (listToMaybe)
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -20,14 +24,8 @@ import System.IO (hPutStrLn, stderr)
 
 import Abstract -- everything
 import FileIO (buildPath, readScript)
-import SettingsTypes ( PPT, Settings (..), GameState (..), Game (..)
-                     , GameScripts (..)
-                     , ScriptReader (..) -- TODO: eliminate this
-                     , ScriptParser (..) -- TODO: eliminate this
-                     , ScriptWriter (..) -- TODO: eliminate this
-                     , readScripts, parseScripts, writeScripts)
-import Vic2.Types ( Vic2 (..), Vic2Scripts (..), Vic2Data (..)
-                  , Vic2Decision (..), Vic2Event (..))
+import SettingsTypes (PPT, Settings, IsGame (..), L10nScheme (..))
+import Vic2.Types (Vic2Scope (..), Vic2Decision (..), Vic2Event (..))
 
 import Debug.Trace (trace)
 
@@ -37,11 +35,53 @@ import Debug.Trace (trace)
 --import Vic2.Events (parseVic2Events, writeVic2Events)
 --import Vic2.Policies (parseVic2Policies, writeVic2Policies)
 
+data Vic2 = Vic2
+instance IsGame Vic2 where
+    locScheme _  = L10nCSV
+    readScripts  = readVic2Scripts
+    parseScripts = parseVic2Scripts
+    writeScripts = writeVic2Scripts
+    newtype GameData Vic2 = Vic2D { v2d :: Vic2Data }
+    newtype GameState Vic2 = Vic2S { v2s :: Vic2State }
+    runWithInitState Vic2 settings st =
+        void (runReaderT
+                (runStateT st (Vic2D $ Vic2Data {
+                    vic2events = HM.empty
+                ,   vic2decisions = HM.empty
+                ,   vic2settings = settings
+                ,   vic2decisionScripts = HM.empty
+                ,   vic2eventScripts = HM.empty
+                }))
+                (Vic2S $ Vic2State {
+                    vic2CurrentFile = Nothing
+                ,   vic2CurrentIndent = Nothing
+                ,   vic2ScopeStack = []
+                }))
+    type Scope Vic2 = Vic2Scope
+    scope s = local $ \(Vic2S st) ->
+        Vic2S $ st { vic2ScopeStack = s : vic2ScopeStack st }
+    getCurrentScope = asks $ listToMaybe . vic2ScopeStack . v2s
+
+data Vic2Data = Vic2Data {
+        vic2events :: HashMap Text Vic2Event
+    ,   vic2decisions :: HashMap Text Vic2Decision
+    ,   vic2settings :: Settings
+    ,   vic2eventScripts :: HashMap String GenericScript
+    ,   vic2decisionScripts :: HashMap String GenericScript
+    -- etc.
+    }
+data Vic2State = Vic2State {
+        vic2ScopeStack :: [Vic2Scope]
+    ,   vic2CurrentFile :: Maybe FilePath
+    ,   vic2CurrentIndent :: Maybe Int
+    } deriving (Show)
+
+{-
 fillSettings :: Settings -> IO (Settings, GameState)
 fillSettings settings = return $
     (settings {
         game = GameVic2 {
-            readScripts = ScriptReader readVic2Scripts
+            readScripts = ScriptReader  readVic2Scripts
         ,   parseScripts = ScriptParser parseVic2Scripts
         ,   writeScripts = ScriptWriter writeVic2Scripts
         ,   vic2data = Vic2Data HM.empty HM.empty
@@ -49,15 +89,17 @@ fillSettings settings = return $
     }, Vic2State (Vic2 {
         scopeStack = []
        }) Nothing Nothing)
+-}
 
 -- Read all scripts in a directory.
 -- Return: for each file, its path relative to the game root and the parsed
 --         script.
-readVic2Scripts :: PPT IO GameScripts
-readVic2Scripts = GameScriptsVic2 <$> do
-    let readVic2Script :: String -> PPT IO (HashMap String GenericScript)
+readVic2Scripts :: forall m. MonadIO m => PPT Vic2 (ExceptT Text m) ()
+readVic2Scripts = do
+    let readVic2Script :: String -> PPT Vic2 (ExceptT Text m) (HashMap String GenericScript)
         readVic2Script category = do
-            settings <- get
+            settings <- gets (vic2settings . v2d)
+            --settings <- _ vic2settings
             let sourceSubdir = case category of
                     "policies" -> "common" </> "policies"
                     "ideagroups" -> "common" </> "ideas"
@@ -67,7 +109,7 @@ readVic2Scripts = GameScriptsVic2 <$> do
                                      =<< getDirectoryContents sourceDir)
             results <- forM files $ \filename -> do
                 let target = sourceSubdir </> filename
-                content <- join (liftIO . flip readScript target <$> get)
+                content <- liftIO $ readScript settings target
                 when (null content) $
                     liftIO $ hPutStrLn stderr $
                         "Warning: " ++ target
@@ -78,45 +120,37 @@ readVic2Scripts = GameScriptsVic2 <$> do
 
     decisions <- readVic2Script "decisions"
     events <- readVic2Script "events"
-    return $ Vic2Scripts {
+    modify $ \(Vic2D d) -> Vic2D $ d {
             vic2decisionScripts = decisions
         ,   vic2eventScripts = events
         }
 
-parseVic2Scripts :: Monad m => GameScripts -> PPT m ()
-parseVic2Scripts (GameScriptsVic2 (Vic2Scripts {
-                    vic2decisionScripts = decisionScripts
-                ,   vic2eventScripts = eventScripts
-                })) = do
+parseVic2Scripts :: Monad m => PPT Vic2 m ()
+parseVic2Scripts = do
+    decisionScripts <- gets (vic2decisionScripts . v2d)
+    eventScripts <- gets (vic2eventScripts . v2d)
     decisions <- parseVic2Decisions decisionScripts
     events <- parseVic2Events eventScripts
 
-    modify $ \s -> case game s of
-        GameVic2 { vic2data = gdata }
-            -> s {
-                game = (game s) {
-                    vic2data = gdata {
-                        vic2events = events
-                    ,   vic2decisions = decisions
-                    }
-                }
-            }
-        _ -> error "parseVic2Scripts passed wrong kind of scripts!"
+    modify $ \(Vic2D s) -> Vic2D $ s {
+            vic2events = events
+        ,   vic2decisions = decisions
+        }
 
-writeVic2Scripts :: PPT IO ()
+writeVic2Scripts :: MonadIO m => PPT Vic2 m ()
 writeVic2Scripts = do
     writeVic2Events
     writeVic2Decisions
 
 -- placeholders
-parseVic2Decisions :: Monad m => HashMap String GenericScript -> PPT m (HashMap Text Vic2Decision)
+parseVic2Decisions :: Monad m => HashMap String GenericScript -> PPT Vic2 m (HashMap Text Vic2Decision)
 parseVic2Decisions _ = trace "Victoria 2 decisions not yet implemented" $ return HM.empty
 
-parseVic2Events :: Monad m => HashMap String GenericScript -> PPT m (HashMap Text Vic2Event)
+parseVic2Events :: Monad m => HashMap String GenericScript -> PPT Vic2 m (HashMap Text Vic2Event)
 parseVic2Events _ = trace "Victoria 2 events not yet implemented" $ return HM.empty
 
-writeVic2Events :: PPT IO ()
+writeVic2Events :: MonadIO m => PPT Vic2 m ()
 writeVic2Events = liftIO $ putStrLn "Victoria 2 events not yet implemented"
 
-writeVic2Decisions :: PPT IO ()
+writeVic2Decisions :: MonadIO m => PPT Vic2 m ()
 writeVic2Decisions = liftIO $ putStrLn "Victoria 2 decisions not yet implemented"

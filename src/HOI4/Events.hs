@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, QuasiQuotes, LambdaCase, ViewPatterns #-}
+{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, QuasiQuotes, LambdaCase, ViewPatterns, TypeFamilies #-}
 module HOI4.Events (
         parseHOI4Events
     ,   writeHOI4Events
@@ -10,6 +10,7 @@ import Control.Arrow ((&&&))
 import Control.Monad (liftM, foldM, forM)
 import Control.Monad.Except (MonadError (..))
 import Control.Monad.State (MonadState (..), gets)
+import Control.Monad.Trans (MonadIO (..))
 
 import Data.List (intersperse, foldl')
 import Data.Maybe (isJust, fromMaybe, fromJust, catMaybes)
@@ -31,6 +32,8 @@ import FileIO (Feature (..), writeFeatures)
 import Messages -- everything
 import QQ (pdx)
 import SettingsTypes ( PPT, Settings (..), Game (..)
+                     , IsGame (..), IsGameState (..)
+                     , getSettings
                      , getGameL10n, getGameL10nIfPresent
                      , setCurrentFile, withCurrentFile
                      , hoistErrors, hoistExceptions)
@@ -42,8 +45,10 @@ newHOI4Option :: HOI4Option
 newHOI4Option = HOI4Option Nothing Nothing Nothing Nothing
 
 -- Parse events and return them.
-parseHOI4Events :: Monad m => HashMap String GenericScript -> PPT m (HashMap Text HOI4Event)
-parseHOI4Events scripts = HM.unions . HM.elems <$> do
+parseHOI4Events :: (HOI4Info g, Monad m) =>
+    PPT g m (HashMap Text HOI4Event)
+parseHOI4Events = HM.unions . HM.elems <$> do
+    scripts <- getEventScripts
     tryParse <- hoistExceptions $
         HM.traverseWithKey
             (\sourceFile scr ->
@@ -65,26 +70,23 @@ parseHOI4Events scripts = HM.unions . HM.elems <$> do
                       mkEvtMap = HM.fromList . map (fromJust . hoi4evt_id &&& id)
                         -- Events returned from parseEvent are guaranteed to have an id.
 
-writeHOI4Events :: PPT IO ()
+writeHOI4Events :: (HOI4Info g, MonadIO m) => PPT g m ()
 writeHOI4Events = do
-    gdata <- gets game
-    case gdata of
-        GameHOI4 { hoi4data = HOI4Data { hoi4events = events } } ->
-            writeFeatures "events"
-                          pathedEvents
-                          (\e -> scope (hoi4evt_scope e) $ pp_event e)
-            where
-                pathedEvents :: [Feature HOI4Event]
-                pathedEvents = map (\evt -> Feature {
-                                            featurePath = hoi4evt_path evt
-                                        ,   featureId = hoi4evt_id evt
-                                        ,   theFeature = Right evt })
-                                    (HM.elems events)
-        _ -> error "writeHOI4Events passed wrong game's data!"
+    events <- getEvents
+    let pathedEvents :: [Feature HOI4Event]
+        pathedEvents = map (\evt -> Feature {
+                                    featurePath = hoi4evt_path evt
+                                ,   featureId = hoi4evt_id evt
+                                ,   theFeature = Right evt })
+                            (HM.elems events)
+    writeFeatures "events"
+                  pathedEvents
+                  (\e -> scope (hoi4evt_scope e) $ pp_event e)
 
 -- Parse a statement in an events file. Some statements aren't events; for
 -- those, and for any obvious errors, return Right Nothing.
-parseHOI4Event :: MonadError Text m => GenericStatement -> PPT m (Either Text (Maybe HOI4Event))
+parseHOI4Event :: (IsGameState (GameState g), MonadError Text m) =>
+    GenericStatement -> PPT g m (Either Text (Maybe HOI4Event))
 parseHOI4Event (StatementBare _) = throwError "bare statement at top level"
 parseHOI4Event [pdx| %left = %right |] = case right of
     CompoundRhs parts -> case left of
@@ -140,7 +142,8 @@ evtDesc meid scr = case foldl' (evtDesc' meid) (EvtDescI Nothing Nothing) scr of
                                      ++ maybe "" (\eid -> "in " ++ T.unpack eid) meid
                                      ++ ": " ++ show stmt)
 
-eventAddSection :: MonadError Text m => Maybe HOI4Event -> GenericStatement -> PPT m (Maybe HOI4Event)
+eventAddSection :: (IsGameState (GameState g), MonadError Text m) =>
+    Maybe HOI4Event -> GenericStatement -> PPT g m (Maybe HOI4Event)
 eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) where
     eventAddSection' evt stmt@[pdx| id = %rhs |]
         = case (textRhs rhs, floatRhs rhs) of
@@ -225,12 +228,12 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
             throwError $ "unrecognized event section in " <> T.pack file <> ": " <> label
     eventAddSection' evt _ = return evt
 
-addHOI4Option :: Monad m => [HOI4Option] -> GenericScript -> PPT m [HOI4Option]
+addHOI4Option :: Monad m => [HOI4Option] -> GenericScript -> PPT g m [HOI4Option]
 addHOI4Option opts opt = do
     optn <- foldM optionAddStatement newHOI4Option opt
     return $ opts ++ [optn]
 
-optionAddStatement :: Monad m => HOI4Option -> GenericStatement -> PPT m HOI4Option
+optionAddStatement :: Monad m => HOI4Option -> GenericStatement -> PPT g m HOI4Option
 optionAddStatement opt stmt@[pdx| $label = %rhs |] =
     case label of
         "name" -> case textRhs rhs of
@@ -251,11 +254,12 @@ optionAddStatement opt stmt = do
     effects_pp'd <- optionAddEffect (hoi4opt_effects opt) stmt
     return $ opt { hoi4opt_effects = effects_pp'd }
 
-optionAddEffect :: Monad m => Maybe GenericScript -> GenericStatement -> PPT m (Maybe GenericScript)
+optionAddEffect :: Monad m => Maybe GenericScript -> GenericStatement -> PPT g m (Maybe GenericScript)
 optionAddEffect Nothing stmt = optionAddEffect (Just []) stmt
 optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 
-ppDescs :: Monad m => Bool -> [HOI4EvtDesc] -> PPT m Doc
+ppDescs :: (HOI4Info g, Monad m) =>
+    Bool -> [HOI4EvtDesc] -> PPT g m Doc
 ppDescs True _ = return "| cond_event_text = (This event is hidden and has no description.)"
 ppDescs _ [] = return "| event_text = (No description)"
 ppDescs _ [HOI4EvtDescSimple key] = ("| event_text = " <>) . Doc.strictText <$> getGameL10n key
@@ -273,17 +277,18 @@ ppDescs _ descs = ("| cond_event_text = " <>) .PP.vsep <$> mapM ppDesc descs whe
         Just txt -> "''" <> Doc.strictText (Doc.nl2br txt) <> "''"
 
 -- Pretty-print an event, or fail.
-pp_event :: forall m. MonadError Text m => HOI4Event -> PPT m Doc
+pp_event :: forall g m. (HOI4Info g, MonadError Text m) =>
+    HOI4Event -> PPT g m Doc
 pp_event evt = case hoi4evt_id evt of
     Just eid
         | (isJust (hoi4evt_is_triggered_only evt) ||
            isJust (hoi4evt_mean_time_to_happen evt)) -> do
         -- Valid event
-        version <- gets gameVersion
+        version <- gameVersion <$> gets getSettings
         (conditional, options_pp'd) <- pp_options (hoi4evt_hide_window evt) eid (hoi4evt_options evt)
         titleLoc <- fromMaybe eid <$> sequence (getGameL10n <$> hoi4evt_title evt)
         descLoc <- ppDescs (hoi4evt_hide_window evt) (hoi4evt_desc evt)
-        let evtArg :: Text -> (HOI4Event -> Maybe a) -> (a -> PPT m Doc) -> PPT m [Doc]
+        let evtArg :: Text -> (HOI4Event -> Maybe a) -> (a -> PPT g m Doc) -> PPT g m [Doc]
             evtArg fieldname field fmt
                 = maybe (return [])
                     (\field_content -> do
@@ -336,13 +341,15 @@ pp_event evt = case hoi4evt_id evt of
 
     Nothing -> throwError "hoi4evt_id missing"
 
-pp_options :: MonadError Text m => Bool -> Text -> [HOI4Option] -> PPT m (Bool, Doc)
+pp_options :: (HOI4Info g, MonadError Text m) =>
+    Bool -> Text -> [HOI4Option] -> PPT g m (Bool, Doc)
 pp_options hidden eid opts = do
     let triggered = any (isJust . hoi4opt_trigger) opts
     options_pp'd <- mapM (pp_option hidden triggered eid) opts
     return (triggered, mconcat . (PP.line:) . intersperse PP.line $ options_pp'd)
 
-pp_option :: MonadError Text m => Bool -> Bool -> Text -> HOI4Option -> PPT m Doc
+pp_option :: (HOI4Info g, MonadError Text m) =>
+    Bool -> Bool -> Text -> HOI4Option -> PPT g m Doc
 pp_option hidden triggered eid opt = do
     optNameLoc <- getGameL10n `mapM` hoi4opt_name opt
     let optNameLoc' = if hidden

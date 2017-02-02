@@ -27,18 +27,14 @@ import System.FilePath ((</>))
 import Control.Monad (when, liftM, forM_)
 
 import Localization (readL10n)
-import SettingsTypes ( CLArgs (..), Settings (..), Game (..), GameState (..)
+import SettingsTypes ( CLArgs (..), Settings (..), Game (..), IsGame (..)
                      , L10nScheme (..)
                      , setGameL10n)
 import Paths_pdxparse (version, getDataFileName)
-import qualified EU4.Settings as EU4
-import qualified HOI4.Settings as HOI4
-import qualified Stellaris.Settings as Stellaris
-
-data GameData
-    = DataEU4 EU4.EU4Data
---  | DataStellaris StellarisData -- deferred
-    deriving (Show)
+import EU4.Settings (EU4 (..))
+import HOI4.Settings (HOI4 (..))
+import Stellaris.Settings (Stellaris (..))
+import Vic2.Settings (Vic2 (..))
 
 -- intermediate structure. Maybe values don't need to be present in the
 -- settings file.
@@ -97,7 +93,7 @@ programOpts =
 --
 -- The argument is an action to run after all other settings have been
 -- initialized, in order to get extra information.
-readSettings :: IO (Settings, GameState)
+readSettings :: IO Settings
 readSettings = do
     (opts, nonopts, errs) <- getOpt Permute programOpts <$> getArgs
     when (not (null errs)) $ do
@@ -136,19 +132,21 @@ readSettings = do
             let steamAppsCanonicalized = fromMaybe "Steam/steamapps/common" (steamAppsI settingsIn)
                 lang = languageI settingsIn
                 gamefolder = gameFolderI settingsIn
-                provisionalSettings = Settings
+
+            game <- case gamefolder of
+                "Europa Universalis IV" -> return $ Game EU4
+                "Hearts of Iron IV" -> return $ Game HOI4
+                "Stellaris" -> return $ Game Stellaris
+                "Victoria 2" -> return $ Game Vic2
+                other -> do
+                    putStrLn $ "I don't know how to handle " ++ other ++ "!"
+                    exitFailure
+                    
+            let provisionalSettings = Settings
                             { steamDir = steamDirCanonicalized
                             , steamApps = steamAppsCanonicalized
-                            , l10nScheme = case gamefolder of
-                                -- Provisional filling-in so localization knows
-                                -- what to do.
-                                "Europa Universalis IV" -> L10nQYAML
-                                "Hearts of Iron IV" -> L10nQYAML
-                                "Stellaris" -> L10nQYAML
-                                "Victoria 2" -> L10nCSV
-                                other -> error $ "I don't know how to handle "
-                                            ++ other ++ "!"
-                            , game = GameUnknown -- we know, but can't fill this in
+                            , l10nScheme = case game of Game g -> locScheme g
+                            , game = game
                             , gameFolder = gamefolder
                             , gamePath = steamDirCanonicalized </> steamAppsCanonicalized </> gamefolder
                             , language = "l_" <> lang
@@ -161,14 +159,8 @@ readSettings = do
                             , filesToProcess = nonopts }
 
             game_l10n <- readL10n provisionalSettings
-            let provisionalSettings' = provisionalSettings `setGameL10n` game_l10n
-            case gameFolder provisionalSettings' of
-                "Europa Universalis IV" -> EU4.fillSettings provisionalSettings'
-                "Stellaris" -> Stellaris.fillSettings provisionalSettings'
-                "Hearts of Iron IV" -> HOI4.fillSettings provisionalSettings'
-                other -> do
-                    putStrLn $ "I don't know how to handle " ++ other ++ "!"
-                    exitFailure
+            return $ provisionalSettings `setGameL10n` game_l10n
+
         Left exc -> do
             hPutStrLn stderr $ "Couldn't parse settings: " ++ show exc
             exitFailure

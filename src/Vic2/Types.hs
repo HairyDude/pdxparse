@@ -1,11 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Vic2.Types (
-        -- Used by Settings
-        Vic2Data (..)
-    ,   Vic2 (..)
-    ,   Vic2Scripts (..)
         -- Features
-    ,   Vic2Event (..), Vic2Option (..)
+        Vic2Event (..), Vic2Option (..)
     ,   Vic2Decision (..)
         -- Low level
     ,   Vic2Scope (..)
@@ -21,26 +17,7 @@ import Data.HashMap.Strict (HashMap)
 
 import Abstract -- everything
 --import Doc
-
---------------------------------------------
--- Types used by toplevel Settings module --
---------------------------------------------
-
-data Vic2Data = Vic2Data {
-        vic2events :: HashMap Text Vic2Event
-    ,   vic2decisions :: HashMap Text Vic2Decision
-    -- etc.
-    } deriving (Show)
-
--- State
-data Vic2 = Vic2
-    { scopeStack :: [Vic2Scope]
-    } deriving (Show)
-
-data Vic2Scripts = Vic2Scripts {
-        vic2eventScripts :: HashMap String GenericScript
-    ,   vic2decisionScripts :: HashMap String GenericScript
-    } deriving (Show)
+import SettingsTypes (PPT)
 
 -------------------
 -- Feature types --

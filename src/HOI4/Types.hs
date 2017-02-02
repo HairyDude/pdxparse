@@ -1,9 +1,9 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleContexts #-}
 module HOI4.Types (
         -- Used by Settings
         HOI4Data (..)
-    ,   HOI4 (..)
-    ,   HOI4Scripts (..)
+    ,   HOI4State (..)
+    ,   HOI4Info (..)
         -- Features
     ,   HOI4EvtDesc (..), HOI4Event (..), HOI4Option (..)
         -- Low level
@@ -20,6 +20,8 @@ import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
 
 import Abstract -- everything
+import SettingsTypes ( PPT, GameState (..), Settings (..)
+                     , IsGame (..), IsGameData (..), IsGameState (..))
 --import Doc
 
 --------------------------------------------
@@ -27,18 +29,18 @@ import Abstract -- everything
 --------------------------------------------
 
 data HOI4Data = HOI4Data {
-        hoi4events :: HashMap Text HOI4Event
+        hoi4settings :: Settings
+    ,   hoi4eventScripts :: HashMap String GenericScript
+    ,   hoi4events :: HashMap Text HOI4Event
     -- etc.
-    } deriving (Show)
+    }
 
 -- State
-data HOI4 = HOI4
-    { scopeStack :: [HOI4Scope]
-    } deriving (Show)
-
-data HOI4Scripts = HOI4Scripts {
-        hoi4eventScripts :: HashMap String GenericScript
-    } deriving (Show)
+data HOI4State = HOI4State {
+        hoi4scopeStack :: [HOI4Scope]
+    ,   hoi4currentFile :: Maybe FilePath
+    ,   hoi4currentIndent :: Maybe Int
+    }
 
 -------------------
 -- Feature types --
@@ -73,6 +75,16 @@ data HOI4Option = HOI4Option
     ,   hoi4opt_ai_chance :: Maybe GenericScript
     ,   hoi4opt_effects :: Maybe GenericScript
     } deriving (Show)
+
+class (IsGame g,
+       Scope g ~ HOI4Scope,
+       IsGameData (GameData g),
+       IsGameState (GameState g)) => HOI4Info g where
+    getEventTitle :: Monad m => Text -- ^ Event ID
+                                -> PPT g m (Maybe Text)
+    getEventScripts :: Monad m => PPT g m (HashMap FilePath GenericScript)
+    setEventScripts :: Monad m => HashMap FilePath GenericScript -> PPT g m ()
+    getEvents :: Monad m => PPT g m (HashMap Text HOI4Event)
 
 ------------------------------
 -- Shared lower level types --

@@ -8,7 +8,7 @@ module EU4.IdeaGroups (
 
 import Control.Arrow (first)
 import Control.Monad (forM, forM_, foldM)
-import Control.Monad.Trans (MonadTrans (..))
+import Control.Monad.Trans (MonadTrans (..), MonadIO (..))
 import Control.Monad.Except (ExceptT (..), runExceptT, MonadError (..))
 import Control.Monad.State (MonadState (..), gets)
 
@@ -40,6 +40,7 @@ import FileIO (Feature (..), writeFeatures)
 import Messages -- everything
 import QQ (pdx)
 import SettingsTypes ( PPT, Settings (..), Game (..)
+                     , IsGame (..), IsGameData (..), IsGameState (..)
                      , getGameL10n
                      , setCurrentFile, withCurrentFile)
 
@@ -47,7 +48,10 @@ import SettingsTypes ( PPT, Settings (..), Game (..)
 newIdeaGroup :: IdeaGroup
 newIdeaGroup = IdeaGroup undefined undefined Nothing Nothing Nothing Nothing False [] Nothing Nothing
 
-parseEU4IdeaGroups :: Monad m => HashMap String GenericScript -> PPT m IdeaTable
+parseEU4IdeaGroups :: (IsGameData (GameData g),
+                       IsGameState (GameState g),
+                       Monad m) =>
+    HashMap String GenericScript -> PPT g m IdeaTable
 parseEU4IdeaGroups ideaGroupScripts = do
     groupFiles <- sequenceA $ flip HM.mapWithKey ideaGroupScripts $ \path ideaGroupScript -> do
         -- For each file, parse the groups
@@ -59,8 +63,8 @@ parseEU4IdeaGroups ideaGroupScripts = do
     -- This maps a filename to a map of id -> group.
     return (HM.unions (HM.elems groupFiles))
 
-parseIdeaGroup :: Monad m =>
-    GenericStatement -> ExceptT String (PPT m) IdeaGroup
+parseIdeaGroup :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
+    GenericStatement -> ExceptT String (PPT g m) IdeaGroup
 parseIdeaGroup (StatementBare _) = throwError "bare statement at top level"
 parseIdeaGroup [pdx| %left = %right |] = case right of
     CompoundRhs parts -> case left of
@@ -77,7 +81,8 @@ parseIdeaGroup [pdx| %left = %right |] = case right of
     _ -> throwError "warning: unknown statement in idea group file"
 parseIdeaGroup _ = error "idea group defined via operator other than ="
 
-ideaGroupAddSection :: Monad m => IdeaGroup -> GenericStatement -> PPT m IdeaGroup
+ideaGroupAddSection :: (IsGameData (GameData g), Monad m) =>
+    IdeaGroup -> GenericStatement -> PPT g m IdeaGroup
 ideaGroupAddSection ig [pdx| $label = %rhs |] =
     case label of
         "category" -> case T.toLower <$> textRhs rhs of
@@ -153,26 +158,22 @@ fixup = Doc.strictText . T.unlines . map (TE.decodeUtf8
             [pre, "idea", nth, "icon = ", iconFileB (fst (matcharr ! 2))
             ,"\n| idea", nth, "effect = ", post]
 
-writeEU4IdeaGroups :: PPT IO ()
+writeEU4IdeaGroups :: (EU4Info g, MonadIO m) => PPT g m ()
 writeEU4IdeaGroups = do
-    gdata <- gets game
-    case gdata of
-        GameEU4 { eu4data = EU4Data { eu4ideagroups = groups } } -> do
-            writeFeatures "idea groups"
-                          pathedGroups
-                          ppIdeaGroup {- need IdeaGroup -> PPT IO (FilePath, Doc) -}
-            where
-                pathedGroups :: [Feature IdeaGroup]
-                pathedGroups = map (\ig -> Feature {
-                                            featurePath = ig_path ig
-                                        ,   featureId = Just (ig_name ig)
-                                        ,   theFeature = Right ig })
-                                    (HM.elems groups)
-        _ -> error "writeEU4IdeaGroups given non-EU4 state!"
+    groups <- getIdeaGroups
+    let pathedGroups :: [Feature IdeaGroup]
+        pathedGroups = map (\ig -> Feature {
+                                    featurePath = ig_path ig
+                                ,   featureId = Just (ig_name ig)
+                                ,   theFeature = Right ig })
+                            (HM.elems groups)
+    writeFeatures "idea groups"
+                  pathedGroups
+                  ppIdeaGroup {- need IdeaGroup -> PPT g IO (FilePath, Doc) -}
 
-ppIdeaGroup :: Monad m => IdeaGroup -> PPT (ExceptT Text m) Doc
+ppIdeaGroup :: (EU4Info g, Monad m) => IdeaGroup -> PPT g (ExceptT Text m) Doc
 ppIdeaGroup ig = fixup <$> do
-    version <- gets gameVersion
+    version <- gets (gameVersion . getSettings)
     let name = ig_name_loc ig
     case (ig_bonus ig, length (ig_ideas ig)) of
         (Just bonus, 7) -> do
