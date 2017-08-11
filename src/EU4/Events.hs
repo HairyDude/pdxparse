@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, QuasiQuotes, ViewPatterns, LambdaCase #-}
+{-|
+Module      : EU4.Events
+Description : Feature handler for Europa Universalis IV events
+-}
 module EU4.Events (
         parseEU4Events
     ,   writeEU4Events
@@ -37,13 +41,15 @@ import SettingsTypes ( PPT, Settings (..), Game (..)
                      , setCurrentFile, withCurrentFile
                      , hoistErrors, hoistExceptions)
 
--- Starts off Nothing everywhere.
+-- | Empty event value. Starts off Nothing/empty everywhere.
 newEU4Event :: EU4Scope -> EU4Event
 newEU4Event escope = EU4Event Nothing Nothing [] escope Nothing Nothing Nothing Nothing False Nothing Nothing
+-- | Empty event option vaule. Starts off Nothing everywhere.
 newEU4Option :: EU4Option
 newEU4Option = EU4Option Nothing Nothing Nothing Nothing
 
--- Parse events and return them.
+-- | Take the event scripts from game data and parse them into event data
+-- structures.
 parseEU4Events :: (IsGameState (GameState g), Monad m) =>
     HashMap String GenericScript -> PPT g m (HashMap Text EU4Event)
 parseEU4Events scripts = HM.unions . HM.elems <$> do
@@ -68,6 +74,8 @@ parseEU4Events scripts = HM.unions . HM.elems <$> do
                       mkEvtMap = HM.fromList . map (fromJust . eu4evt_id &&& id)
                         -- Events returned from parseEvent are guaranteed to have an id.
 
+-- | Present the parsed events as wiki text and write them to the appropriate
+-- files.
 writeEU4Events :: (EU4Info g, MonadIO m) => PPT g m ()
 writeEU4Events = do
     events <- getEvents
@@ -81,7 +89,7 @@ writeEU4Events = do
                   pathedEvents
                   (\e -> scope (eu4evt_scope e) $ pp_event e)
 
--- Parse a statement in an events file. Some statements aren't events; for
+-- | Parse a statement in an events file. Some statements aren't events; for
 -- those, and for any obvious errors, return Right Nothing.
 parseEU4Event :: (IsGameState (GameState g), MonadError Text m) =>
     GenericStatement -> PPT g m (Either Text (Maybe EU4Event))
@@ -113,10 +121,14 @@ parseEU4Event [pdx| %left = %right |] = case right of
     _ -> return (Right Nothing)
 parseEU4Event _ = throwError "operator other than ="
 
+-- | Intermediate structure for interpreting event description blocks.
 data EvtDescI = EvtDescI {
         edi_text :: Maybe Text
     ,   edi_trigger :: Maybe GenericScript
     }
+-- | Interpret the @desc@ section of an event. This can be either a
+-- localization key or a conditional description block. (TODO: document the
+-- format here)
 evtDesc :: MonadError Text m => Maybe Text -> GenericScript -> m EU4EvtDesc
 evtDesc meid scr = case foldl' evtDesc' (EvtDescI Nothing Nothing) scr of
         EvtDescI (Just t) Nothing -- desc = { text = foo }
@@ -143,6 +155,8 @@ evtDesc meid scr = case foldl' evtDesc' (EvtDescI Nothing Nothing) scr of
             = error ("unrecognized desc section in " ++ maybe "(unknown)" T.unpack meid
                     ++ ": " ++ show stmt)
 
+-- | Interpret one section of an event. If understood, add it to the event
+-- data. If not understood, throw an exception.
 eventAddSection :: (IsGameState (GameState g), MonadError Text m) =>
     Maybe EU4Event -> GenericStatement -> PPT g m (Maybe EU4Event)
 eventAddSection Nothing _ = return Nothing
@@ -206,12 +220,14 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
         withCurrentFile $ \file ->
             throwError $ "unrecognized event section in " <> T.pack file <> ": " <> T.pack (show stmt)
 
+-- | Interpret an option block and append it to the list of options.
 addEU4Option :: Monad m => Maybe [EU4Option] -> GenericScript -> PPT g m (Maybe [EU4Option])
 addEU4Option Nothing opt = addEU4Option (Just []) opt
 addEU4Option (Just opts) opt = do
     optn <- foldM optionAddStatement newEU4Option opt
     return $ Just (opts ++ [optn])
 
+-- | Interpret one section of an option block and add it to the option data.
 optionAddStatement :: Monad m => EU4Option -> GenericStatement -> PPT g m EU4Option
 optionAddStatement opt stmt@[pdx| $label = %rhs |] =
     case label of
@@ -233,11 +249,14 @@ optionAddStatement opt stmt = do
     effects_pp'd <- optionAddEffect (eu4opt_effects opt) stmt
     return $ opt { eu4opt_effects = effects_pp'd }
 
+-- | Append an effect to the effects of an option.
 optionAddEffect :: Monad m => Maybe GenericScript -> GenericStatement -> PPT g m (Maybe GenericScript)
 optionAddEffect Nothing stmt = optionAddEffect (Just []) stmt
 optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 
-ppDescs :: (EU4Info g, Monad m) => Bool -> [EU4EvtDesc] -> PPT g m Doc
+-- | Present an event's description block.
+ppDescs :: (EU4Info g, Monad m) => Bool {- ^ Is this a hidden event? -}
+                                -> [EU4EvtDesc] -> PPT g m Doc
 ppDescs True _ = return "| cond_event_text = (This event is hidden and has no description.)"
 ppDescs _ [] = return "| event_text = (No description)"
 ppDescs _ [EU4EvtDescSimple key] = ("| event_text = " <>) . Doc.strictText . Doc.nl2br <$> getGameL10n key
@@ -254,7 +273,8 @@ ppDescs _ descs = ("| cond_event_text = " <>) . PP.vsep <$> mapM ppDesc descs wh
         Nothing -> Doc.strictText key
         Just txt -> "''" <> Doc.strictText (Doc.nl2br txt) <> "''"
 
--- Pretty-print an event, or fail.
+-- | Pretty-print an event. If some essential parts are missing from the data,
+-- throw an exception.
 pp_event :: forall g m. (EU4Info g, MonadError Text m) =>
     EU4Event -> PPT g m Doc
 pp_event evt = case (eu4evt_id evt
@@ -327,6 +347,7 @@ pp_event evt = case (eu4evt_id evt
     (Just eid, _, Nothing) ->
         throwError ("options missing for event id " <> eid)
 
+-- | Present the options of an event.
 pp_options :: (EU4Info g, MonadError Text m) =>
     Bool -> Text -> [EU4Option] -> PPT g m (Bool, Doc)
 pp_options hidden evtid opts = do
@@ -334,6 +355,7 @@ pp_options hidden evtid opts = do
     options_pp'd <- mapM (pp_option evtid hidden triggered) opts
     return (triggered, mconcat . (PP.line:) . intersperse PP.line $ options_pp'd)
 
+-- | Present a single event option.
 pp_option :: (EU4Info g, MonadError Text m) =>
     Text -> Bool -> Bool -> EU4Option -> PPT g m Doc
 pp_option evtid hidden triggered opt = do

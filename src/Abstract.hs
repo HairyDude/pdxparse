@@ -1,5 +1,38 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
+{-|
+Module      : Abstract
+Description : Generic types and parsers for the Clausewitz engine scripting language
+
+A scripting language as used by Paradox Interactive in its games using the
+Clasewitz engine, such as Crusader Kings II and Europa Universalis IV.
+
+The language is syntactically very simple. The BNF is as follows (where ident
+is an identifier, string is a string literal, and each terminal is separated by
+enough whitespace to distinguish it from adjacent ones):
+
+@
+    script ::= statements
+    statement ::= lhs | ident operator rhs
+    lhs ::= \"@\" ident | ident | integer
+    operator ::= \"=\" | \"<\" | \">\"
+    rhs ::= ident | string | date | number | compound_rhs
+    compound_rhs ::= \"{\" statements \"}\"
+    statements ::= statement | statement statements
+@
+
+Semantics of each statement are defined by the application. Typically the RHS
+of a compound statement will be a "scope", where certain identifiers have
+defined meanings. Specifically:
+
+    * THIS = whatever this scope pertains to (its "subject")
+    * FROM = some other object relevant to this scope (its "object")
+    * ROOT = THIS of the topmost scope of this particular script
+              (the subject of the script as a whole)
+    * PREV = THIS of the next scope up
+    * PREVPREV = PREV of the next scope up, etc.
+
+-}
 module Abstract (
     -- Types
         Statement (..)
@@ -27,32 +60,6 @@ module Abstract (
     ,   ident
     ) where
 
-{-
-    A scripting language as used by Paradox Interactive in games such
-    as Crusader Kings II and Europa Universalis IV.
-
-    The language is syntactically very simple. The complete BNF is as follows
-    (where ident is an identifier, string is a string literal, and each
-    terminal is separated by enough whitespace to distinguish it from adjacent
-    ones):
-
-        statement ::= ident | ident separator rhs
-        separator ::= "=" | "<" | ">"
-        rhs ::= ident | string | compound_rhs
-        compound_rhs ::= "{" statements "}"
-        statements ::= statement | statement statements
-
-    Semantics of each statement are defined by the application. Typically the
-    RHS of a compound statement will be a "scope", where certain identifiers
-    have defined meanings. Specifically:
-
-        THIS = whatever this scope pertains to (its "subject")
-        FROM = some other object relevant to this scope (its "object")
-        ROOT = THIS of the topmost scope of this particular script
-                (the subject of the script as a whole)
-        PREV = THIS of the next scope up
-        PREVPREV = PREV of the next scope up, etc.
--}
 
 import Control.Applicative (Applicative (..), Alternative (..))
 import Control.Monad (void)
@@ -74,44 +81,63 @@ import qualified Text.PrettyPrint.Leijen.Text as PP
 
 import qualified Doc
 
--- statement ::= lhs | lhs '=' rhs
--- Type of statements, parametrized by two custom types, one for left-hand
+-- | Type of statements, parametrized by two custom types, one for left-hand
 -- sides and one for right-hand sides.
+--
+-- @
+--  statement ::= lhs | lhs '=' rhs
+-- @
 data Statement lhs rhs
         = StatementBare (Lhs lhs)
         | Statement (Lhs lhs) Operator (Rhs lhs rhs)
     deriving (Eq, Ord, Show, Read)
+-- | Statement with no custom components.
 type GenericStatement = Statement () ()
 
+-- | The operator between the two sides of a statement. Usually an equals sign,
+-- but can be less than or greater than.
+--
+-- @
+--  operator ::= \"=\" | \"<\" | \">\"
+-- @
 data Operator
-    = OpEq -- "=", the most common
-    | OpLT -- "<"
-    | OpGT -- ">"
+    = OpEq -- | \"=\", the most common
+    | OpLT -- | \"<\"
+    | OpGT -- | \">\"
     deriving (Eq, Ord, Show, Read)
 
+-- | Produce text representation of an Operator.
 showOp :: Operator -> Text
 showOp OpEq = "="
 showOp OpLT = "<"
 showOp OpGT = ">"
 
+-- | Produce Doc representation of an Operator.
 showOpD :: Operator -> Doc
 showOpD = Doc.strictText . showOp
 
--- lhs ::= some_custom_lhs | ident
--- Type of statement left-hand sides (the part before the '=').
+-- | Type of statement left-hand sides (the part before the operator).
+--
+-- @
+--  lhs ::= some_custom_lhs | ident
+-- @
 data Lhs lhs
     = CustomLhs lhs
     | GenericLhs Text
     | AtLhs Text
     | IntLhs Int -- used frequently in EU4
     deriving (Eq, Ord, Show, Read)
+-- | LHS with no custom elements.
 type GenericLhs = Lhs ()
 
--- rhs ::= some_custom_rhs | ident | string | "{" statements "}"
--- statements ::= statement | statement statements
--- Type of statement right-hand sides (the part after the '=').
--- Since this is mutually recursive with 'Statement', it also requires the
--- custom LHS type as a parameter.
+-- | Type of statement right-hand sides (the part after the '='). Since this is
+-- mutually recursive with 'Statement', it also requires the custom LHS type as
+-- a parameter.
+--
+-- @
+--  rhs ::= some_custom_rhs | ident | string | "{" statements "}"
+--  statements ::= statement | statement statements
+-- @
 data Rhs lhs rhs
     = CustomRhs rhs
     | GenericRhs Text
@@ -121,15 +147,22 @@ data Rhs lhs rhs
     | CompoundRhs [Statement lhs rhs]
     | DateRhs Date
     deriving (Eq, Ord, Show, Read)
+-- | RHS with no custom elements.
 type GenericRhs = Rhs () ()
 
+-- | Script, i.e. list of statements.
 type Script lhs rhs = [Statement lhs rhs]
+-- | Script, i.e. list of statements, with no custom elements.
 type GenericScript = [GenericStatement]
 
+-- | Being an engine for historical games, Clausewitz-script has a literal
+-- syntax for dates.  For example, the start date of Europa Universalis IV is
+-- 11 November 1444, represented as @1444.11.11@. It is big-endian
+-- (YYYY.MM.DD).
 data Date = Date { year :: Int, month :: Int, day :: Int }
     deriving (Show, Eq, Ord, Read) -- Ord works with fields in this order only
 
--- A very common type of statement
+-- | A very common type of statement: @s_yes "foo"@ produces @foo = yes@.
 s_yes :: Text -> Statement lhs rhs
 s_yes tok = Statement (GenericLhs tok) OpEq (GenericRhs "yes")
 
@@ -147,19 +180,20 @@ instance CoerceNum Double where
     fromInt = fromIntegral
     fromFloat = id
 
--- Get a number of the desired type from a RHS.
--- If it's a float and we want an int, round it.
+-- | Get a number of the desired type from a RHS. If it's a float and we want
+-- an integer, round it.
 floatRhs :: CoerceNum a => GenericRhs -> Maybe a
 floatRhs (IntRhs n) = Just (fromInt n)
 floatRhs (FloatRhs n) = Just (fromFloat n)
 floatRhs _ = Nothing
 
--- Get a Text from a RHS.
+-- | Get a Text from a RHS.
 textRhs :: GenericRhs -> Maybe Text
 textRhs (GenericRhs s) = Just s
 textRhs (StringRhs s) = Just s
 textRhs _ = Nothing
 
+-- | Get either a number or a Text from a RHS.
 floatOrTextRhs :: CoerceNum a => GenericRhs -> Maybe (Either a Text)
 floatOrTextRhs rhs = case floatRhs rhs of
     Just n -> Just (Left n)
@@ -169,47 +203,60 @@ floatOrTextRhs rhs = case floatRhs rhs of
 -- Parser --
 ------------
 
+-- | Skip whitespace, including comments. A comment is a \"#\" followed by the
+-- rest of the line.
 skipSpace :: Parser ()
 skipSpace = Ap.skipMany
             (   (void Ap.space)
             <|> comment)
 
+-- | A comment is a # followed by the rest of the line. This parser also
+-- consumes any number of following blank lines.
 comment :: Parser ()
 comment = "#" >> restOfLine >> return ()
 
--- Parse the entire rest of the line, and also consume any number of following
--- blank lines.
+-- | Parse the entire rest of the line, and also consume any number of
+-- following blank lines.
 restOfLine :: Parser Text
-restOfLine = (Ap.many1' Ap.endOfLine >> return T.empty)
+restOfLine = (Ap.many1' Ap.endOfLine >> return "")
          <|> (T.cons <$> Ap.anyChar <*> restOfLine)
 
+-- | An identifier, or atom. An atom can start with a letter or an underscore
+-- and continue with letters, numbers, underscores, full stops, and colons.
 ident :: Parser Text
 ident = (<>) <$> (T.singleton <$> (Ap.satisfy (\c -> c  == '_' || isAlpha c)))
              <*> Ap.takeWhile (\c -> c `elem` ['_','.',':'] || isAlphaNum c)
     <?> "identifier"
 
--- A string literal.
+-- | A string literal: any number of characters other than a double quotation
+-- mark (possibly escaped), between two double quotation marks. Literal
+-- newlines are allowed.
 stringLit :: Parser Text
 stringLit = "\""
          *> (T.pack <$> Ap.many' stringChar)
          <* "\""
     <?> "string literal"
 
--- An integer literal.
+-- | An integer literal, possibly prefixed with a sign.
 intLit :: Parser Int
 intLit = Ap.signed Ap.decimal
 
--- A floating-point literal.
+-- | A floating-point literal.
 floatLit :: Parser Double
 floatLit = Ap.signed Ap.double
 
--- A date literal.
+-- | A date literal.
+--
+-- @
+--  datelit ::= integer \".\" integer \".\" integer
+-- @
 dateLit :: Parser Date
 dateLit = Date <$> Ap.decimal
                <*> (Ap.char '.' *> Ap.decimal)
                <*> (Ap.char '.' *> Ap.decimal)
 
--- A character within a string, possibly escaped.
+-- | A character within a string, possibly escaped. C escape sequences are
+-- supported, other than character references.
 stringChar :: Parser Char
 stringChar = ("\\" *> escapedChar)
          <|> Ap.notChar '"'
@@ -227,6 +274,14 @@ escapedChar = ("0" *> return '\0')
           <|> ("\\" *> return '\\')
     <?> "character escape sequence"
 
+-- | An entire statement. This usually contains an operator, but some
+-- statements are lists of data items, e.g. strings or numbers.
+--
+-- Currently bare statements (those with no operator or RHS) are not supported.
+--
+-- @
+--  statement ::= ident | ident operator rhs
+-- @
 statement :: Parser lhs -> Parser rhs -> Parser (Statement lhs rhs)
 statement customLhs customRhs
     = Statement <$> lhs customLhs
@@ -235,10 +290,22 @@ statement customLhs customRhs
                 <*> rhs customLhs customRhs
     <?> "statement"
 
+-- | A script (i.e. list of statements separated by whitespace), possibly with
+-- custom elements.
+--
+-- @
+--  script ::= statements
+--  statements ::= statement | statement statements
+-- @
 script :: Parser lhs -> Parser rhs -> Parser (Script lhs rhs)
 script customLhs customRhs = statement customLhs customRhs `Ap.sepBy` skipSpace
     <?> "script"
 
+-- | Statement LHS, possibly with custom elements.
+--
+-- @
+--  lhs ::= \"@\" ident | ident | integer
+-- @
 lhs :: Parser lhs -> Parser (Lhs lhs)
 lhs custom = CustomLhs <$> custom
          <|> AtLhs <$> ("@" *> ident) -- guessing at the syntax here...
@@ -246,12 +313,24 @@ lhs custom = CustomLhs <$> custom
          <|> IntLhs <$> Ap.decimal
     <?> "statement LHS"
 
+-- | An operator.
+--
+-- @
+--  operator ::= \"<\" | \"=\" | \">\"
+-- @
 operator :: Parser Operator
 operator = "=" *> pure OpEq
        <|> "<" *> pure OpLT
        <|> ">" *> pure OpGT
    <?> "operator"
 
+-- | Statement RHS, possibly with custom elements. Since this may be a
+-- compound, it is mutually recursive with 'statement' and so needs to know the
+-- custom LHS as well.
+--
+-- @
+--  rhs ::= ident | string | date | number | compound_rhs
+-- @
 rhs :: Parser lhs -> Parser rhs -> Parser (Rhs lhs rhs)
 rhs customLhs customRhs
           = (CustomRhs  <$> customRhs
@@ -263,6 +342,12 @@ rhs customLhs customRhs
         <|> CompoundRhs <$> compoundRhs customLhs customRhs)
     <?> "statement RHS"
 
+-- | A RHS that consists of multiple statements grouped by braces. Frequently
+-- this will introduce a new scope, but not always.
+--
+-- @
+--  compound_rhs ::= \"{\" statements \"}\"
+-- @
 compoundRhs :: Parser lhs -> Parser rhs -> Parser (Script lhs rhs)
 compoundRhs customLhs customRhs
     = ("{" >> skipSpace)
@@ -270,12 +355,15 @@ compoundRhs customLhs customRhs
       <* (skipSpace >> "}")
     <?> "compound RHS"
 
--- | Statement with no custom elements.
--- Use this as a starting point for scripts that use standard syntax.
+-- | A statement with no custom elements. Use this as a starting point for
+-- scripts that use standard syntax.
 genericStatement :: Parser GenericStatement
 genericStatement = statement parse_generic parse_generic
     where parse_generic = fail "generic"
 
+-- | A script, i.e. a list of statements separated by space. No custom
+-- elements. This is not guaranteed to parse the entire file; it will stop at a
+-- parse failure.
 genericScript :: Parser GenericScript
 genericScript = script parse_generic parse_generic
     where parse_generic = fail "generic"
@@ -284,29 +372,34 @@ genericScript = script parse_generic parse_generic
 -- Pretty-printer --
 --------------------
 
--- Pretty-printer for a script with no custom elements.
+-- | Pretty-printer for a script with no custom elements.
 genericScript2doc :: GenericScript -> Doc
 genericScript2doc = F.fold . intersperse PP.line . map genericStatement2doc
 
+-- | Pretty-printer for a statement with no custom elements.
 genericStatement2doc :: GenericStatement -> Doc
 genericStatement2doc = statement2doc (const "") (const "")
 
+-- | Pretty-printer for a script, possibly with custom elements.
 script2doc :: (lhs -> Doc) -> (rhs -> Doc) -> [Statement lhs rhs] -> Doc
 script2doc customLhs customRhs
     = PP.vsep . map (statement2doc customLhs customRhs)
 
+-- | Pretty-printer for a statement, possibly with custom elements.
 statement2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Statement lhs rhs -> Doc
 statement2doc customLhs _ (StatementBare lhs)
     = lhs2doc customLhs lhs
 statement2doc customLhs customRhs (Statement lhs op rhs)
     = lhs2doc customLhs lhs <++> showOpD op <++> rhs2doc customLhs customRhs rhs
 
+-- | Pretty-printer for a LHS, possibly with custom elements.
 lhs2doc :: (lhs -> Doc) -> Lhs lhs -> Doc
 lhs2doc customLhs (CustomLhs lhs) = customLhs lhs
 lhs2doc _         (AtLhs lhs) = PP.text (TL.fromStrict ("@" <> lhs))
 lhs2doc _         (GenericLhs lhs) = PP.text (TL.fromStrict lhs)
 lhs2doc _         (IntLhs lhs) = PP.text (TL.pack (show lhs))
 
+-- | Pretty-printer for a RHS, possibly with custom elements.
 rhs2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Rhs lhs rhs -> Doc
 rhs2doc _ customRhs (CustomRhs rhs) = customRhs rhs
 rhs2doc _ _ (GenericRhs rhs) = Doc.strictText rhs
@@ -318,5 +411,6 @@ rhs2doc customLhs customRhs (CompoundRhs rhs)
 rhs2doc _ _ (DateRhs (Date year month day)) =
     mconcat . map (PP.text . TL.pack) $ [show year, ".", show month, ".", show day]
 
+-- | Display a script with no custom elements in an 80-column format.
 displayGenericScript :: GenericScript -> Text
 displayGenericScript script = TL.toStrict . PP.displayT . PP.renderPretty 0.8 80 $ genericScript2doc script

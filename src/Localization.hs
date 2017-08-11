@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-|
+Module      : Localization
+Description : Load localization files
+-}
 module Localization (
         readL10n -- :: Settings -> IO L10n
     ,   L10n -- re-exported from Yaml
@@ -30,6 +34,11 @@ import System.IO (hPutStrLn, stderr)
 import SettingsTypes (Settings (..), L10nScheme (..))
 import Yaml (L10n, LocEntry (..), parseLocFile, mergeLangs, mergeLangList)
 
+-- | Read and parse localization files for the current game.
+--
+-- This function is capable of dealing with both the old CSV-style localisation
+-- and the newer quasi-YAML localization. It does not understand the old EU4
+-- true YAML localisation, which, as far as I know, no PDS game uses any more.
 readL10n :: Settings -> IO L10n
 readL10n settings = do
     let dir = steamDir settings

@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings, QuasiQuotes, FlexibleContexts, LambdaCase #-}
+{-
+Module      : EU4.Decisions
+Description : Feature handler for Europa Universalis IV decisions
+-}
 module EU4.Decisions (
         parseEU4Decisions
     ,   writeEU4Decisions
@@ -34,10 +38,13 @@ import SettingsTypes ( PPT, Settings (..), Game (..)
                      , hoistExceptions)
 import EU4.Common -- everything
 
--- Starts off Nothing/empty everywhere, except name (will get filled in immediately).
+-- | Empty decision. Starts off Nothing/empty everywhere, except id and name
+-- (which should get filled in immediately).
 newDecision :: EU4Decision
 newDecision = EU4Decision undefined undefined Nothing [] [] [] Nothing Nothing
 
+-- | Take the decisions scripts from game data and parse them into decision
+-- data structures.
 parseEU4Decisions :: (IsGameData (GameData g),
                       IsGameState (GameState g),
                       Monad m) =>
@@ -63,6 +70,7 @@ parseEU4Decisions scripts = do
 
 --parseEU4Event :: MonadError Text m => FilePath -> GenericStatement -> PPT g m (Either Text (Maybe EU4Event))
 
+-- | Parse one file's decision scripts into decision data structures.
 parseEU4DecisionGroup :: (IsGameData (GameData g),
                           IsGameState (GameState g),
                           Monad m) =>
@@ -76,6 +84,7 @@ parseEU4DecisionGroup [pdx| $_ = %_ |]
     = throwError "unrecognized form for decision block (RHS)"
 parseEU4DecisionGroup _ = throwError "unrecognized form for decision block (LHS)"
 
+-- | Parse one decision script into a decision data structure.
 parseEU4Decision :: (IsGameData (GameData g),
                      IsGameState (GameState g),
                      Monad m) =>
@@ -94,16 +103,16 @@ parseEU4Decision [pdx| $decName = %rhs |] = case rhs of
     _ -> throwError "unrecognized form for decision (RHS)"
 parseEU4Decision _ = throwError "unrecognized form for decision (LHS)"
 
+-- | Add a sub-clause of the decision script to the data structure.
 decisionAddSection :: (IsGameState (GameState g), Monad m) =>
     EU4Decision -> GenericStatement -> PPT g m EU4Decision
 decisionAddSection dec [pdx| potential        = @scr |] = return dec { dec_potential = scr }
 decisionAddSection dec [pdx| allow            = @scr |] = return dec { dec_allow = scr }
 decisionAddSection dec [pdx| effect           = @scr |] = return dec { dec_effect = scr }
 decisionAddSection dec [pdx| ai_will_do       = @scr |] = return dec { dec_ai_will_do = Just (aiWillDo scr) }
-decisionAddSection dec [pdx| do_not_integrate = %_ |]   = return dec -- maybe mention this in AI notes
-decisionAddSection dec [pdx| do_not_core      = %_ |]   = return dec -- maybe mention this in AI notes
-decisionAddSection dec (Statement (GenericLhs "major") OpEq _)
-        = return dec -- currently no field in the template for this
+decisionAddSection dec [pdx| do_not_integrate = %_   |] = return dec -- maybe mention this in AI notes
+decisionAddSection dec [pdx| do_not_core      = %_   |] = return dec -- maybe mention this in AI notes
+decisionAddSection dec [pdx| major            = %_   |] = return dec -- currently no field in the template for this
 decisionAddSection dec (Statement (GenericLhs "ai_importance") OpEq _)
             -- TODO: use logging instead of trace
         = trace "notice: ai_importance not yet implemented" $
@@ -113,6 +122,8 @@ decisionAddSection dec stmt = withCurrentFile $ \file -> do
     traceM ("warning: unrecognized decision section in " ++ file ++ ": " ++ show stmt)
     return dec
 
+-- | Present the parsed decisions as wiki text and write them to the
+-- appropriate files.
 writeEU4Decisions :: (EU4Info g, MonadIO m) => PPT g m ()
 writeEU4Decisions = do
     decisions <- getDecisions
@@ -126,13 +137,14 @@ writeEU4Decisions = do
                   pathedDecisions
                   pp_decision
 
+-- | Present a parsed decision.
 pp_decision :: (EU4Info g, Monad m) => EU4Decision -> PPT g m Doc
 pp_decision dec = do
     version <- gets (gameVersion . getSettings)
     pot_pp'd    <- scope EU4Country (pp_script (dec_potential dec))
     allow_pp'd  <- scope EU4Country (pp_script (dec_allow dec))
     effect_pp'd <- scope EU4Country (pp_script (dec_effect dec))
-    mawd_pp'd    <- mapM ((imsg2doc =<<) . ppAiWillDo) (dec_ai_will_do dec)
+    mawd_pp'd   <- mapM ((imsg2doc =<<) . ppAiWillDo) (dec_ai_will_do dec)
     let name = dec_name dec
         nameD = Doc.strictText name
     name_loc <- getGameL10n (name <> "_title")

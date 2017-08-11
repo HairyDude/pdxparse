@@ -1,7 +1,10 @@
 {-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleInstances, ScopedTypeVariables #-}
+{-|
+Module      : EU4.Settings
+Description : Interface for Europa Universalis IV backend
+-}
 module EU4.Settings (
         EU4 (..)
-    ,   writeEU4Scripts 
     ,   module EU4.Types
     ) where
 
@@ -33,6 +36,7 @@ import EU4.IdeaGroups (parseEU4IdeaGroups, writeEU4IdeaGroups)
 import EU4.Events (parseEU4Events, writeEU4Events)
 --import EU4.Policies (parseEU4Policies, writeEU4Policies)
 
+-- | EU4 game type. This is only interesting for its instances.
 data EU4 = EU4
 instance IsGame EU4 where
     locScheme _  = L10nQYAML
@@ -111,7 +115,8 @@ instance IsGameState (GameState EU4) where
             eu4currentIndent = ci
         }
 
--- Read all scripts in a directory.
+-- | Read all scripts in a directory.
+--
 -- Return: for each file, its path relative to the game root and the parsed
 --         script.
 readEU4Scripts :: forall m. MonadIO m => PPT EU4 m ()
@@ -146,6 +151,7 @@ readEU4Scripts = do
         ,   eu4eventScripts = events
         }
 
+-- | Interpret the script ASTs as usable data.
 parseEU4Scripts :: Monad m => PPT EU4 m ()
 parseEU4Scripts = do
     ideaGroups <- parseEU4IdeaGroups =<< getIdeaGroupScripts
@@ -158,6 +164,7 @@ parseEU4Scripts = do
             ,   eu4ideaGroups = ideaGroups
             }
 
+-- | Output the game data as wiki text.
 writeEU4Scripts :: (EU4Info g, MonadIO m) => PPT g m ()
 writeEU4Scripts = do
     writeEU4IdeaGroups

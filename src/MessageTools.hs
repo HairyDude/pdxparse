@@ -1,17 +1,39 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module MessageTools (
-        plainNum, plainPc
-    ,   roundNum, roundPc
+    -- * Numbers
+    -- ** Plain formatting
+        plainNum, roundNum
     ,   roundNumNoSpace
+    ,   plainPc, roundPc
+    -- ** Coloured formatting
+    -- | These functions take an additional 'Bool' argument that specifies
+    -- whether a positive quantity is good (@True@) or bad (@False@). It
+    -- formats the number using a @{{red}}@ or @{{green}}@ template
+    -- accordingly. Don't use these for numbers that may be either good or bad
+    -- depending on context, e.g. karma.
     ,   colourNum, colourPc
     ,   colourNumSign, colourPcSign
+    -- ** Reduced numbers
+    -- | Several quantities range from 0 to 100 in game, but are expressed in
+    -- script as a number between 0 and 1. This includes religous quantities
+    -- (e.g. patriarch authority), government strength (e.g. republican
+    -- tradition), economic quantities (e.g. mercantilism), etc. To present
+    -- these, pass your chosen presentation function to 'reducedNum'.
     ,   reducedNum
+    -- * Plural
     ,   plural
+    -- * Gain/lose
+    -- | These functions hardcode their message fragments. They will have to
+    -- be duplicated for languages other than English.
     ,   gainOrLose, gainsOrLoses
+    -- * Wiki markup
     ,   template, templateDoc
+    -- * If-then-else
     ,   ifThenElse, ifThenElseT
+    -- * General text formatting
     ,   iquotes, bold, boldText
+    -- * The 'ppNumSep' number formatting method
     ,   PPSep (..)
     ,   module Text.Shakespeare.I18N
     ,   module Text.PrettyPrint.Leijen.Text
@@ -40,11 +62,12 @@ instance ToMessage Doc where
 -- Printing numbers --
 ----------------------
 
--- Pretty-print a number, adding &amp;#8239; (U+202F NARROW NO-BREAK SPACE) at
--- every power of 1000.
+-- | Pretty-print a number, adding &amp;#8239; (U+202F NARROW NO-BREAK SPACE)
+-- at every power of 1000.
 class Num a => PPSep a where
     ppNumSep :: a -> Doc
 
+-- | Split a list into groups of 3 elements.
 group3 :: [a] -> [[a]]
 group3 = unfoldr (\cs -> if null cs then Nothing else Just (splitAt 3 cs))
 
@@ -83,49 +106,55 @@ instance PPSep Double where
                              replicate (negate expn) '0' -- zeroes after decimal
                              ++ concatMap show fracDigits))
 
--- | Just a number.
+-- | Format a number as is, except add thousands separators.
 plainNum :: Double -> Doc
 plainNum = ppNum False False False False
 
--- | Just a percentage.
+-- | Format a number as a percentage. Add thousands separators.
 plainPc :: Double -> Doc
 plainPc = ppNum False True False False
 
-roundNum' :: Bool -> Bool -> Double -> Doc
+-- | Front end to 'ppNum' for uncoloured numbers.
+roundNum' :: Bool -- ^ Whether to treat this number as a percentage
+          -> Bool -- ^ Whether to add a + if this number is positive
+          -> Double -> Doc
 roundNum' is_pc pos_plus n =
     let rounded :: Int
         rounded = round n
     in ppNum False is_pc True pos_plus rounded
 
--- | Just a number, but make sure it's an integer by rounding it off.
+-- | Format a number, but make sure it's an integer by rounding it off. Add
+-- thousands separators.
 roundNum :: Double -> Doc
 roundNum = roundNum' False False
 
--- | Round number to nearest integer, and don't add spaces.
+-- | Format a number, but make sure it's an integer by rounding it off. Don't
+-- add thousands separators.
 roundNumNoSpace :: (RealFrac n, PPSep n) => n -> Text
 roundNumNoSpace n = Doc.doc2text $ PP.integer (round n :: Integer)
 
--- | Just a percentage, but make sure it's an integer by rounding it off.
+-- | Format a number as a percentage, but make sure it's an integer by rounding
+-- it off. Add thousands separators.
 roundPc :: Double -> Doc
 roundPc = roundNum' True False
 
--- | Colour a number green or red depending on whether it's "good" or "bad".
---
--- The first argument is True if positive is good, False if negative is good.
-colourNumSign :: Bool -> Double -> Doc
-colourNumSign good = ppNum True False good True
+-- | Format a number in an appropriate colour with thousands separators.
+colourNum :: Bool -> Double -> Doc
+colourNum good = ppNum True False good False
 
--- | As 'colourNumSign', but treat as a percentage (i.e. add a percent sign).
-colourPcSign :: Bool -> Double -> Doc
-colourPcSign good = ppNum True True good True
-
--- | As colourNum, but interpret the number as a percentage.
+-- | Format a number as a percentage, in an appropriate colour, with thousands separators.
 colourPc :: Bool -> Double -> Doc
 colourPc good = ppNum True True good False
 
--- | As colourNum, but don't add a + at the start.
-colourNum :: Bool -> Double -> Doc
-colourNum good = ppNum True False good False
+-- | Format a number in an appropriate colour with thousands separators, adding
+-- a @+@ at the start if positive.
+colourNumSign :: Bool -> Double -> Doc
+colourNumSign good = ppNum True False good True
+
+-- | Format a number as a percentage in an appropriate colour with thousands
+-- separators, adding a @+@ at the start if positive.
+colourPcSign :: Bool -> Double -> Doc
+colourPcSign good = ppNum True True good True
 
 -- | Format a number using the given function, but multiply it by 100 first.
 reducedNum :: PPSep n => (n -> Doc) -> n -> Doc
@@ -170,15 +199,14 @@ plural :: (Eq n, Num n) => n -> Text -> Text -> Text
 plural n sing plur | n == 1    = sing
                    | otherwise = plur
 
--- | Say "Gain" or "Lose" depending on whether the numeric argument is positive
--- or negative (respectively).
---
--- XXX: These two (and all messages that use them) will have to change if this
--- is ever actually localized to anything besides English.
+-- | Say "Gain" or "Lose" (with that capitalisation) depending on whether the
+-- numeric argument is positive or negative (respectively).
 gainOrLose :: (Ord n, Num n) => n -> Text
 gainOrLose n | n < 0     = "Lose"
              | otherwise = "Gain"
 
+-- | Say "gains" or "loses" (with that capitalisation) depending on whether the
+-- numeric argument is positive or negative (respectively).
 gainsOrLoses :: (Ord n, Num n) => n -> Text
 gainsOrLoses n | n < 0     = "loses"
                | otherwise = "gains"
@@ -199,26 +227,38 @@ templateDoc name args = PP.hcat $
     : (intersperse "|" (name:args)
       ++ ["}}"])
 
--- | Set text in italics, and wrap in quotation marks.
+-- | Set text in italics, and wrap in quotation marks. Use this for short
+-- localized strings such as modifier and event names.
 iquotes :: Text -> Doc
-iquotes = PP.enclose "''\"" "\"''" . Doc.strictText
+iquotes = PP.enclose "''“" "”''" . Doc.strictText
 
 ---- Set doc in italics.
 --italic :: Doc -> Doc
 --italic = enclose "''" "''"
 
--- | Set doc in boldface.
+-- | Set doc in boldface. Take care: if the text passed to this begins or ends
+-- with an apostrophe, you may get incorrect results. Mixing with italics,
+-- however, does work.
 bold :: Doc -> Doc
 bold = PP.enclose "'''" "'''"
 
+-- | Set text in boldface. Take care: if the text passed to this begins or ends
+-- with an apostrophe, you may get incorrect results. Mixing with italics,
+-- however, does work.
 boldText :: Text -> Text
 boldText = Doc.doc2text . bold . Doc.strictText
 
--- Produce output based on a boolean (i.e. if-then-else).
--- Needed because the i18n templates don't understand this syntax, but instead
--- interpret these three keywords as identifiers.
+-- | Produce output based on a boolean (i.e. if-then-else). Needed because the
+-- i18n templates don't understand this syntax, but instead interpret these
+-- three keywords as identifiers.
+--
+-- You don't need to use this in the non-TH version of "Messages". Just use
+-- plain old if-then-else.
 ifThenElse :: Bool -> a -> a -> a
 ifThenElse yn yes no = if yn then yes else no
--- Specialized versions, to help type inference
+
+-- | As 'ifThenElse', but specialized to 'Text'. This is needed because, in the
+-- presence of the OverloadedStrings extension, type inference doesn't know
+-- what specific string type you mean when you use a string literal.
 ifThenElseT :: Bool -> Text -> Text -> Text
 ifThenElseT = ifThenElse

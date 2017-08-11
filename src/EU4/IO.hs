@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-|
+Module      : EU4.IO
+Description : Read Europa Universalis IV scripts and parse to raw AST
+-}
 module EU4.IO (
         readEU4Scripts
     ,   module FileIO
@@ -14,9 +18,10 @@ import Abstract -- everything
 import FileIO (buildPath, readScript)
 import SettingsTypes (Settings (..))
 
--- Read all scripts in a directory.
+-- | Read all scripts in a directory.
+--
 -- Return: for each file, its path relative to the game root and the parsed
---         script.
+-- script.
 readEU4Scripts :: Settings -> FilePath -> IO [(FilePath, GenericScript)]
 readEU4Scripts settings category =
     let sourceSubdir = case category of

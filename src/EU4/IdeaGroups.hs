@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings, FlexibleContexts, QuasiQuotes #-}
+{-|
+Module      : EU4.IdeaGroups
+Description : Feature handler for Europa Universalis IV idea groups
+-}
 module EU4.IdeaGroups (
         IdeaGroup (..)
     ,   Idea (..)
@@ -44,10 +48,13 @@ import SettingsTypes ( PPT, Settings (..), Game (..)
                      , getGameL10n
                      , setCurrentFile, withCurrentFile)
 
--- Starts off Nothing everywhere, except name (will get filled in immediately).
+-- | Empty idea group. Starts off Nothing everywhere, except id and name
+-- (should get filled in immediately).
 newIdeaGroup :: IdeaGroup
 newIdeaGroup = IdeaGroup undefined undefined Nothing Nothing Nothing Nothing False [] Nothing Nothing
 
+-- | Take the idea group scripts from game data and parse them into idea group
+-- data structures.
 parseEU4IdeaGroups :: (IsGameData (GameData g),
                        IsGameState (GameState g),
                        Monad m) =>
@@ -63,6 +70,7 @@ parseEU4IdeaGroups ideaGroupScripts = do
     -- This maps a filename to a map of id -> group.
     return (HM.unions (HM.elems groupFiles))
 
+-- | Interpret a single idea group script.
 parseIdeaGroup :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
     GenericStatement -> ExceptT String (PPT g m) IdeaGroup
 parseIdeaGroup (StatementBare _) = throwError "bare statement at top level"
@@ -81,6 +89,7 @@ parseIdeaGroup [pdx| %left = %right |] = case right of
     _ -> throwError "warning: unknown statement in idea group file"
 parseIdeaGroup _ = error "idea group defined via operator other than ="
 
+-- | Interpret one section of an idea group script.
 ideaGroupAddSection :: (IsGameData (GameData g), Monad m) =>
     IdeaGroup -> GenericStatement -> PPT g m IdeaGroup
 ideaGroupAddSection ig [pdx| $label = %rhs |] =
@@ -112,7 +121,7 @@ ideaGroupAddSection ig [pdx| $label = %rhs |] =
             _               -> return ig
 ideaGroupAddSection ig  _ = return ig
 
--- Pick an icon for the idea, based on the first of its effects.
+-- | Pick an icon for the idea, based on the first of its effects.
 iconForIdea' :: Idea -> Maybe Text
 iconForIdea' idea = case idea_effects idea of
     (Statement (GenericLhs eff) OpEq _:_) -> iconKey eff
@@ -123,10 +132,11 @@ iconForIdea idea = case iconForIdea' idea of
     Nothing -> mempty
     Just icon -> Doc.strictText icon
 
--- Do some text substitutions to add 'ideaNicon' args to the idea group
+-- | Do some text substitutions to add 'ideaNicon' args to the idea group
 -- template, and remove/comment out undesirable icon templates.
 --
 -- TODO: convert icon keys to icon file names.
+--
 -- XXX: do this properly in the first place.
 fixup :: Doc -> Doc
 fixup = Doc.strictText . T.unlines . map (TE.decodeUtf8
@@ -158,6 +168,8 @@ fixup = Doc.strictText . T.unlines . map (TE.decodeUtf8
             [pre, "idea", nth, "icon = ", iconFileB (fst (matcharr ! 2))
             ,"\n| idea", nth, "effect = ", post]
 
+-- | Present the parsed idea groups as wiki text and write them to the
+-- appropriate files.
 writeEU4IdeaGroups :: (EU4Info g, MonadIO m) => PPT g m ()
 writeEU4IdeaGroups = do
     groups <- getIdeaGroups
@@ -171,6 +183,7 @@ writeEU4IdeaGroups = do
                   pathedGroups
                   ppIdeaGroup {- need IdeaGroup -> PPT g IO (FilePath, Doc) -}
 
+-- | Present a single idea group.
 ppIdeaGroup :: (EU4Info g, Monad m) => IdeaGroup -> PPT g (ExceptT Text m) Doc
 ppIdeaGroup ig = fixup <$> do
     version <- gets (gameVersion . getSettings)

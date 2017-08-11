@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
+{- |
+Module      : Settings
+Description : Load configuration files and localization
+-}
 module Settings (
         Settings (..)
     ,   readSettings
@@ -36,7 +40,7 @@ import HOI4.Settings (HOI4 (..))
 import Stellaris.Settings (Stellaris (..))
 import Vic2.Settings (Vic2 (..))
 
--- intermediate structure. Maybe values don't need to be present in the
+-- | Intermediate structure. Maybe values don't need to be present in the
 -- settings file.
 data SettingsInput = SettingsInput {
         steamDriveI  :: Maybe String
@@ -62,13 +66,16 @@ instance FromJSON SettingsInput where
             _ -> fail "bad settings file"
     parseJSON _ = fail "bad settings file"
 
+-- | Supported platforms. As far as I know, these are the only platforms that
+-- Steam supports.
 data Platform
     = Linux
     | MacOS
     | WindowsXP
-    | Windows -- 7 or later (and Vista?)
-    | Unknown -- AFAIK, these are the only platforms that Steam supports.
+    | Windows -- ^ 7 or later (and Vista?)
+    | Unknown
     deriving (Eq, Show)
+-- | Which platform this program was compiled on.
 platform :: Platform
 platform = case map toLower System.Info.os of
     "linux" -> Linux
@@ -82,6 +89,10 @@ platform = case map toLower System.Info.os of
         | otherwise                -> Unknown
 {-# INLINE platform #-}
 
+-- | Supported command-line options.
+--
+-- [@-p@ or @--paths@] Show location of configuration files
+-- [@-v@ or @--version@] Show version information
 programOpts :: [OptDescr CLArgs]
 programOpts =
     [ Option ['p'] ["paths"]   (NoArg Paths)   "show location of configuration files"
@@ -90,9 +101,6 @@ programOpts =
 
 -- | Process command-line arguments, then read the settings and localization
 -- files. If we can't, abort.
---
--- The argument is an action to run after all other settings have been
--- initialized, in order to get extra information.
 readSettings :: IO Settings
 readSettings = do
     (opts, nonopts, errs) <- getOpt Permute programOpts <$> getArgs

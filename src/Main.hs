@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings, LambdaCase #-}
+{-|
+Module      : Main
+Description : Entry point for pdxparse executable
+-}
 module Main where
 
 import Control.Monad (join)
@@ -18,6 +22,7 @@ import SettingsTypes ( Settings (..), Game (..), IsGame (..)
                      , readScripts, parseScripts, writeScripts
                      , hoistExceptions)
 
+-- | Entry point for the program.
 main :: IO ()
 main = do
     -- Do platform-specific initialization

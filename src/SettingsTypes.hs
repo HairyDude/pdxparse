@@ -125,9 +125,15 @@ class IsGame g where
     parseScripts :: Monad m => PPT g m ()
     -- | Action to output the game scripts.
     writeScripts :: MonadIO m => PPT g m ()
-    -- | Game data type. Should be an instance of 'IsGameData'.
+    -- | Game data type. Should be an instance of 'IsGameData' and include all
+    -- parsed data needed by the game's statement handlers.
     data GameData g
-    -- | Parser state type. Should be an instance of 'IsGameState'.
+    -- | Parser state type. Should be an instance of 'IsGameState' and include
+    -- a stack of context types (e.g. bonus, country, province, trade node,
+    -- etc.). The topmost element indicates the current scope, which affects
+    -- the interpretation of some statements for example, for EU4,
+    -- @prestige = 1@ in bonus scope means "+1 yearly prestige", in a command
+    -- scope means "gain 1 prestige".
     data GameState g
     runWithInitState :: g -> Settings -> PPT g IO () -> IO ()
     -- | Scopes for the scope stack. This is an associated type synonym rather
@@ -139,8 +145,9 @@ class IsGame g where
     -- | Query the current scope.
     getCurrentScope :: Monad m => PPT g m (Maybe (Scope g))
 
--- | Example game. Define your game type and its 'IsGame' instance in your
--- game's @Settings@ module.
+-- Example game. Define your game and its 'IsGame' instance in your game's
+-- 'Settings' module. Do NOT define it in Types. Instead, have game-specific
+-- code be polymorphic over Game.
 data UnknownGame = UnknownGame
 instance IsGame UnknownGame where
     locScheme _ = L10nQYAML
@@ -164,7 +171,7 @@ instance IsGame UnknownGame where
         UGS $ st { ugScopeStack = s : ugScopeStack st }
     getCurrentScope = asks $ listToMaybe . ugScopeStack . ugs
 
--- | Example scope, data and state types. Define these in the Types module,
+-- | Example scope, data and state types. Define these in the 'Types' module,
 -- including instances.
 data UnknownGameScope = UnknownGameScope
 

@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
+{-|
+Module      : EU4.Policies
+Description : Feature handler for Europa Universalis IV policies
+-}
 module EU4.Policies where
 
 import Control.Monad.Except (MonadError (..))

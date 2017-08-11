@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, QuasiQuotes, FlexibleContexts #-}
+{-|
+Module      : HOI4.Common
+Description : Statement handlers for Hearts of Iron IV
+-}
 module HOI4.Common (
         pp_script
     ,   pp_mtth
@@ -55,12 +59,17 @@ import HOI4.Types -- everything
 
 -- no particular order from here... TODO: organize this!
 
+-- | Convert a single (possibly compound) statement into a (series of) indented
+-- message(s).
 msgToPP :: (IsGameState (GameState g), Monad m) => ScriptMessage -> PPT g m IndentedMessages
 msgToPP msg = (:[]) <$> alsoIndent' msg
 
+-- | Does the given text look like a country tag? I.e. does it consist of 3
+-- upper-case letters?
 isTag :: Text -> Bool
 isTag s = T.length s == 3 && T.all isUpper s
 
+-- | Is the given text a "prounoun" (e.g. ROOT)?
 isPronoun :: Text -> Bool
 isPronoun s = T.map toLower s `S.member` pronouns where
     pronouns = S.fromList
@@ -70,11 +79,12 @@ isPronoun s = T.map toLower s `S.member` pronouns where
         ,"controller"
         ]
 
+-- | Format a script as wiki text.
 pp_script :: (HOI4Info g, Monad m) => GenericScript -> PPT g m Doc
 pp_script [] = return "(Nothing)"
 pp_script script = imsg2doc_html =<< ppMany script
 
--- Emit flag template if the argument is a tag.
+-- | Emit @{{flag}}@ template if the argument looks like a tag.
 flag :: (IsGameData (GameData g), Monad m) => Text -> PPT g m Doc
 flag name =
     if isTag name
@@ -91,37 +101,49 @@ icon what = template "icon" [HM.lookupDefault what what scriptIconTable, "28px"]
 iconText :: Text -> Text
 iconText = Doc.doc2text . icon
 
+-- | Create a generic message from a piece of text. The rendering function will
+-- pass this through unaltered.
 plainMsg :: (IsGameState (GameState g), Monad m) =>
     Text -> PPT g m IndentedMessages
 plainMsg msg = (:[]) <$> (alsoIndent' . MsgUnprocessed $ msg)
 
--- Surround a doc in a <pre> element.
+-- | Pretty-print a statement and wrap it in a @<pre>@ element.
 pre_statement :: GenericStatement -> Doc
 pre_statement stmt = "<pre>" <> genericStatement2doc stmt <> "</pre>"
 
--- Don't use Doc.doc2text, because it uses renderCompact which is not what we want
--- here.
+-- | 'Text' version of 'pre_statement'.
+pre_statement' :: GenericStatement -> Text
+pre_statement' = Doc.doc2text . pre_statement
+
+-- | Pretty-print a script statement, wrap it in a @<pre>@ element, and emit a
+-- generic message for it.
 preMessage :: GenericStatement -> ScriptMessage
 preMessage = MsgUnprocessed
             . TL.toStrict
             . PP.displayT
-            . PP.renderPretty 0.8 80
+            . PP.renderPretty 0.8 80 -- Don't use 'Doc.doc2text', because it uses
+                                     -- 'Doc.renderCompact' which is not what
+                                     -- we want here.
             . pre_statement
 
+-- | Pretty-print a script statement, wrap it in a @<pre>@ element, and emit a
+-- generic message for it at the current indentation level. This is the
+-- fallback in case we haven't implemented that particular statement or we
+-- failed to understand it.
 preStatement :: (IsGameState (GameState g), Monad m) => GenericStatement -> PPT g m IndentedMessages
 preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
 
--- Text version
-pre_statement' :: GenericStatement -> Text
-pre_statement' = Doc.doc2text . pre_statement
-
+-- | Extract the appropriate message(s) from a script.
 ppMany :: (HOI4Info g, Monad m) => GenericScript -> PPT g m IndentedMessages
 ppMany scr = indentUp (concat <$> mapM ppOne scr)
+
+-- | Convenience synonym.
+type StatementHandler g m = GenericStatement -> PPT g m IndentedMessages
 
 -- Table of handlers for statements.
 -- Dispatch on strings is /much/ quicker using a lookup table than a
 -- huge case statement, which uses (==) on each one in turn.
-ppHandlers :: (HOI4Info g, Monad m) => Trie (GenericStatement -> PPT g m IndentedMessages)
+ppHandlers :: (HOI4Info g, Monad m) => Trie (StatementHandler g m)
 ppHandlers = Tr.fromList
         -- Statements where RHS is irrelevant (usually "yes")
         [
@@ -225,8 +247,7 @@ ppHandlers = Tr.fromList
         ,("tooltip"       , const (plainMsg "(explanatory tooltip - delete this line)"))
         ]
 
-ppOne :: (HOI4Info g, Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+ppOne :: (HOI4Info g, Monad m) => StatementHandler g m
 ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
     GenericLhs label -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
         Just handler -> handler stmt
@@ -339,8 +360,7 @@ pp_mtth = pp_mtth' . foldl' addField newMTTH
 -- General statement handlers --
 --------------------------------
 
-compound :: (HOI4Info g, Monad m) =>
-    Text -> GenericStatement -> PPT g m IndentedMessages
+compound :: (HOI4Info g, Monad m) => Text -> StatementHandler g m
 compound header [pdx| %_ = @scr |]
     = withCurrentIndent $ \_ -> do -- force indent level at least 1
         headerMsg <- plainMsg (header <> ":")
@@ -348,8 +368,7 @@ compound header [pdx| %_ = @scr |]
         return $ headerMsg ++ scriptMsgs
 compound _ stmt = preStatement stmt
 
-compoundMessage :: (HOI4Info g, Monad m) =>
-    ScriptMessage -> GenericStatement -> PPT g m IndentedMessages
+compoundMessage :: (HOI4Info g, Monad m) => ScriptMessage -> StatementHandler g m
 compoundMessage header [pdx| %_ = @scr |]
     = withCurrentIndent $ \i -> do
         script_pp'd <- ppMany scr
@@ -360,9 +379,7 @@ compoundMessage _ stmt = preStatement stmt
 withLocAtom :: (IsGameData (GameData g),
                 IsGameState (GameState g),
                 Monad m) =>
-    (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+    (Text -> ScriptMessage) ->  StatementHandler g m
 withLocAtom msg [pdx| %_ = ?key |]
     = msgToPP =<< msg <$> getGameL10n key
 withLocAtom _ stmt = preStatement stmt
@@ -374,8 +391,7 @@ withLocAtom2 :: (IsGameData (GameData g),
                  Monad m) =>
     ScriptMessage
         -> (Text -> Text -> Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withLocAtom2 inMsg msg [pdx| %_ = ?key |]
     = msgToPP =<< msg <$> pure key <*> messageText inMsg <*> getGameL10n key
 withLocAtom2 _ _ stmt = preStatement stmt
@@ -385,8 +401,7 @@ withLocAtomAndIcon :: (IsGameData (GameData g),
                        Monad m) =>
     Text
         -> (Text -> Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withLocAtomAndIcon iconkey msg [pdx| %_ = $key |]
     = do what <- getGameL10n key
          msgToPP $ msg (iconText iconkey) what
@@ -396,8 +411,7 @@ withLocAtomIcon :: (IsGameData (GameData g),
                     IsGameState (GameState g),
                     Monad m) =>
     (Text -> Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withLocAtomIcon msg stmt@[pdx| %_ = $key |]
     = withLocAtomAndIcon (fromMaybe key (iconKey key)) msg stmt
 withLocAtomIcon _ stmt = preStatement stmt
@@ -419,8 +433,7 @@ withProvince :: (IsGameData (GameData g),
                  IsGameState (GameState g),
                  Monad m) =>
     (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withProvince msg [pdx| %lhs = !provid |]
     = withLocAtom msg [pdx| %lhs = $(T.pack ("PROV" <> show (provid::Int))) |]
 withProvince _ stmt = preStatement stmt
@@ -437,8 +450,7 @@ withNonlocAtom2 :: (IsGameData (GameData g),
                     Monad m) =>
     ScriptMessage
         -> (Text -> Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withNonlocAtom2 submsg msg [pdx| %_ = ?txt |] = do
     extratext <- messageText submsg
     msgToPP $ msg extratext txt
@@ -460,16 +472,14 @@ iconKey atom = HM.lookup atom scriptIconTable
 -- handler
 numeric :: (IsGameState (GameState g), Monad m) =>
     (Double -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 numeric msg [pdx| %_ = !n |] = msgToPP $ msg n
 numeric _ stmt = plainMsg $ pre_statement' stmt
 
 -- Generic statement referring to a country. Use a flag.
 withFlag :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
     (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withFlag msg [pdx| %_ = $who |] = msgToPP =<< do
     whoflag <- flag who
     return . msg . Doc.doc2text $ whoflag
@@ -477,8 +487,7 @@ withFlag _ stmt = plainMsg $ pre_statement' stmt
 
 withBool :: (IsGameState (GameState g), Monad m) =>
     (Bool -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withBool msg stmt = do
     fullmsg <- withBool' msg stmt
     maybe (preStatement stmt)
@@ -501,8 +510,7 @@ withBool' _ _ = return Nothing
 withFlagOrBool :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
     (Bool -> ScriptMessage)
         -> (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withFlagOrBool bmsg _ [pdx| %_ = yes |] = msgToPP (bmsg True)
 withFlagOrBool bmsg _ [pdx| %_ = no  |]  = msgToPP (bmsg False)
 withFlagOrBool _ tmsg stmt = withFlag tmsg stmt
@@ -510,8 +518,7 @@ withFlagOrBool _ tmsg stmt = withFlag tmsg stmt
 numericIcon :: (IsGame g, IsGameState (GameState g), Monad m) =>
     Text
         -> (Text -> Double -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 numericIcon the_icon msg [pdx| %_ = !amt |]
     = msgToPP $ msg (iconText the_icon) amt
 numericIcon _ _ stmt = plainMsg $ pre_statement' stmt
@@ -520,8 +527,7 @@ numericIconBonus :: (IsGame g, IsGameState (GameState g), Monad m) =>
     Text
         -> (Text -> Double -> ScriptMessage)
         -> (Text -> Double -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 numericIconBonus the_icon plainmsg yearlymsg [pdx| %_ = !amt |]
     = do
         mscope <- getCurrentScope
@@ -560,7 +566,7 @@ numericIconBonus _ _ _ stmt = plainMsg $ pre_statement' stmt
 -- We additionally attempt to localize the RHS of "what". If it has no
 -- localization string, it gets wrapped in a tt element instead.
 
--- convenience synonym
+-- | Synonym for 'getGameL10nIfPresent'.
 tryLoc :: (IsGameData (GameData g), Monad m) => Text -> PPT g m (Maybe Text)
 tryLoc = getGameL10nIfPresent
 
@@ -576,7 +582,7 @@ textValue :: forall g m. (IsGameState (GameState g), Monad m) =>
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value < 1
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value >= 1
         -> (Text -> PPT g m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
-        -> GenericStatement -> PPT g m IndentedMessages
+        -> StatementHandler g m
 textValue whatlabel vallabel smallmsg bigmsg loc stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_tv (foldl' addLine newTV scr)
     where
@@ -597,16 +603,20 @@ textValue whatlabel vallabel smallmsg bigmsg loc stmt@[pdx| %_ = @scr |]
 textValue _ _ _ _ _ stmt = preStatement stmt
 
 -- | Statements of the form
+-- @
 --      has_trade_modifier = {
 --          who = ROOT
 --          name = merchant_recalled
 --      }
+-- @
 data TextAtom = TextAtom
         {   ta_what :: Maybe Text
         ,   ta_atom :: Maybe Text
         }
+-- | Empty 'TextAtom'
 newTA :: TextAtom
 newTA = TextAtom Nothing Nothing
+-- | Interpret a statement of this form.
 textAtom :: forall g m. (IsGameData (GameData g),
                          IsGameState (GameState g),
                          Monad m) =>
@@ -614,7 +624,7 @@ textAtom :: forall g m. (IsGameData (GameData g),
         -> Text -- ^ Label for atom
         -> (Text -> Text -> Text -> ScriptMessage) -- ^ Message constructor
         -> (Text -> PPT g m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
-        -> GenericStatement -> PPT g m IndentedMessages
+        -> StatementHandler g m
 textAtom whatlabel atomlabel msg loc stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_ta (foldl' addLine newTA scr)
     where
@@ -669,10 +679,9 @@ ppAiMod (AIModifier Nothing _) =
 -- Specific statement handlers --
 ---------------------------------
 
--- Modifiers
-
+-- | Modifiers
 addModifier :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+     StatementHandler g m
 addModifier stmt@(Statement _ OpEq (CompoundRhs
         [[pdx| modifier = ?mod_name |]
         ,[pdx| days     = !mod_days |]]))
@@ -683,19 +692,21 @@ addModifier stmt = preStatement stmt
 
 -- Opinions
 
--- Add an opinion modifier towards someone (for a number of years).
+-- | Add an opinion modifier towards someone (for a number of years).
 data AddOpinion = AddOpinion {
         op_who :: Maybe Text
     ,   op_modifier :: Maybe Text
     ,   op_years :: Maybe Double
     } deriving Show
+-- | Empty AddOpinion
 newAddOpinion :: AddOpinion
 newAddOpinion = AddOpinion Nothing Nothing Nothing
 
+-- | Handler for adding an opinion modifier.
 opinion :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
     (Text -> Text -> ScriptMessage)
         -> (Text -> Text -> Double -> ScriptMessage)
-        -> GenericStatement -> PPT g m IndentedMessages
+        -> StatementHandler g m
 opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_add_opinion (foldl' addLine newAddOpinion scr)
     where
@@ -713,14 +724,17 @@ opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
             _ -> trace ("failed! modifier op is " ++ show (op_modifier op)) $ return (preMessage stmt)
 opinion _ _ stmt = preStatement stmt
 
+-- | Trigger for comparing opinion.
 data HasOpinion = HasOpinion
         {   hop_who :: Maybe Text
         ,   hop_value :: Maybe Double
         }
+-- | Empty 'HasOpinion'
 newHasOpinion :: HasOpinion
 newHasOpinion = HasOpinion Nothing Nothing
+-- | Handler for comparing opinion.
 hasOpinion :: forall g m. (IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+     StatementHandler g m
 hasOpinion stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_hasOpinion (foldl' addLine newHasOpinion scr)
     where
@@ -737,17 +751,19 @@ hasOpinion stmt = preStatement stmt
 
 -- Events
 
+-- | Triggering an event
 data TriggerEvent = TriggerEvent
         { e_id :: Maybe Text
         , e_title_loc :: Maybe Text
         , e_days :: Maybe Double
         }
+-- | Empty 'TriggerEvent'
 newTriggerEvent :: TriggerEvent
 newTriggerEvent = TriggerEvent Nothing Nothing Nothing
+-- | Handler for event triggers.
 triggerEvent :: forall g m. (HOI4Info g, Monad m) =>
     ScriptMessage
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 triggerEvent evtType stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_trigger_event =<< foldM addLine newTriggerEvent scr
     where
@@ -773,8 +789,9 @@ triggerEvent _ stmt = preStatement stmt
 
 -- Random
 
+-- | Handler for @random@ blocks.
 random :: (HOI4Info g, Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+     StatementHandler g m
 random stmt@[pdx| %_ = @scr |]
     | (front, back) <- break
                         (\substmt -> case substmt of
@@ -790,8 +807,9 @@ random stmt@[pdx| %_ = @scr |]
     | otherwise = compoundMessage MsgRandom stmt
 random stmt = preStatement stmt
 
+-- | Handler for @random_list@ blocks.
 randomList :: (HOI4Info g, Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+     StatementHandler g m
 randomList stmt@[pdx| %_ = @scr |] = fmtRandomList $ map entry scr
     where
         entry [pdx| !weight = @scr |] = (fromIntegral weight, scr)
@@ -808,7 +826,8 @@ randomList stmt = withCurrentFile $ \file ->
 
 -- DLC
 
-hasDlc :: (IsGameState (GameState g), Monad m) => GenericStatement -> PPT g m IndentedMessages
+-- | Handler for @has_dlc@.
+hasDlc :: (IsGameState (GameState g), Monad m) => StatementHandler g m
 hasDlc [pdx| %_ = ?dlc |]
     = msgToPP $ MsgHasDLC dlc_icon dlc
     where
@@ -820,20 +839,21 @@ hasDlc stmt = preStatement stmt
 
 -- Switch / Trigger switch
 
-triggerSwitch :: (HOI4Info g, Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
--- A trigger switch must be of the form
--- trigger_switch = {
---  on_trigger = <statement lhs>
---  <statement rhs> = {
---      <actions>
---  }
--- }
+-- | A trigger switch must be of the form
+-- @
+--     trigger_switch = {
+--         on_trigger = <statement lhs>
+--         <statement rhs> = {
+--             <actions>
+--         }
+--     }
+-- @
 -- where the <statement rhs> block may be repeated several times.
 --
 -- Switches are the same, but the head is `switch` and the trigger clause is
 -- `trigger` instead of `on_trigger`. Semantically `trigger_switch` is used in
 -- triggers; `switch` is used in actions.
+triggerSwitch :: (HOI4Info g, Monad m) => StatementHandler g m
 triggerSwitch stmt@(Statement _ OpEq (CompoundRhs
                     ([pdx| $triggerClause = $condlhs |] -- assume this is first statement
                     :clauses)))
@@ -852,8 +872,9 @@ triggerSwitch stmt@(Statement _ OpEq (CompoundRhs
     withCurrentIndent $ \i -> return $ (i, MsgTriggerSwitch) : concat statementsMsgs
 triggerSwitch stmt = preStatement stmt
 
+-- | Handler for @is_month@.
 isMonth :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+     StatementHandler g m
 isMonth [pdx| %_ = !(num :: Int) |] | num >= 1, num <= 12
     = do
         month_loc <- getGameL10n $ case num of
@@ -873,8 +894,10 @@ isMonth [pdx| %_ = !(num :: Int) |] | num >= 1, num <= 12
         msgToPP $ MsgIsMonth month_loc
 isMonth stmt = preStatement stmt
 
+-- | Handler for @custom_trigger_tooltip@. This bundles a trigger, which is
+-- hidden, with a custom tooltip.
 customTriggerTooltip :: (HOI4Info g, Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+     StatementHandler g m
 customTriggerTooltip [pdx| %_ = @scr |]
     -- ignore the custom tooltip
     = let rest = flip filter scr $ \stmt -> case stmt of

@@ -856,6 +856,12 @@ handlersSpecialComplex = Tr.fromList
         ,("declare_war_with_cb"          , declareWarWithCB)
         ,("define_advisor"               , defineAdvisor)
         ,("define_ruler"                 , defineRuler)
+        ,("estate_influence"             , textValue "estate" "influence" MsgEstateInfluence MsgEstateInfluence tryLoc)
+        ,("estate_loyalty"               , textValue "estate" "loyalty" MsgEstateLoyalty MsgEstateLoyalty tryLoc)
+        ,("had_country_flag"             , textValue "flag" "days" MsgHadCountryFlag MsgHadCountryFlag tryLoc)
+        ,("had_global_flag"              , textValue "flag" "days" MsgHadGlobalFlag MsgHadGlobalFlag tryLoc)
+        ,("had_province_flag"            , textValue "flag" "days" MsgHadProvinceFlag MsgHadProvinceFlag tryLoc)
+        ,("had_ruler_flag"               , textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLoc)
         ,("has_estate_influence_modifier", hasEstateInfluenceModifier)
         ,("has_opinion"                  , hasOpinion)
         ,("has_opinion_modifier"         , opinion MsgHasOpinionMod (\what who _years -> MsgHasOpinionMod what who))
@@ -1200,7 +1206,7 @@ scriptIconTable = HM.fromList
     ,("trade_ideas", "trade")
     ]
 
--- | Given a script atom, return the corresponding icon key, if any.
+-- Given a script atom, return the corresponding icon key, if any.
 iconKey :: Text -> Maybe Text
 iconKey atom = HM.lookup atom scriptIconTable
 

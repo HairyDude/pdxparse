@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
+{-|
+Module      : EU4.Missions
+Description : Feature handler for Europa Universalis IV missions
+-}
 module EU4.Missions where
 
 import Control.Monad.Except (MonadError (..))
