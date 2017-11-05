@@ -1,4 +1,8 @@
 {-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, QuasiQuotes, FlexibleContexts #-}
+{-|
+Module      : EU4.Common
+Description : Message handler for Europa Universalis IV
+-}
 module EU4.Common (
         pp_script
     ,   pp_mtth
@@ -52,7 +56,7 @@ import SettingsTypes ( PPT, Settings (..), GameState (..)
                      , Game (..), IsGame (..), IsGameData (..), IsGameState (..)
                      , getGameL10n, getGameL10nIfPresent, getGameL10nDefault
                      , indentUp, indentDown, alsoIndent', withCurrentIndent, withCurrentIndentZero
-                     , unfoldM)
+                     , unfoldM, unsnoc)
 import EU4.Types -- everything
 
 isGeographic :: EU4Scope -> Bool
@@ -79,6 +83,7 @@ isPronoun s = T.map toLower s `S.member` pronouns where
         ,"controller"
         ]
 
+-- | Format a script as wiki text.
 pp_script :: (EU4Info g, Monad m) =>
     GenericScript -> PPT g m Doc
 pp_script [] = return "(Nothing)"
@@ -115,40 +120,84 @@ icon what = template "icon" [HM.lookupDefault what what scriptIconTable, "28px"]
 iconText :: Text -> Text
 iconText = Doc.doc2text . icon
 
+-- | Create a generic message from a piece of text. The rendering function will
+-- pass this through unaltered.
 plainMsg :: (IsGameState (GameState g), Monad m) => Text -> PPT g m IndentedMessages
 plainMsg msg = (:[]) <$> (alsoIndent' . MsgUnprocessed $ msg)
 
--- Surround a doc in a <pre> element.
+-- | Pretty-print a statement and wrap it in a @<pre>@ element.
 pre_statement :: GenericStatement -> Doc
 pre_statement stmt = "<pre>" <> genericStatement2doc stmt <> "</pre>"
 
--- Don't use Doc.doc2text, because it uses renderCompact which is not what we want
--- here.
+-- | 'Text' version of 'pre_statement'.
+pre_statement' :: GenericStatement -> Text
+pre_statement' = Doc.doc2text . pre_statement
+
+-- | Pretty-print a script statement, wrap it in a @<pre>@ element, and emit a
+-- generic message for it.
 preMessage :: GenericStatement -> ScriptMessage
 preMessage = MsgUnprocessed
             . TL.toStrict
             . PP.displayT
-            . PP.renderPretty 0.8 80
+            . PP.renderPretty 0.8 80 -- Don't use 'Doc.doc2text', because it uses
+                                     -- 'Doc.renderCompact' which is not what
+                                     -- we want here.
             . pre_statement
 
+-- | Pretty-print a script statement, wrap it in a @<pre>@ element, and emit a
+-- generic message for it at the current indentation level. This is the
+-- fallback in case we haven't implemented that particular statement or we
+-- failed to understand it.
 preStatement :: (IsGameState (GameState g), Monad m) =>
     GenericStatement -> PPT g m IndentedMessages
 preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
 
--- Text version
-pre_statement' :: GenericStatement -> Text
-pre_statement' = Doc.doc2text . pre_statement
-
+-- | Extract the appropriate message(s) from a script.
 ppMany :: (EU4Info g, Monad m) => GenericScript -> PPT g m IndentedMessages
 ppMany scr = indentUp (concat <$> mapM ppOne scr)
 
--- Table of handlers for statements.
--- Dispatch on strings is /much/ quicker using a lookup table than a
--- huge case statement, which uses (==) on each one in turn.
-ppHandlers :: (EU4Info g, Monad m) =>
-    Trie (GenericStatement -> PPT g m IndentedMessages)
-ppHandlers = Tr.fromList
-        -- Statements where RHS is irrelevant (usually "yes")
+-- | Convenience synonym.
+type StatementHandler g m = GenericStatement -> PPT g m IndentedMessages
+
+-- | Table of handlers for statements. Dispatch on strings is /much/ quicker
+-- using a lookup table than a huge @case@ expression, which uses @('==')@ on
+-- each one in turn.
+--
+-- When adding a new statement handler, add it to one of the sections in
+-- alphabetical order if possible, and use one of the generic functions for it
+-- if applicable.
+ppHandlers :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+ppHandlers = foldl' Tr.unionL Tr.empty
+    [ handlersRhsIrrelevant
+    , handlersNumeric
+    , handlersNumericIcons
+    , handlersModifiers
+    , handlersCompound
+    , handlersLocRhs
+    , handlersProvince
+    , handlersFlagOrProvince
+    , handlersAdvisorId
+    , handlersTypewriter
+    , handlersSimpleIcon
+    , handlersSimpleFlag
+    , handlersFlagOrYesNo
+    , handlersIconFlagOrPronoun
+    , handlersTagOrProvince -- merge?
+    , handlersYesNo
+    , handlersNumericOrTag
+    , handlersSignedNumeric
+    , handlersNumProvinces
+    , handlersTextValue
+    , handlersSpecialComplex
+    , handlersRebels
+    , handlersIdeaGroups
+    , handlersMisc
+    , handlersIgnored
+    ]
+
+-- | Handlers for statements where RHS is irrelevant (usually "yes")
+handlersRhsIrrelevant :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersRhsIrrelevant = Tr.fromList
         [("add_cardinal"           , const (msgToPP MsgAddCardinal))
         ,("cancel_construction"    , const (msgToPP MsgCancelConstruction)) -- Canals
         ,("cb_on_overseas"         , const (msgToPP MsgGainOverseasCB)) -- Full Expansion
@@ -167,8 +216,14 @@ ppHandlers = Tr.fromList
         ,("reduced_stab_impacts"   , const (msgToPP MsgReducedStabImpacts)) -- Full Diplomacy
         ,("remove_cardinal"        , const (msgToPP MsgLoseCardinal))
         ,("sea_repair"             , const (msgToPP MsgGainSeaRepair)) -- Full Maritime
-        -- Numbers
-        ,("add_authority"                    , numeric MsgGainAuth) -- Inti
+        -- This should really be boolean, but it's never used in the negative
+        ,("is_free_or_tributary_trigger", const (msgToPP MsgIsFreeOrTributaryTrigger))
+        ]
+
+-- | Handlers for numeric statements
+handlersNumeric :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersNumeric = Tr.fromList
+        [("add_authority"                    , numeric MsgGainAuth) -- Inti
         ,("add_doom"                         , numeric MsgGainDoom)
         ,("add_heir_claim"                   , numeric MsgHeirGainClaim)
         ,("change_siege"                     , numeric MsgGainSiegeProgress)
@@ -188,7 +243,15 @@ ppHandlers = Tr.fromList
         ,("revolt_percentage"                , numeric MsgRevoltPercentage)
         ,("trade_income_percentage"          , numeric MsgTradeIncomePercentage)
         ,("units_in_province"                , numeric MsgUnitsInProvince)
-        -- ... with icons
+        -- Special cases
+        ,("legitimacy_or_horde_unity"        , numeric MsgLegitimacyOrHordeUnity)
+        ]
+
+-- | Handlers for numeric statements with icons
+handlersNumericIcons :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersNumericIcons = Tr.fromList
+        [("absolutism"               , numericIcon "absolutism" MsgAbsolutism)
+        ,("add_absolutism"           , numericIcon "absolutism" MsgGainAbsolutism)
         ,("add_adm_power"            , numericIcon "adm" MsgGainADM)
         ,("add_army_tradition"       , numericIcon "army tradition" MsgGainAT)
         ,("add_base_manpower"        , numericIcon "manpower" MsgGainBM)
@@ -252,6 +315,7 @@ ppHandlers = Tr.fromList
         ,("liberty_desire"           , numericIcon "liberty desire" MsgLibertyDesire)
         ,("local_autonomy"           , numericIcon "local autonomy" MsgLocalAutonomy)
         ,("manpower_percentage"      , numericIcon "manpower" MsgManpowerPercentage)
+        ,("max_absolutism"           , numericIcon "absolutism" MsgMaxAbsolutism)
         ,("mercantilism"             , numericIcon "mercantilism" MsgMercantilism)
         ,("mil"                      , numericIcon "mil" MsgRulerMIL)
         ,("mil_power"                , numericIcon "adm" MsgHasMIL)
@@ -289,6 +353,7 @@ ppHandlers = Tr.fromList
         ,("unrest"                   , numericIcon "unrest" MsgUnrest)
         ,("war_exhaustion"           , numericIconBonus "war exhaustion" MsgWarExhaustion MsgMonthlyWarExhaustion)
         ,("war_score"                , numericIcon "war score" MsgWarScore)
+        ,("yearly_absolutism"        , numericIcon "absolutism" MsgYearlyAbsolutism)
         ,("years_of_income"          , numericIcon "ducats" MsgYearsOfIncome)
         -- Used in ideas and other bonuses, omit "gain/lose" in l10n
         ,("accepted_culture_threshold"        , numericIcon "accepted culture threshold" MsgAccCultureThreshold)
@@ -403,8 +468,12 @@ ppHandlers = Tr.fromList
         ,("vassal_income"                     , numericIcon "income from vassals" MsgIncomeFromVassals)
         ,("war_exhaustion_cost"               , numericIcon "war exhaustion cost" MsgWarExhaustionCost)
         ,("years_of_nationalism"              , numericIcon "years of separatism" MsgYearsOfSeparatism)
-        -- Modifiers
-        ,("add_country_modifier"           , addModifier MsgCountryMod)
+        ]
+
+-- | Handlers for statements pertaining to modifiers
+handlersModifiers :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersModifiers = Tr.fromList
+        [("add_country_modifier"           , addModifier MsgCountryMod)
         ,("add_permanent_province_modifier", addModifier MsgPermanentProvMod)
         ,("add_province_modifier"          , addModifier MsgProvMod)
         ,("add_ruler_modifier"             , addModifier MsgRulerMod)
@@ -415,9 +484,13 @@ ppHandlers = Tr.fromList
         ,("has_trade_modifier"             , tradeMod)
         ,("remove_country_modifier"        , withLocAtom2 MsgCountryMod MsgRemoveModifier)
         ,("remove_province_modifier"       , withLocAtom2 MsgProvMod MsgRemoveModifier)
-        -- Simple compound statements
+        ]
+
+-- | Handlers for simple compound statements
+handlersCompound :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersCompound = Tr.fromList
         -- Note that "any" can mean "all" or "one or more" depending on context.
-        ,("and" , compoundMessage MsgAllOf)
+        [("and" , compoundMessage MsgAllOf)
         ,("root", compoundMessage MsgOurCountry)
         -- These two are ugly, but without further analysis we can't know
         -- what it means.
@@ -428,25 +501,40 @@ ppHandlers = Tr.fromList
         -- There is a semantic distinction between "all" and "every",
         -- namely that the former means "this is true for all <type>" while
         -- the latter means "do this for every <type>."
+        ,("all_core_province"       , scope EU4Province  . compoundMessage MsgAllCoreProvince)
         ,("all_country" {- sic -}   , scope EU4Country   . compoundMessage MsgAllCountries)
+        ,("all_neighbor_country"    , scope EU4Country   . compoundMessage MsgAllNeighborCountries)
         ,("all_owned_province"      , scope EU4Province  . compoundMessage MsgEveryOwnedProvince)
+        ,("all_subject_country"     , scope EU4Country   . compoundMessage MsgAllSubjectCountries)
         ,("any_active_trade_node"   , scope EU4TradeNode . compoundMessage MsgAnyActiveTradeNode)
         ,("any_ally"                , scope EU4Country   . compoundMessage MsgAnyAlly)
-        ,("any_core_country"        , scope EU4Country   . compoundMessage MsgAnyCoreCountry) -- province scope
+        ,("any_core_country"        , scope EU4Country   . compoundMessage MsgAnyCoreCountry) -- used in province scope
+        ,("any_core_province"       , scope EU4Province  . compoundMessage MsgAnyCoreProvince)
         ,("any_country"             , scope EU4Country   . compoundMessage MsgAnyCountry)
+        ,("any_empty_neighbor_province", scope EU4Province  . compoundMessage MsgAnyEmptyNeighborProvince)
         ,("any_enemy_country"       , scope EU4Country   . compoundMessage MsgAnyEnemyCountry)
+        ,("any_heretic_province"    , scope EU4Province  . compoundMessage MsgAnyHereticProvince)
         ,("any_known_country"       , scope EU4Country   . compoundMessage MsgAnyKnownCountry)
         ,("any_neighbor_country"    , scope EU4Country   . compoundMessage MsgAnyNeighborCountry)
         ,("any_neighbor_province"   , scope EU4Province  . compoundMessage MsgAnyNeighborProvince)
         ,("any_owned_province"      , scope EU4Province  . compoundMessage MsgAnyOwnedProvince)
+        ,("any_privateering_country", scope EU4TradeNode . compoundMessage MsgAnyPrivateeringCountry)
+        ,("any_province"            , scope EU4Province  . compoundMessage MsgAnyProvince)
         ,("any_rival_country"       , scope EU4Country   . compoundMessage MsgAnyRival)
         ,("any_subject_country"     , scope EU4Country   . compoundMessage MsgAnySubject)
+        ,("any_trade_node"          , scope EU4TradeNode . compoundMessage MsgAnyTradeNode)
         ,("capital_scope"           , scope EU4Province  . compoundMessage MsgCapital)
         ,("colonial_parent"         , scope EU4Country   . compoundMessage MsgColonialParent)
         ,("controller"              , scope EU4Country   . compoundMessage MsgController)
+        ,("else"                    ,                      compoundMessage MsgElse)
         ,("emperor"                 , scope EU4Country   . compoundMessage MsgEmperor)
+        ,("every_active_trade_node" , scope EU4TradeNode . compoundMessage MsgEveryActiveTradeNode)
+        ,("every_ally"              , scope EU4TradeNode . compoundMessage MsgEveryAlly)
+        ,("every_core_country"      , scope EU4Country   . compoundMessage MsgEveryCoreCountry) -- used in province scope
+        ,("every_core_province"     , scope EU4Province  . compoundMessage MsgEveryCoreProvince)
         ,("every_country"           , scope EU4Country   . compoundMessage MsgEveryCountry)
         ,("every_enemy_country"     , scope EU4Country   . compoundMessage MsgEveryEnemyCountry)
+        ,("every_heretic_province"  , scope EU4Province  . compoundMessage MsgEveryHereticProvince)
         ,("every_known_country"     , scope EU4Country   . compoundMessage MsgEveryKnownCountry)
         ,("every_neighbor_country"  , scope EU4Country   . compoundMessage MsgEveryNeighborCountry)
         ,("every_neighbor_province" , scope EU4Province  . compoundMessage MsgEveryNeighborProvince)
@@ -457,21 +545,35 @@ ppHandlers = Tr.fromList
         ,("hidden_effect"           ,                      compoundMessage MsgHiddenEffect)
         ,("if"                      ,                      compoundMessage MsgIf) -- always needs editing
         ,("limit"                   ,                      compoundMessage MsgLimit) -- always needs editing
+        ,("most_province_trade_power", scope EU4Country  . compoundMessage MsgMostProvinceTradePower)
+        ,("overlord"                , scope EU4Country   . compoundMessage MsgOverlord)
         ,("owner"                   , scope EU4Country   . compoundMessage MsgOwner)
         ,("random_active_trade_node", scope EU4TradeNode . compoundMessage MsgRandomActiveTradeNode)
         ,("random_ally"             , scope EU4Country   . compoundMessage MsgRandomAlly)
         ,("random_core_country"     , scope EU4Country   . compoundMessage MsgRandomCoreCountry)
+        ,("random_core_province"    , scope EU4Country   . compoundMessage MsgRandomCoreProvince)
         ,("random_country"          , scope EU4Country   . compoundMessage MsgRandomCountry)
+        ,("random_elector"          , scope EU4Country   . compoundMessage MsgRandomElector)
+        ,("random_empty_neighbor_province", scope EU4Province . compoundMessage MsgRandomEmptyNeighborProvince)
+        ,("random_heretic_province"    , scope EU4Province  . compoundMessage MsgRandomHereticProvince)
         ,("random_known_country"    , scope EU4Country   . compoundMessage MsgRandomKnownCountry)
         ,("random_list"             ,                      compoundMessage MsgRandom)
         ,("random_neighbor_country" , scope EU4Country   . compoundMessage MsgRandomNeighborCountry)
         ,("random_neighbor_province", scope EU4Province  . compoundMessage MsgRandomNeighborProvince)
         ,("random_owned_province"   , scope EU4Province  . compoundMessage MsgRandomOwnedProvince)
+        ,("random_privateering_country", scope EU4TradeNode . compoundMessage MsgRandomPrivateeringCountry)
         ,("random_province"         , scope EU4Province  . compoundMessage MsgRandomProvince)
         ,("random_rival_country"    , scope EU4Country   . compoundMessage MsgRandomRival)
-        -- Random
-        ,("random", random)
-        -- Simple generic statements (RHS is a localizable atom)
+        ,("random_subject_country"  , scope EU4Country   . compoundMessage MsgRandomSubjectCountry)
+        ,("random_trade_node"       , scope EU4TradeNode . compoundMessage MsgRandomTradeNode)
+        ,("strongest_trade_power"   , scope EU4Country   . compoundMessage MsgStrongestTradePower) -- always needs editing
+        ,("while"                   , scope EU4Country   . compoundMessage MsgWhile) -- always needs editing
+        ]
+
+-- | Handlers for simple statements where RHS is a localizable atom
+handlersLocRhs :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersLocRhs = Tr.fromList
+        [("accepted_culture"      , withLocAtom MsgAcceptedCulture)
         ,("add_great_project"     , withLocAtom MsgStartConstructingGreatProject)
         ,("change_government"     , withLocAtom MsgChangeGovernment)
         ,("continent"             , withLocAtom MsgContinentIs)
@@ -496,26 +598,43 @@ ppHandlers = Tr.fromList
         ,("region"                , withLocAtom MsgRegionIs)
         ,("remove_advisor"        , withLocAtom MsgLoseAdvisor)
         ,("rename_capital"        , withLocAtom MsgRenameCapital) -- will usually fail localization
-        -- RHS is a province ID
-        ,("capital"           , withProvince MsgCapitalIs)
+        ]
+
+-- | Handlers for statements whose RHS is a province ID
+handlersProvince :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersProvince = Tr.fromList
+        [("capital"           , withProvince MsgCapitalIs)
         ,("controls"          , withProvince MsgControls)
         ,("owns"              , withProvince MsgOwns)
         ,("owns_core_province", withProvince MsgOwnsCore)
         ,("owns_or_vassal_of" , withProvince MsgOwnsOrVassal)
         ,("province_id"       , withProvince MsgProvinceIs)
         ,("set_capital"       , withProvince MsgSetCapital)
-        -- RHS is a flag OR a province ID
-        ,("add_permanent_claim", withFlagOrProvince MsgGainPermanentClaimCountry MsgGainPermanentClaimProvince)
+        ]
+
+-- | Handlers for statements whose RHS is a flag OR a province ID
+handlersFlagOrProvince :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersFlagOrProvince = Tr.fromList
+        [("add_permanent_claim", withFlagOrProvince MsgGainPermanentClaimCountry MsgGainPermanentClaimProvince)
         ,("cavalry"            , withFlagOrProvince MsgCavalrySpawnsCountry MsgCavalrySpawnsProvince)
         ,("infantry"           , withFlagOrProvince MsgInfantrySpawnsCountry MsgInfantrySpawnsProvince)
         ,("remove_core"        , withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince)
         -- RHS is a flag or province id, but the statement's meaning depends on the scope
         ,("has_discovered"     , withFlagOrProvinceEU4Scope MsgHasDiscovered MsgDiscoveredBy) -- scope sensitive
-        -- RHS is an advisor ID (TODO: parse advisor files)
-        ,("advisor_exists"     , numeric MsgAdvisorExists)
+        ]
+
+-- TODO: parse advisor files
+-- | Handlers for statements whose RHS is an advisor ID
+handlersAdvisorId :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersAdvisorId = Tr.fromList
+        [("advisor_exists"     , numeric MsgAdvisorExists)
         ,("is_advisor_employed", numeric MsgAdvisorIsEmployed)
-        -- Simple generic statements (typewriter face)
-        ,("clr_country_flag" , withNonlocAtom2 MsgCountryFlag MsgClearFlag)
+        ]
+
+-- | Simple statements whose RHS should be presented as is, in typewriter face
+handlersTypewriter :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersTypewriter = Tr.fromList
+        [("clr_country_flag" , withNonlocAtom2 MsgCountryFlag MsgClearFlag)
         ,("clr_province_flag", withNonlocAtom2 MsgProvinceFlag MsgClearFlag)
         ,("clr_ruler_flag"   , withNonlocAtom2 MsgRulerFlag MsgClearFlag)
         ,("has_country_flag" , withNonlocAtom2 MsgCountryFlag MsgHasFlag)
@@ -526,12 +645,17 @@ ppHandlers = Tr.fromList
         ,("set_global_flag"  , withNonlocAtom2 MsgGlobalFlag MsgSetFlag)
         ,("set_province_flag", withNonlocAtom2 MsgProvinceFlag MsgSetFlag)
         ,("set_ruler_flag"   , withNonlocAtom2 MsgRulerFlag MsgSetFlag)
-        -- Simple generic statements with icon
-        ,("advisor"                 , withLocAtomIcon MsgHasAdvisorType)
+        ]
+
+-- | Handlers for simple statements with icon
+handlersSimpleIcon :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersSimpleIcon = Tr.fromList
+        [("advisor"                 , withLocAtomIcon MsgHasAdvisorType)
         ,("change_technology_group" , withLocAtomIcon MsgChangeTechGroup)
         ,("change_trade_goods"      , withLocAtomIcon MsgChangeGoods)
         ,("change_unit_type"        , withLocAtomIcon MsgChangeUnitType)
         ,("create_advisor"          , withLocAtomIcon MsgCreateAdvisor)
+        ,("current_age"             , withLocAtomIcon MsgCurrentAge)
         ,("dominant_religion"       , withLocAtomIcon MsgDominantReligion)
         ,("has_building"            , withLocAtomIcon MsgHasBuilding)
         ,("has_idea_group"          , withLocAtomIcon MsgHasIdeaGroup) -- FIXME: icon fails
@@ -547,8 +671,12 @@ ppHandlers = Tr.fromList
         ,("has_estate"              , withLocAtomIconEU4Scope MsgEstateExists MsgHasEstate)
         ,("set_estate"              , withLocAtomIcon MsgAssignToEstate)
         ,("is_monarch_leader"       , withLocAtomAndIcon "ruler general" MsgRulerIsGeneral)
-        -- Simple generic statements with flag
-        ,("alliance_with"           , withFlag MsgAlliedWith)
+        ]
+
+-- | Handlers for simple statements with a flag
+handlersSimpleFlag :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersSimpleFlag = Tr.fromList
+        [("alliance_with"           , withFlag MsgAlliedWith)
         ,("cede_province"           , withFlag MsgCedeProvinceTo)
         ,("change_tag"              , withFlag MsgChangeTag)
         ,("controlled_by"           , withFlag MsgControlledBy)
@@ -572,24 +700,40 @@ ppHandlers = Tr.fromList
         ,("release"                 , withFlag MsgReleaseVassal)
         ,("senior_union_with"       , withFlag MsgSeniorUnionWith)
         ,("sieged_by"               , withFlag MsgUnderSiegeBy)
-        ,("is_strongest_trade_power", withFlag MsgStrongestTradePower)
+        ,("is_strongest_trade_power", withFlag MsgIsStrongestTradePower)
         ,("tag"                     , withFlag MsgCountryIs)
         ,("truce_with"              , withFlag MsgTruceWith)
         ,("vassal_of"               , withFlag MsgVassalOf)
         ,("war_with"                , withFlag MsgAtWarWith)
         ,("white_peace"             , withFlag MsgMakeWhitePeace)
-        -- Simple generic statements with flag or "yes"/"no"
-        ,("exists", withFlagOrBool MsgExists MsgCountryExists)
-        -- Statements that may be an icon, a flag, or a pronoun (such as ROOT)
-        -- Boolean argument is whether to emit an icon.
-        ,("religion"       , iconOrFlag MsgReligion MsgSameReligion)
+        ]
+
+-- | Handlers for simple generic statements with a flag or "yes"/"no"
+handlersFlagOrYesNo :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersFlagOrYesNo = Tr.fromList
+        [("exists", withFlagOrBool MsgExists MsgCountryExists)
+        ]
+
+-- | Handlers for statements whose RHS may be an icon, a flag, or a pronoun
+-- (such as ROOT).
+handlersIconFlagOrPronoun :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersIconFlagOrPronoun = Tr.fromList
+        [("religion"       , iconOrFlag MsgReligion MsgSameReligion)
         ,("religion_group" , iconOrFlag MsgReligionGroup MsgSameReligionGroup)
         ,("change_religion", iconOrFlag MsgChangeReligion MsgChangeSameReligion)
-        -- Statements that may be either a tag or a province
-        ,("is_core" , tagOrProvince MsgIsCoreOf MsgHasCoreOn)
+        ]
+
+-- | Handlers for statements whose RHS may be either a tag or a province
+handlersTagOrProvince :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersTagOrProvince = Tr.fromList
+        [("is_core" , tagOrProvince MsgIsCoreOf MsgHasCoreOn)
         ,("is_claim", tagOrProvince MsgHasClaim MsgHasClaimOn)
-        -- Boolean statements
-        ,("ai"                          , withBool MsgIsAIControlled)
+        ]
+
+-- | Handlers for yes/no statements
+handlersYesNo :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersYesNo = Tr.fromList
+        [("ai"                          , withBool MsgIsAIControlled)
         ,("allows_female_emperor"       , withBool MsgFemaleEmperorAllowed)
         ,("always"                      , withBool MsgAlways)
         ,("has_any_disaster"            , withBool MsgHasAnyDisaster)
@@ -645,14 +789,25 @@ ppHandlers = Tr.fromList
         ,("set_in_empire"               , withBool MsgSetInEmpire)
         ,("unit_in_siege"               , withBool MsgUnderSiege) -- duplicate?
         ,("was_player"                  , withBool MsgHasBeenPlayer)
-        -- Statements that may be numeric or a tag
-        ,("num_of_cities", numericOrTag MsgNumCities MsgNumCitiesThan)
-        -- Signed numeric statements
-        ,("tolerance_to_this", numeric MsgToleranceToThis)
-        -- Special cases
-        ,("legitimacy_or_horde_unity", numeric MsgLegitimacyOrHordeUnity)
-        -- Number of provinces of some kind, mostly religions and trade goods
-        ,("orthodox"      , numProvinces "orthodox" MsgReligionProvinces)
+        ]
+
+-- | Handlers for statements that may be numeric or a tag
+handlersNumericOrTag :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersNumericOrTag = Tr.fromList
+        [("num_of_cities", numericOrTag MsgNumCities MsgNumCitiesThan)
+        ]
+
+-- | Handlers for signed numeric statements
+handlersSignedNumeric :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersSignedNumeric = Tr.fromList
+        [("tolerance_to_this", numeric MsgToleranceToThis)
+        ]
+
+-- | Handlers querying the number of provinces of some kind, mostly religions
+-- and trade goods
+handlersNumProvinces :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersNumProvinces = Tr.fromList
+        [("orthodox"      , numProvinces "orthodox" MsgReligionProvinces)
         ,("cloth"         , numProvinces "cloth" MsgGoodsProvinces)
         ,("chinaware"     , numProvinces "chinaware" MsgGoodsProvinces)
         ,("copper"        , numProvinces "copper" MsgGoodsProvinces)
@@ -668,20 +823,25 @@ ppHandlers = Tr.fromList
         ,("spices"        , numProvinces "spices" MsgGoodsProvinces)
         ,("wine"          , numProvinces "wine" MsgGoodsProvinces)
         ,("wool"          , numProvinces "wool" MsgGoodsProvinces)
-        -- Special
-        ,("add_core"            , addCore)
-        ,("add_manpower"        , gainManpower)
-        ,("dominant_culture"    , dominantCulture)
-        ,("faction_in_power"    , factionInPower)
-        ,("government_rank"     , govtRank)
-        ,("has_dlc"             , hasDlc)
-        ,("hre_reform_level"    , hreReformLevel)
-        ,("is_month"            , isMonth)
-        ,("piety"               , piety)
-        ,("range"               , range)
-        ,("set_government_rank" , setGovtRank)
-        -- Special complex statements
-        ,("add_casus_belli"              , addCB True)
+        ]
+
+-- | Handlers for text/value pairs.
+--
+-- $textvalue
+handlersTextValue :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersTextValue = Tr.fromList
+        [("estate_influence"             , textValue "estate" "influence" MsgEstateInfluence MsgEstateInfluence tryLoc)
+        ,("estate_loyalty"               , textValue "estate" "loyalty" MsgEstateLoyalty MsgEstateLoyalty tryLoc)
+        ,("had_country_flag"             , textValue "flag" "days" MsgHadCountryFlag MsgHadCountryFlag tryLoc)
+        ,("had_global_flag"              , textValue "flag" "days" MsgHadGlobalFlag MsgHadGlobalFlag tryLoc)
+        ,("had_province_flag"            , textValue "flag" "days" MsgHadProvinceFlag MsgHadProvinceFlag tryLoc)
+        ,("had_ruler_flag"               , textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLoc)
+        ]
+
+-- | Handlers for special complex statements
+handlersSpecialComplex :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersSpecialComplex = Tr.fromList
+        [("add_casus_belli"              , addCB True)
         ,("add_faction_influence"        , factionInfluence)
         ,("add_estate_loyalty"           , textValue "estate" "loyalty" MsgAddEstateLoyalty MsgAddEstateLoyalty tryLoc)
         ,("add_estate_influence_modifier", estateInfluenceModifier MsgEstateInfluenceModifier)
@@ -696,12 +856,6 @@ ppHandlers = Tr.fromList
         ,("declare_war_with_cb"          , declareWarWithCB)
         ,("define_advisor"               , defineAdvisor)
         ,("define_ruler"                 , defineRuler)
-        ,("estate_influence"             , textValue "estate" "influence" MsgEstateInfluence MsgEstateInfluence tryLoc)
-        ,("estate_loyalty"               , textValue "estate" "loyalty" MsgEstateLoyalty MsgEstateLoyalty tryLoc)
-        ,("had_country_flag"             , textValue "flag" "days" MsgHadCountryFlag MsgHadCountryFlag tryLoc)
-        ,("had_global_flag"              , textValue "flag" "days" MsgHadGlobalFlag MsgHadGlobalFlag tryLoc)
-        ,("had_province_flag"            , textValue "flag" "days" MsgHadProvinceFlag MsgHadProvinceFlag tryLoc)
-        ,("had_ruler_flag"               , textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLoc)
         ,("has_estate_influence_modifier", hasEstateInfluenceModifier)
         ,("has_opinion"                  , hasOpinion)
         ,("has_opinion_modifier"         , opinion MsgHasOpinionMod (\what who _years -> MsgHasOpinionMod what who))
@@ -711,8 +865,12 @@ ppHandlers = Tr.fromList
         ,("reverse_add_casus_belli"      , addCB False)
         ,("trigger_switch"               , triggerSwitch)
         ,("num_of_religion"              , textValue "religion" "value" MsgNumOfReligion MsgNumOfReligion tryLoc)
-        -- Rebels
-        ,("can_spawn_rebels"  , canSpawnRebels)
+        ]
+
+-- | Handlers for statements pertaining to rebels
+handlersRebels :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersRebels = Tr.fromList
+        [("can_spawn_rebels"  , canSpawnRebels)
         ,("create_revolt"     , spawnRebels Nothing)
         ,("has_spawned_rebels", hasSpawnedRebels)
         ,("likely_rebels"     , canSpawnRebels)
@@ -721,20 +879,49 @@ ppHandlers = Tr.fromList
         ,("anti_tax_rebels"   , spawnRebels (Just "anti_tax_rebels"))
         ,("nationalist_rebels", spawnRebels (Just "nationalist_rebels"))
         ,("noble_rebels"      , spawnRebels (Just "noble_rebels"))
+        ]
+
+-- | Handlers for idea groups
+handlersIdeaGroups :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersIdeaGroups = Tr.fromList
         -- Idea groups
-        ,("aristocracy_ideas"   , hasIdea MsgHasAristocraticIdea)
+        [("aristocracy_ideas"   , hasIdea MsgHasAristocraticIdea)
         ,("defensive_ideas"     , hasIdea MsgHasDefensiveIdea)
         ,("economic_ideas"      , hasIdea MsgHasEconomicIdea)
         ,("innovativeness_ideas", hasIdea MsgHasInnovativeIdea)
         ,("maritime_ideas"      , hasIdea MsgHasMaritimeIdea)
         ,("offensive_ideas"     , hasIdea MsgHasOffensiveIdea)
-        -- Ignored
-        ,("custom_tooltip", const (plainMsg "(custom tooltip - delete this line)"))
+        ]
+
+-- | Handlers for miscellaneous statements
+handlersMisc :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersMisc = Tr.fromList
+        [("random", random)
+        -- Special
+        ,("add_core"            , addCore)
+        ,("add_manpower"        , gainManpower)
+        ,("calc_true_if"        , calcTrueIf)
+        ,("dominant_culture"    , dominantCulture)
+        ,("faction_in_power"    , factionInPower)
+        ,("government_rank"     , govtRank)
+        ,("has_dlc"             , hasDlc)
+        ,("hre_reform_level"    , hreReformLevel)
+        ,("is_month"            , isMonth)
+        ,("piety"               , piety)
+        ,("range"               , range)
+        ,("set_government_rank" , setGovtRank)
+        ]
+
+-- | Handlers for ignored statements
+handlersIgnored :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersIgnored = Tr.fromList
+        [("custom_tooltip", const (plainMsg "(custom tooltip - delete this line)"))
         ,("tooltip"       , const (plainMsg "(explanatory tooltip - delete this line)"))
         ]
 
-ppOne :: (EU4Info g, Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+-- | Extract the appropriate message(s) from a single statement. Note that this
+-- may produce many lines (via 'ppMany'), since some statements are compound.
+ppOne :: (EU4Info g, Monad m) => StatementHandler g m
 ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
     GenericLhs label -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
         Just handler -> handler stmt
@@ -771,20 +958,26 @@ ppOne stmt = preStatement stmt
 -- Script handlers that should be used directly, not via ppOne --
 -----------------------------------------------------------------
 
+-- | Data for @mean_time_to_happen@ clauses
 data MTTH = MTTH
         {   mtth_years :: Maybe Int
         ,   mtth_months :: Maybe Int
         ,   mtth_days :: Maybe Int
         ,   mtth_modifiers :: [MTTHModifier] -- TODO
         } deriving Show
+-- | Data for @modifier@ clauses within @mean_time_to_happen@ clauses
 data MTTHModifier = MTTHModifier
         {   mtthmod_factor :: Maybe Double
         ,   mtthmod_conditions :: GenericScript
         } deriving Show
+-- | Empty MTTH
 newMTTH :: MTTH
 newMTTH = MTTH Nothing Nothing Nothing []
+-- | Empty MTTH modifier
 newMTTHMod :: MTTHModifier
 newMTTHMod = MTTHModifier Nothing []
+
+-- | Format a @mean_time_to_happen@ clause as wiki text.
 pp_mtth :: (EU4Info g, Monad m) => GenericScript -> PPT g m Doc
 pp_mtth = pp_mtth' . foldl' addField newMTTH
     where
@@ -856,8 +1049,11 @@ pp_mtth = pp_mtth' . foldl' addField newMTTH
 -- General statement handlers --
 --------------------------------
 
+-- | Generic handler for a simple compound statement. Usually you should use
+-- 'compoundMessage' instead so the text can be localized.
 compound :: (EU4Info g, Monad m) =>
-    Text -> GenericStatement -> PPT g m IndentedMessages
+    Text -- ^ Text to use as the block header, without the trailing colon
+    -> StatementHandler g m
 compound header [pdx| %_ = @scr |]
     = withCurrentIndent $ \_ -> do -- force indent level at least 1
         headerMsg <- plainMsg (header <> ":")
@@ -865,64 +1061,68 @@ compound header [pdx| %_ = @scr |]
         return $ headerMsg ++ scriptMsgs
 compound _ stmt = preStatement stmt
 
+-- | Generic handler for a simple compound statement.
 compoundMessage :: (EU4Info g, Monad m) =>
-    ScriptMessage -> GenericStatement -> PPT g m IndentedMessages
+    ScriptMessage -- ^ Message to use as the block header
+    -> StatementHandler g m
 compoundMessage header [pdx| %_ = @scr |]
     = withCurrentIndent $ \i -> do
         script_pp'd <- ppMany scr
         return ((i, header) : script_pp'd)
 compoundMessage _ stmt = preStatement stmt
 
--- RHS is a localizable atom.
+-- | Generic handler for a statement whose RHS is a localizable atom.
 withLocAtom :: (IsGameData (GameData g),
                 IsGameState (GameState g),
                 Monad m) =>
-    (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+    (Text -> ScriptMessage) -> StatementHandler g m
 withLocAtom msg [pdx| %_ = ?key |]
     = msgToPP =<< msg <$> getGameL10n key
 withLocAtom _ stmt = preStatement stmt
 
--- RHS is a localizable atom and we need a second one (passed to message as
--- first arg).
+-- | Generic handler for a statement whose RHS is a localizable atom and we
+-- need a second one (passed to message as first arg).
 withLocAtom2 :: (IsGameData (GameData g),
                  IsGameState (GameState g),
                  Monad m) =>
     ScriptMessage
         -> (Text -> Text -> Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withLocAtom2 inMsg msg [pdx| %_ = ?key |]
     = msgToPP =<< msg <$> pure key <*> messageText inMsg <*> getGameL10n key
 withLocAtom2 _ _ stmt = preStatement stmt
 
+-- | Generic handler for a statement whose RHS is a localizable atom, where we
+-- also need an icon.
 withLocAtomAndIcon :: (IsGameData (GameData g),
                        IsGameState (GameState g),
                        Monad m) =>
-    Text
+    Text -- ^ icon name - see
+         -- <https://www.eu4wiki.com/Template:Icon Template:Icon> on the wiki
         -> (Text -> Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withLocAtomAndIcon iconkey msg [pdx| %_ = $key |]
     = do what <- getGameL10n key
          msgToPP $ msg (iconText iconkey) what
 withLocAtomAndIcon _ _ stmt = preStatement stmt
 
+-- | Generic handler for a statement whose RHS is a localizable atom that
+-- corresponds to an icon.
 withLocAtomIcon :: (IsGameData (GameData g),
                     IsGameState (GameState g),
                     Monad m) =>
     (Text -> Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withLocAtomIcon msg stmt@[pdx| %_ = $key |]
     = withLocAtomAndIcon key msg stmt
 withLocAtomIcon _ stmt = preStatement stmt
 
+-- | Generic handler for a statement that needs both an atom and an icon, whose
+-- meaning changes depending on which scope it's in.
 withLocAtomIconEU4Scope :: (EU4Info g, Monad m) =>
-    (Text -> Text -> ScriptMessage)
-        -> (Text -> Text -> ScriptMessage)
-        -> GenericStatement -> PPT g m IndentedMessages
+    (Text -> Text -> ScriptMessage) -- ^ Message for country scope
+        -> (Text -> Text -> ScriptMessage) -- ^ Message for province scope
+        -> StatementHandler g m
 withLocAtomIconEU4Scope countrymsg provincemsg stmt = do
     thescope <- getCurrentScope
     case thescope of
@@ -934,74 +1134,78 @@ withProvince :: (IsGameData (GameData g),
                  IsGameState (GameState g),
                  Monad m) =>
     (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withProvince msg [pdx| %lhs = !provid |]
     = withLocAtom msg [pdx| %lhs = $(T.pack ("PROV" <> show (provid::Int))) |]
 withProvince _ stmt = preStatement stmt
 
 -- As withLocAtom but no l10n.
 -- Currently unused
---withNonlocAtom :: (Text -> ScriptMessage) -> GenericStatement -> PP extra IndentedMessages
+--withNonlocAtom :: (Text -> ScriptMessage) -> StatementHandler g m
 --withNonlocAtom msg [pdx| %_ = ?text |] = msgToPP $ msg text
 --withNonlocAtom _ stmt = preStatement stmt
 
--- As withNonlocAtom but with an additional bit of text.
+-- | As withlocAtom but wth no l10n and an additional bit of text.
 withNonlocAtom2 :: (IsGameData (GameData g),
                     IsGameState (GameState g),
                     Monad m) =>
     ScriptMessage
         -> (Text -> Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withNonlocAtom2 submsg msg [pdx| %_ = ?txt |] = do
     extratext <- messageText submsg
     msgToPP $ msg extratext txt
 withNonlocAtom2 _ _ stmt = preStatement stmt
 
--- Table of script atom -> icon key. Only ones that are different are listed.
+-- | Table of script atom -> icon key. Only ones that are different are listed.
 scriptIconTable :: HashMap Text Text
 scriptIconTable = HM.fromList
-    [("master_of_mint", "master of mint")
-    ,("natural_scientist", "natural scientist")
-    ,("colonial_governor", "colonial governor")
-    ,("diplomat", "diplomat_adv")
-    ,("naval_reformer", "naval reformer")
-    ,("navy_reformer", "naval reformer") -- these are both used!
+    [("administrative_ideas", "administrative")
+    ,("age_of_absolutism", "age of absolutism")
+    ,("age_of_discovery", "age of discovery")
+    ,("age_of_reformation", "age of reformation")
+    ,("age_of_revolutions", "age of revolutions")
+    ,("aristocracy_ideas", "aristocratic")
     ,("army_organizer", "army organizer")
     ,("army_reformer", "army reformer")
-    ,("grand_captain", "grand captain")
-    ,("master_recruiter", "master recruiter")
-    ,("military_engineer", "military engineer")
-    ,("spy_ideas", "espionage")
-    ,("economic_ideas", "economic")
-    ,("trade_ideas", "trade")
-    ,("administrative_ideas", "administrative")
-    ,("innovativeness_ideas", "innovative")
-    ,("aristocracy_ideas", "aristocratic")
-    ,("religious_ideas", "religious")
+    ,("base_production", "production")
+    ,("colonial_governor", "colonial governor")
+    ,("diplomat", "diplomat_adv")
     ,("diplomatic_ideas", "diplomatic")
-    ,("influence_ideas", "influence")
-    ,("estate_church", "clergy")
-    ,("estate_nobles", "nobles")
+    ,("economic_ideas", "economic")
     ,("estate_burghers", "burghers")
+    ,("estate_church", "clergy")
     ,("estate_cossacks", "cossacks")
-    ,("estate_nomadic_tribes", "tribes")
     ,("estate_dhimmi", "dhimmi")
-    ,("base production", "production")
-    ,("particularist", "particularists")
+    ,("estate_nobles", "nobles")
+    ,("estate_nomadic_tribes", "tribes")
+    ,("grand_captain", "grand captain")
+    ,("influence_ideas", "influence")
+    ,("innovativeness_ideas", "innovative")
     ,("is_monarch_leader", "ruler general")
-    ,("piety", "being pious") -- chosen arbitrarily
-    ,("nomad_group", "nomadic")
-    ,("tengri_pagan_reformed", "tengri")
-    ,("norse_pagan_reformed", "norse")
+    ,("master_of_mint", "master of mint")
+    ,("master_recruiter", "master recruiter")
     ,("mesoamerican_religion", "mayan")
+    ,("military_engineer", "military engineer")
+    ,("natural_scientist", "natural scientist")
+    ,("naval_reformer", "naval reformer")
+    ,("navy_reformer", "naval reformer") -- these are both used!
+    ,("nomad_group", "nomadic")
+    ,("norse_pagan_reformed", "norse")
+    ,("particularist", "particularists")
+    ,("piety", "being pious") -- chosen arbitrarily
+    ,("religious_ideas", "religious")
+    ,("spy_ideas", "espionage")
+    ,("tengri_pagan_reformed", "tengri")
+    ,("trade_ideas", "trade")
     ]
 
--- Given a script atom, return the corresponding icon key, if any.
+-- | Given a script atom, return the corresponding icon key, if any.
 iconKey :: Text -> Maybe Text
 iconKey atom = HM.lookup atom scriptIconTable
 
+-- | Table of icon tag to wiki filename. Only those that are different are
+-- listed.
 iconFileTable :: HashMap Text Text
 iconFileTable = HM.fromList
     [("global tax modifier", "national tax modifier")
@@ -1011,16 +1215,17 @@ iconFileTable = HM.fromList
     ,("light ship combat ability", "light ship power")
     ]
 
--- Given an {{icon}} key, give the corresponding icon file name.
+-- | Given an {{icon}} key, give the corresponding icon file name.
 --
 -- Needed for idea groups, which don't use {{icon}}.
 iconFile :: Text -> Text
 iconFile s = HM.lookupDefault s s iconFileTable
--- ByteString version
+-- | ByteString version of 'iconFile'.
 iconFileB :: ByteString -> ByteString
 iconFileB = TE.encodeUtf8 . iconFile . TE.decodeUtf8
 
--- As generic_icon except
+-- | As generic_icon except
+--
 -- * say "same as <foo>" if foo refers to a country (in which case, add a flag)
 -- * may not actually have an icon (localization file will know if it doesn't)
 iconOrFlag :: (IsGameData (GameData g),
@@ -1028,8 +1233,7 @@ iconOrFlag :: (IsGameData (GameData g),
                Monad m) =>
     (Text -> Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 iconOrFlag iconmsg flagmsg [pdx| %_ = $name |] = msgToPP =<< do
     nflag <- flag name -- laziness means this might not get evaluated
     if isTag name || isPronoun name
@@ -1038,13 +1242,13 @@ iconOrFlag iconmsg flagmsg [pdx| %_ = $name |] = msgToPP =<< do
                      <*> getGameL10n name
 iconOrFlag _ _ stmt = plainMsg $ pre_statement' stmt
 
+-- | Handler for statements where RHS is a tag or province id.
 tagOrProvince :: (IsGameData (GameData g),
                   IsGameState (GameState g),
                   Monad m) =>
     (Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 tagOrProvince tagmsg provmsg stmt@[pdx| %_ = ?!eobject |]
     = msgToPP =<< case eobject of
             Just (Right tag) -> do -- is a tag
@@ -1056,23 +1260,22 @@ tagOrProvince tagmsg provmsg stmt@[pdx| %_ = ?!eobject |]
             Nothing -> return (preMessage stmt)
 tagOrProvince _ _ stmt = preStatement stmt
 
--- Numeric statement.
 -- TODO (if necessary): allow operators other than = and pass them to message
 -- handler
+-- | Handler for numeric statements.
 numeric :: (IsGameState (GameState g), Monad m) =>
     (Double -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 numeric msg [pdx| %_ = !n |] = msgToPP $ msg n
 numeric _ stmt = plainMsg $ pre_statement' stmt
 
+-- | Handler for statements where the RHS is either a number or a tag.
 numericOrTag :: (IsGameData (GameData g),
                  IsGameState (GameState g),
                  Monad m) =>
     (Double -> ScriptMessage)
         -> (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 numericOrTag numMsg tagMsg stmt@[pdx| %_ = %rhs |] = msgToPP =<<
     case floatRhs rhs of
         Just n -> return $ numMsg n
@@ -1083,26 +1286,26 @@ numericOrTag numMsg tagMsg stmt@[pdx| %_ = %rhs |] = msgToPP =<<
             Nothing -> return (preMessage stmt)
 numericOrTag _ _ stmt = preStatement stmt
 
--- Generic statement referring to a country. Use a flag.
+-- | Handler for a statement referring to a country. Use a flag.
 withFlag :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
     (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withFlag msg [pdx| %_ = $who |] = msgToPP =<< do
     whoflag <- flag who
     return . msg . Doc.doc2text $ whoflag
 withFlag _ stmt = plainMsg $ pre_statement' stmt
 
+-- | Handler for yes-or-no statements.
 withBool :: (IsGameState (GameState g), Monad m) =>
     (Bool -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withBool msg stmt = do
     fullmsg <- withBool' msg stmt
     maybe (preStatement stmt)
           return
           fullmsg
 
+-- | Helper for 'withBool'.
 withBool' :: (IsGameState (GameState g), Monad m) =>
     (Bool -> ScriptMessage)
         -> GenericStatement
@@ -1115,33 +1318,33 @@ withBool' msg [pdx| %_ = ?yn |] | T.map toLower yn `elem` ["yes","no","false"]
         _     -> error "impossible: withBool matched a string that wasn't yes, no or false"
 withBool' _ _ = return Nothing
 
--- Statement may have "yes"/"no" or a tag.
+-- | Handler for statements whose RHS may be "yes"/"no" or a tag.
 withFlagOrBool :: (IsGameData (GameData g),
                    IsGameState (GameState g),
                    Monad m) =>
     (Bool -> ScriptMessage)
         -> (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withFlagOrBool bmsg _ [pdx| %_ = yes |] = msgToPP (bmsg True)
 withFlagOrBool bmsg _ [pdx| %_ = no  |]  = msgToPP (bmsg False)
 withFlagOrBool _ tmsg stmt = withFlag tmsg stmt
 
+-- | Handler for statements that have a number and an icon.
 numericIcon :: (IsGameState (GameState g), Monad m) =>
     Text
         -> (Text -> Double -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 numericIcon the_icon msg [pdx| %_ = !amt |]
     = msgToPP $ msg (iconText the_icon) amt
 numericIcon _ _ stmt = plainMsg $ pre_statement' stmt
 
+-- | Handler for statements that have a number and an icon, whose meaning
+-- differs depending on what scope it's in.
 numericIconBonus :: (EU4Info g, Monad m) =>
     Text
-        -> (Text -> Double -> ScriptMessage)
-        -> (Text -> Double -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> (Text -> Double -> ScriptMessage) -- ^ Message for bonus scope
+        -> (Text -> Double -> ScriptMessage) -- ^ Message for country / other scope
+        -> StatementHandler g m
 numericIconBonus the_icon plainmsg yearlymsg [pdx| %_ = !amt |]
     = do
         mscope <- getCurrentScope
@@ -1159,6 +1362,7 @@ numericIconBonus _ _ _ stmt = plainMsg $ pre_statement' stmt
 -- Text/value pairs --
 ----------------------
 
+-- $textvalue
 -- This is for statements of the form
 --      head = {
 --          what = some_atom
@@ -1179,7 +1383,7 @@ numericIconBonus _ _ _ stmt = plainMsg $ pre_statement' stmt
 -- rather different messages.
 --
 -- We additionally attempt to localize the RHS of "what". If it has no
--- localization string, it gets wrapped in a tt element instead.
+-- localization string, it gets wrapped in a @<tt>@ element instead.
 
 -- convenience synonym
 tryLoc :: (IsGameData (GameData g), Monad m) => Text -> PPT g m (Maybe Text)
@@ -1197,7 +1401,7 @@ textValue :: forall g m. (IsGameState (GameState g), Monad m) =>
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value < 1
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value >= 1
         -> (Text -> PPT g m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
-        -> GenericStatement -> PPT g m IndentedMessages
+        -> StatementHandler g m
 textValue whatlabel vallabel smallmsg bigmsg loc stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_tv (foldl' addLine newTV scr)
     where
@@ -1218,10 +1422,12 @@ textValue whatlabel vallabel smallmsg bigmsg loc stmt@[pdx| %_ = @scr |]
 textValue _ _ _ _ _ stmt = preStatement stmt
 
 -- | Statements of the form
+-- @
 --      has_trade_modifier = {
 --          who = ROOT
 --          name = merchant_recalled
 --      }
+-- @
 data TextAtom = TextAtom
         {   ta_what :: Maybe Text
         ,   ta_atom :: Maybe Text
@@ -1231,11 +1437,11 @@ newTA = TextAtom Nothing Nothing
 textAtom :: forall g m. (IsGameData (GameData g),
                          IsGameState (GameState g),
                          Monad m) =>
-    Text -- ^ Label for "what"
-        -> Text -- ^ Label for atom
+    Text -- ^ Label for "what" (e.g. "who")
+        -> Text -- ^ Label for atom (e.g. "name")
         -> (Text -> Text -> Text -> ScriptMessage) -- ^ Message constructor
         -> (Text -> PPT g m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
-        -> GenericStatement -> PPT g m IndentedMessages
+        -> StatementHandler g m
 textAtom whatlabel atomlabel msg loc stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_ta (foldl' addLine newTA scr)
     where
@@ -1260,6 +1466,7 @@ textAtom _ _ _ _ stmt = preStatement stmt
 
 -- AI decision factors
 
+-- | Extract the appropriate message(s) from an @ai_will_do@ clause.
 ppAiWillDo :: (EU4Info g, Monad m) => AIWillDo -> PPT g m IndentedMessages
 ppAiWillDo (AIWillDo mbase mods) = do
     mods_pp'd <- fold <$> traverse ppAiMod mods
@@ -1269,6 +1476,8 @@ ppAiWillDo (AIWillDo mbase mods) = do
     iBaseWtMsg <- msgToPP baseWtMsg
     return $ iBaseWtMsg ++ mods_pp'd
 
+-- | Extract the appropriate message(s) from a @modifier@ section within an
+-- @ai_will_do@ clause.
 ppAiMod :: (EU4Info g, Monad m) => AIModifier -> PPT g m IndentedMessages
 ppAiMod (AIModifier (Just multiplier) triggers) = do
     triggers_pp'd <- ppMany triggers
@@ -1290,6 +1499,8 @@ ppAiMod (AIModifier Nothing _) =
 -- We want to use the faction influence icons, not the faction icons, so
 -- textValue unfortunately doesn't work here.
 
+-- | Convert the atom used in scripts for a faction to the corresponding icon
+-- key for its influence.
 facInfluence_iconkey :: Text -> Maybe Text
 facInfluence_iconkey fac = case fac of
         -- Celestial empire
@@ -1302,6 +1513,8 @@ facInfluence_iconkey fac = case fac of
         "mr_traders"       -> Just "traders influence"
         _ {- unknown -}    -> Nothing
 
+-- | Convert the atom used in scripts for a faction to the corresponding icon
+-- key.
 fac_iconkey :: Text -> Maybe Text
 fac_iconkey fac = case fac of
         -- Celestial empire
@@ -1318,12 +1531,13 @@ data FactionInfluence = FactionInfluence {
         faction :: Maybe Text
     ,   influence :: Maybe Double
     }
+-- | Empty 'FactionInfluence'
 newInfluence :: FactionInfluence
 newInfluence = FactionInfluence Nothing Nothing
+-- | Handler for adding faction influence.
 factionInfluence :: (IsGameData (GameData g),
                      IsGameState (GameState g),
-                     Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+                     Monad m) => StatementHandler g m
 factionInfluence stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_influence (foldl' addField newInfluence scr)
     where
@@ -1340,10 +1554,10 @@ factionInfluence stmt@[pdx| %_ = @scr |]
         addField inf _ = inf -- unknown statement
 factionInfluence stmt = preStatement stmt
 
+-- | Handler for trigger checking which faction is in power.
 factionInPower :: (IsGameData (GameData g),
                    IsGameState (GameState g),
-                   Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+                   Monad m) => StatementHandler g m
 factionInPower [pdx| %_ = ?fac |] | Just facKey <- fac_iconkey fac
     = do fac_loc <- getGameL10n fac
          msgToPP $ MsgFactionInPower (iconText facKey) fac_loc
@@ -1375,7 +1589,7 @@ maybeM f = maybe (return Nothing) (liftM Just . f)
 addModifier :: (IsGameData (GameData g),
                 IsGameState (GameState g),
                 Monad m) =>
-    ScriptMessage -> GenericStatement -> PPT g m IndentedMessages
+    ScriptMessage -> StatementHandler g m
 addModifier kind stmt@(Statement _ OpEq (CompoundRhs scr)) = msgToPP =<<
     let modifier = foldl' addModifierLine newModifier scr
     in if isJust (mod_name modifier) || isJust (mod_key modifier) then do
@@ -1412,8 +1626,7 @@ addModifier _ stmt = preStatement stmt
 -- "add_core = <tag>" in province scope means "<localize tag> gains core"
 addCore :: (IsGameData (GameData g),
             IsGameState (GameState g),
-            Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+            Monad m) => StatementHandler g m
 addCore (Statement _ OpEq (textRhs -> Just tag)) = msgToPP =<< do -- tag
     tagflag <- flagText tag
     return $ MsgTagGainsCore tagflag
@@ -1436,7 +1649,7 @@ newAddOpinion = AddOpinion Nothing Nothing Nothing
 opinion :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
     (Text -> Text -> ScriptMessage)
         -> (Text -> Text -> Double -> ScriptMessage)
-        -> GenericStatement -> PPT g m IndentedMessages
+        -> StatementHandler g m
 opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_add_opinion (foldl' addLine newAddOpinion scr)
     where
@@ -1463,8 +1676,7 @@ newHasOpinion :: HasOpinion
 newHasOpinion = HasOpinion Nothing Nothing
 hasOpinion :: forall g m. (IsGameData (GameData g),
                            IsGameState (GameState g),
-                           Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+                           Monad m) => StatementHandler g m
 hasOpinion stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_hasOpinion (foldl' addLine newHasOpinion scr)
     where
@@ -1546,9 +1758,7 @@ newSpawnRebels = SpawnRebels Nothing Nothing Nothing False Nothing Nothing
 spawnRebels :: forall g m. (IsGameData (GameData g),
                             IsGameState (GameState g),
                             Monad m) =>
-    Maybe Text
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+    Maybe Text -> StatementHandler g m
 spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
     spawnRebels' Nothing (Statement _ OpEq (CompoundRhs scr))
         = pp_spawnRebels $ foldl' addLine newSpawnRebels scr
@@ -1595,14 +1805,13 @@ spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
                             progressText
             _ -> return $ preMessage stmt
 
-hasSpawnedRebels :: (IsGameState (GameState g), Monad m) => GenericStatement -> PPT g m IndentedMessages
+hasSpawnedRebels :: (IsGameState (GameState g), Monad m) => StatementHandler g m
 hasSpawnedRebels [pdx| %_ = $rtype |]
     | Just (rtype_loc, rtype_iconkey) <- HM.lookup rtype rebel_loc
       = msgToPP $ MsgRebelsHaveRisen (iconText rtype_iconkey) rtype_loc
 hasSpawnedRebels stmt = preStatement stmt
 
-canSpawnRebels :: (IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+canSpawnRebels :: (IsGameState (GameState g), Monad m) => StatementHandler g m
 canSpawnRebels [pdx| %_ = $rtype |]
     | Just (rtype_loc, rtype_iconkey) <- HM.lookup rtype rebel_loc
       = msgToPP (MsgProvinceHasRebels (iconText rtype_iconkey) rtype_loc)
@@ -1617,21 +1826,16 @@ data TriggerEvent = TriggerEvent
         }
 newTriggerEvent :: TriggerEvent
 newTriggerEvent = TriggerEvent Nothing Nothing Nothing
-triggerEvent :: forall g m. (EU4Info g, Monad m) =>
-    ScriptMessage
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+triggerEvent :: forall g m. (EU4Info g, Monad m) => ScriptMessage -> StatementHandler g m
 triggerEvent evtType stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_trigger_event =<< foldM addLine newTriggerEvent scr
     where
         addLine :: TriggerEvent -> GenericStatement -> PPT g m TriggerEvent
-        addLine evt [pdx| id = $eid |] = do
-            mevt_t <- getEventTitle eid
-            when (eid == "institution_events.25") $
-                case mevt_t of
-                    Nothing -> traceM ("failed to look up event id " ++ T.unpack eid)
-                    Just loc -> traceM ("event id " ++ T.unpack eid ++ " is " ++ T.unpack loc)
-            return evt { e_id = Just eid, e_title_loc = mevt_t }
+        addLine evt [pdx| id = ?!eeid |]
+            | Just eid <- either (\n -> T.pack (show (n::Int))) id <$> eeid
+            = do
+                mevt_t <- getEventTitle eid
+                return evt { e_id = Just eid, e_title_loc = mevt_t }
         addLine evt [pdx| days = %rhs |]
             = return evt { e_days = floatRhs rhs }
         addLine evt _ = return evt
@@ -1649,8 +1853,7 @@ triggerEvent _ stmt = preStatement stmt
 
 -- Specific values
 
-gainManpower :: (IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+gainManpower :: (IsGameState (GameState g), Monad m) => StatementHandler g m
 gainManpower [pdx| %_ = !amt |] = msgToPP =<<
     let mpicon = iconText "manpower"
     in if abs (amt::Double) < 1
@@ -1675,8 +1878,7 @@ addCB :: forall g m. (IsGameData (GameData g),
                       IsGameState (GameState g),
                       Monad m) =>
     Bool -- ^ True for add_casus_belli, False for reverse_add_casus_belli
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 addCB direct stmt@[pdx| %_ = @scr |]
     = msgToPP . pp_add_cb =<< foldM addLine newAddCB scr where
         addLine :: AddCB -> GenericStatement -> PPT g m AddCB
@@ -1710,7 +1912,7 @@ addCB _ stmt = preStatement stmt
 
 -- Random
 
-random :: (EU4Info g, Monad m) => GenericStatement -> PPT g m IndentedMessages
+random :: (EU4Info g, Monad m) => StatementHandler g m
 random stmt@[pdx| %_ = @scr |]
     | (front, back) <- break
                         (\substmt -> case substmt of
@@ -1743,8 +1945,7 @@ newDefineAdvisor = DefineAdvisor Nothing Nothing Nothing Nothing Nothing Nothing
 
 defineAdvisor :: forall g m. (IsGameData (GameData g),
                               IsGameState (GameState g),
-                              Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+                              Monad m) => StatementHandler g m
 defineAdvisor stmt@[pdx| %_ = @scr |]
     = msgToPP . pp_define_advisor =<< foldM addLine newDefineAdvisor scr where
         addLine :: DefineAdvisor -> GenericStatement -> PPT g m DefineAdvisor
@@ -1869,7 +2070,7 @@ data DefineRuler = DefineRuler
 newDefineRuler :: DefineRuler
 newDefineRuler = DefineRuler False Nothing Nothing Nothing Nothing Nothing False Nothing Nothing Nothing False Nothing
 
-defineRuler :: forall g m. (IsGameState (GameState g), Monad m) => GenericStatement -> PPT g m IndentedMessages
+defineRuler :: forall g m. (IsGameState (GameState g), Monad m) => StatementHandler g m
 defineRuler [pdx| %_ = @scr |]
     = pp_define_ruler $ foldl' addLine newDefineRuler scr where
         addLine :: DefineRuler -> GenericStatement -> DefineRuler
@@ -1950,8 +2151,7 @@ data BuildToForcelimit = BuildToForcelimit
 newBuildToForcelimit :: BuildToForcelimit
 newBuildToForcelimit = BuildToForcelimit Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
-buildToForcelimit :: (IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+buildToForcelimit :: (IsGameState (GameState g), Monad m) => StatementHandler g m
 buildToForcelimit stmt@[pdx| %_ = @scr |]
     = msgToPP . pp_build_to_forcelimit $ foldl' addLine newBuildToForcelimit scr where
         addLine :: BuildToForcelimit -> GenericStatement -> BuildToForcelimit
@@ -2016,8 +2216,7 @@ newDeclareWarWithCB = DeclareWarWithCB Nothing Nothing
 
 declareWarWithCB :: forall g m. (IsGameData (GameData g),
                                  IsGameState (GameState g),
-                                 Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+                                 Monad m) => StatementHandler g m
 declareWarWithCB stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_declare_war_with_cb (foldl' addLine newDeclareWarWithCB scr) where
         addLine :: DeclareWarWithCB -> GenericStatement -> DeclareWarWithCB
@@ -2039,8 +2238,7 @@ declareWarWithCB stmt = preStatement stmt
 
 -- DLC
 
-hasDlc :: (IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+hasDlc :: (IsGameState (GameState g), Monad m) => StatementHandler g m
 hasDlc [pdx| %_ = ?dlc |]
     = msgToPP $ MsgHasDLC dlc_icon dlc
     where
@@ -2068,8 +2266,7 @@ newEIM :: EstateInfluenceModifier
 newEIM = EstateInfluenceModifier Nothing Nothing
 hasEstateInfluenceModifier :: (IsGameData (GameData g),
                                IsGameState (GameState g),
-                               Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+                               Monad m) => StatementHandler g m
 hasEstateInfluenceModifier stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_eim (foldl' addField newEIM scr)
     where
@@ -2101,7 +2298,7 @@ estateInfluenceModifier :: forall g m. (IsGameData (GameData g),
                                         IsGameState (GameState g),
                                         Monad m) =>
     (Text -> Text -> Text -> Double -> Text -> ScriptMessage)
-        -> GenericStatement -> PPT g m IndentedMessages
+        -> StatementHandler g m
 estateInfluenceModifier msg stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_eim (foldl' addLine newAddEstateInfluenceModifier scr)
     where
@@ -2125,8 +2322,7 @@ estateInfluenceModifier _ stmt = preStatement stmt
 
 -- Trigger switch
 
-triggerSwitch :: (EU4Info g, Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+triggerSwitch :: (EU4Info g, Monad m) => StatementHandler g m
 -- A trigger switch must be of the form
 -- trigger_switch = {
 --  on_trigger = <statement lhs>
@@ -2152,6 +2348,51 @@ triggerSwitch stmt@(Statement _ OpEq (CompoundRhs
             withCurrentIndent $ \i -> return $ (i, MsgTriggerSwitch) : concat statementsMsgs
 triggerSwitch stmt = preStatement stmt
 
+-- | Handle @calc_true_if@ clauses, of the following form:
+-- 
+-- @
+--  calc_true_if = {
+--       <conditions>
+--       amount = N
+--  }
+-- @
+--
+-- This tests the conditions, and returns true if at least N of them are true.
+-- They can be individual conditions, e.g. from @celestial_empire_events.3@:
+--
+-- @
+--  calc_true_if = {
+--      accepted_culture = manchu
+--      accepted_culture = chihan
+--      accepted_culture = miao
+--      accepted_culture = cantonese
+--      ... etc. ...
+--      amount = 2
+--   }
+-- @
+--
+-- or a single "all" scope, e.g. from @court_and_country_events.3@:
+--
+-- @
+--  calc_true_if = {
+--      all_core_province = {
+--          owned_by = ROOT
+--          culture = PREV
+--      }
+--      amount = 5
+--  }
+-- @
+--
+-- We expect the @amount@ clause to come last.
+calcTrueIf :: (EU4Info g, Monad m) => StatementHandler g m
+calcTrueIf stmt@[pdx| %_ = @stmts |]
+    | Just (conds, [pdx| amount = !count |]) <- unsnoc stmts
+    = do
+        stmtMessages <- ppMany conds
+        withCurrentIndent $ \i ->
+            return $ (i, MsgCalcTrueIf count) : stmtMessages
+calcTrueIf stmt = preStatement stmt
+
 -- Heirs
 
 data Heir = Heir
@@ -2163,8 +2404,7 @@ newHeir :: Heir
 newHeir = Heir Nothing Nothing Nothing
 defineHeir :: forall g m. (IsGameData (GameData g),
                            IsGameState (GameState g),
-                           Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+                           Monad m) => StatementHandler g m
 defineHeir [pdx| %_ = @scr |]
     = msgToPP =<< pp_heir (foldl' addLine newHeir scr)
     where
@@ -2204,8 +2444,7 @@ hreReformLoc n = getGameL10n $ case n of
 
 hreReformLevel :: (IsGameData (GameData g),
                    IsGameState (GameState g),
-                   Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+                   Monad m) => StatementHandler g m
 hreReformLevel [pdx| %_ = !level |] | level >= 0, level <= 8
     = if level == 0
         then msgToPP MsgNoHREReforms
@@ -2216,8 +2455,7 @@ hreReformLevel stmt = preStatement stmt
 
 religionYears :: (IsGameData (GameData g),
                   IsGameState (GameState g),
-                  Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+                  Monad m) => StatementHandler g m
 religionYears [pdx| %_ = { $rel = !years } |]
     = do
         let rel_icon = iconText rel
@@ -2227,8 +2465,7 @@ religionYears stmt = preStatement stmt
 
 -- Government
 
-govtRank :: (IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+govtRank :: (IsGameState (GameState g), Monad m) => StatementHandler g m
 govtRank [pdx| %_ = !level |]
     = case level :: Int of
         1 -> msgToPP MsgRankDuchy -- unlikely, but account for it anyway
@@ -2237,8 +2474,7 @@ govtRank [pdx| %_ = !level |]
         _ -> error "impossible: govtRank matched an invalid rank number"
 govtRank stmt = preStatement stmt
 
-setGovtRank :: (IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+setGovtRank :: (IsGameState (GameState g), Monad m) => StatementHandler g m
 setGovtRank [pdx| %_ = !level |] | level `elem` [1..3]
     = case level :: Int of
         1 -> msgToPP MsgSetRankDuchy
@@ -2252,8 +2488,7 @@ numProvinces :: (IsGameData (GameData g),
                  Monad m) =>
     Text
         -> (Text -> Text -> Double -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 numProvinces micon msg [pdx| $what = !amt |] = do
     what_loc <- getGameL10n what
     msgToPP (msg (iconText micon) what_loc amt)
@@ -2264,8 +2499,7 @@ withFlagOrProvince :: (IsGameData (GameData g),
                        Monad m) =>
     (Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withFlagOrProvince countryMsg _ stmt@[pdx| %_ = ?_ |]
     = withFlag countryMsg stmt
 withFlagOrProvince _ provinceMsg stmt@[pdx| %_ = !(_ :: Double) |]
@@ -2275,8 +2509,7 @@ withFlagOrProvince _ _ stmt = preStatement stmt
 withFlagOrProvinceEU4Scope :: (EU4Info g, Monad m) =>
     (Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 withFlagOrProvinceEU4Scope countryMsg geogMsg stmt = do
     mscope <- getCurrentScope
     -- If no scope, assume country.
@@ -2290,7 +2523,7 @@ withFlagOrProvinceEU4Scope countryMsg geogMsg stmt = do
 
 tradeMod :: (IsGameData (GameData g),
              IsGameState (GameState g),
-             Monad m) => GenericStatement -> PPT g m IndentedMessages
+             Monad m) => StatementHandler g m
 tradeMod stmt@[pdx| %_ = ?_ |]
     = withLocAtom2 MsgTradeMod MsgHasModifier stmt
 tradeMod stmt@[pdx| %_ = @_ |]
@@ -2299,7 +2532,7 @@ tradeMod stmt = preStatement stmt
 
 isMonth :: (IsGameData (GameData g),
             IsGameState (GameState g),
-            Monad m) => GenericStatement -> PPT g m IndentedMessages
+            Monad m) => StatementHandler g m
 isMonth [pdx| %_ = !(num :: Int) |] | num >= 1, num <= 12
     = do
         month_loc <- getGameL10n $ case num of
@@ -2321,25 +2554,22 @@ isMonth stmt = preStatement stmt
 
 range :: (IsGameData (GameData g),
           IsGameState (GameState g),
-          Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+          Monad m) => StatementHandler g m
 range stmt@[pdx| %_ = !(_ :: Double) |]
     = numericIcon "colonial range" MsgGainColonialRange stmt
 range stmt = withFlag MsgIsInColonialRange stmt
 
-area :: (EU4Info g, Monad m) => GenericStatement -> PPT g m IndentedMessages
+area :: (EU4Info g, Monad m) => StatementHandler g m
 area stmt@[pdx| %_ = @_ |] = compoundMessage MsgArea stmt
 area stmt                  = withLocAtom MsgAreaIs stmt
 
 -- Currently dominant_culture only appears in decisions/Cultural.txt
 -- (dominant_culture = capital).
-dominantCulture :: (IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+dominantCulture :: (IsGameState (GameState g), Monad m) => StatementHandler g m
 dominantCulture [pdx| %_ = capital |] = msgToPP MsgCapitalCultureDominant
 dominantCulture stmt = preStatement stmt
 
-customTriggerTooltip :: (EU4Info g, Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+customTriggerTooltip :: (EU4Info g, Monad m) => StatementHandler g m
 customTriggerTooltip [pdx| %_ = @scr |]
     -- ignore the custom tooltip
     = let rest = flip filter scr $ \stmt -> case stmt of
@@ -2348,8 +2578,7 @@ customTriggerTooltip [pdx| %_ = @scr |]
       in indentDown $ ppMany rest
 customTriggerTooltip stmt = preStatement stmt
 
-piety :: (IsGameState (GameState g), Monad m) =>
-    GenericStatement -> PPT g m IndentedMessages
+piety :: (IsGameState (GameState g), Monad m) => StatementHandler g m
 piety stmt@[pdx| %_ = !amt |]
     = numericIcon (case amt `compare` (0::Double) of
         LT -> "lack of piety"
@@ -2363,8 +2592,7 @@ piety stmt = preStatement stmt
 
 hasIdea :: (EU4Info g, Monad m) =>
     (Text -> Int -> ScriptMessage)
-        -> GenericStatement
-        -> PPT g m IndentedMessages
+        -> StatementHandler g m
 hasIdea msg stmt@[pdx| $lhs = !n |] | n >= 1, n <= 7 = do
     groupTable <- getIdeaGroups
     let mideagroup = HM.lookup lhs groupTable

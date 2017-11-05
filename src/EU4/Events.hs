@@ -240,8 +240,8 @@ optionAddEffect (Just effs) stmt = return $ Just (effs ++ [stmt])
 ppDescs :: (EU4Info g, Monad m) => Bool -> [EU4EvtDesc] -> PPT g m Doc
 ppDescs True _ = return "| cond_event_text = (This event is hidden and has no description.)"
 ppDescs _ [] = return "| event_text = (No description)"
-ppDescs _ [EU4EvtDescSimple key] = ("| event_text = " <>) . Doc.strictText <$> getGameL10n key
-ppDescs _ descs = ("| cond_event_text = " <>) .PP.vsep <$> mapM ppDesc descs where
+ppDescs _ [EU4EvtDescSimple key] = ("| event_text = " <>) . Doc.strictText . Doc.nl2br <$> getGameL10n key
+ppDescs _ descs = ("| cond_event_text = " <>) . PP.vsep <$> mapM ppDesc descs where
     ppDesc (EU4EvtDescSimple key) = ("Otherwise:<br>:" <>) <$> fmtDesc key
     ppDesc (EU4EvtDescConditional scr key) = mconcat <$> sequenceA
         [pure "The following description is used if:", pure PP.line
@@ -249,7 +249,7 @@ ppDescs _ descs = ("| cond_event_text = " <>) .PP.vsep <$> mapM ppDesc descs whe
         ,pure ":", fmtDesc key
         ]
     ppDesc (EU4EvtDescCompound scr) =
-        (("| cond_event_text =" <> PP.line) <>) <$> (imsg2doc =<< ppMany scr)
+        imsg2doc =<< ppMany scr
     fmtDesc key = flip liftM (getGameL10nIfPresent key) $ \case
         Nothing -> Doc.strictText key
         Just txt -> "''" <> Doc.strictText (Doc.nl2br txt) <> "''"
@@ -308,7 +308,7 @@ pp_event evt = case (eu4evt_id evt
             (if isTriggeredOnly then [] else case mmtth_pp'd of
                 Nothing ->
                     ["| triggered_only = ", PP.line
-                    ,"* Unknown (Missing MTTH and is_triggered_only)"]
+                    ,"* Unknown (Missing MTTH and is_triggered_only)", PP.line]
                 Just mtth_pp'd ->
                     ["| mtth = ", PP.line
                     ,mtth_pp'd]) ++

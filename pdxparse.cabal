@@ -3,7 +3,7 @@
 
 name:                pdxparse
 
-version:             0.3.2.0
+version:             0.5.1
 synopsis:            A parser for scripts used in Paradox Development Studios games
 description:         This program extracts script and localization files from
                      games by Paradox Development Studios to the format

@@ -89,25 +89,40 @@ data ScriptMessage
     | MsgFROM
     | MsgPREV
     | MsgNoneOf
-    | MsgAtLeastOneOf
+    | MsgAllCoreProvince
     | MsgArea
+    | MsgAtLeastOneOf
     | MsgAnyActiveTradeNode
     | MsgAnyAlly
     | MsgAnyCoreCountry
+    | MsgAnyCoreProvince
     | MsgAnyCountry
+    | MsgAnyEmptyNeighborProvince
     | MsgAnyEnemyCountry
+    | MsgAnyHereticProvince
     | MsgAnyKnownCountry
     | MsgAnyNeighborCountry
     | MsgAnyNeighborProvince
     | MsgAnyOwnedProvince
+    | MsgAnyPrivateeringCountry
+    | MsgAnyProvince
     | MsgAnyRival
     | MsgAnySubject
+    | MsgAnyTradeNode
     | MsgCapital
     | MsgController
     | MsgEmperor
     | MsgAllCountries
+    | MsgAllNeighborCountries
+    | MsgAllSubjectCountries
+    | MsgElse
+    | MsgEveryActiveTradeNode
+    | MsgEveryAlly
+    | MsgEveryCoreCountry
+    | MsgEveryCoreProvince
     | MsgEveryCountry
     | MsgEveryEnemyCountry
+    | MsgEveryHereticProvince
     | MsgEveryKnownCountry
     | MsgEveryNeighborCountry
     | MsgEveryNeighborProvince
@@ -118,18 +133,29 @@ data ScriptMessage
     | MsgHiddenEffect
     | MsgIf
     | MsgLimit
+    | MsgMostProvinceTradePower
+    | MsgOverlord
     | MsgOwner
     | MsgRandomActiveTradeNode
     | MsgRandomAlly
     | MsgRandomCoreCountry
+    | MsgRandomCoreProvince
     | MsgRandomCountry
+    | MsgRandomElector
+    | MsgRandomEmptyNeighborProvince
+    | MsgRandomHereticProvince
     | MsgRandomKnownCountry
     | MsgRandomList
     | MsgRandomNeighborCountry
     | MsgRandomNeighborProvince
     | MsgRandomOwnedProvince
+    | MsgRandomPrivateeringCountry
     | MsgRandomProvince
     | MsgRandomRival
+    | MsgRandomSubjectCountry
+    | MsgRandomTradeNode
+    | MsgStrongestTradePower
+    | MsgWhile
     | MsgRandomChance {scriptMessageChance :: Double}
     | MsgRandom
     | MsgChangeGovernment {scriptMessageWhat :: Text}
@@ -393,7 +419,7 @@ data ScriptMessage
     | MsgProvince {scriptMessageWhere :: Text}
     | MsgTechGroup {scriptMessageIcon :: Text, scriptMessageName :: Text}
     | MsgNumOfReligion {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageAmt :: Double}
-    | MsgStrongestTradePower {scriptMessageWho :: Text}
+    | MsgIsStrongestTradePower {scriptMessageWho :: Text}
     | MsgAreaIs {scriptMessageWhat :: Text}
     | MsgDominantReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgHREReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
@@ -666,6 +692,14 @@ data ScriptMessage
     | MsgRandomSystem
     | MsgRandomTile
     | MsgGainTrait {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
+    | MsgIsFreeOrTributaryTrigger
+    | MsgAbsolutism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgGainAbsolutism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgMaxAbsolutism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgYearlyAbsolutism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgCurrentAge {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
+    | MsgAcceptedCulture {scriptMessageWhat :: Text}
+    | MsgCalcTrueIf {scriptMessageAmt :: Double}
 
 useEnglish :: [Text] -> Bool
 useEnglish [] = True
@@ -1170,20 +1204,30 @@ instance RenderMessage Script ScriptMessage where
             -> "PREV:"
         MsgNoneOf
             -> "None of:"
-        MsgAtLeastOneOf
-            -> "At least one of:"
+        MsgAllCoreProvince
+            -> "All core provinces:"
+        MsgAllSubjectCountries
+            -> "All subject countries:"
         MsgArea
             -> "Area containing this province:"
+        MsgAtLeastOneOf
+            -> "At least one of:"
         MsgAnyActiveTradeNode
             -> "Any trade node with a merchant present:"
         MsgAnyAlly
             -> "Any ally:"
         MsgAnyCoreCountry
             -> "Any country with a core on this province:"
+        MsgAnyCoreProvince
+            -> "Any core province:"
         MsgAnyCountry
             -> "Any country in the world:"
+        MsgAnyEmptyNeighborProvince
+            -> "Any neighbouring uncolonized province:"
         MsgAnyEnemyCountry
             -> "Any enemy country:"
+        MsgAnyHereticProvince
+            -> "Any province with heretic religion:"
         MsgAnyKnownCountry
             -> "Any known country:"
         MsgAnyNeighborCountry
@@ -1192,22 +1236,42 @@ instance RenderMessage Script ScriptMessage where
             -> "Any neighbouring province:"
         MsgAnyOwnedProvince
             -> "Any owned province:"
+        MsgAnyPrivateeringCountry
+            -> "Any country privateering in this node:"
+        MsgAnyProvince
+            -> "Any province:"
         MsgAnyRival
             -> "Any rival:"
         MsgAnySubject
             -> "Any subject:"
+        MsgAnyTradeNode
+            -> "Any trade node:"
         MsgCapital
             -> "Capital:"
         MsgController
             -> "Province controller:"
+        MsgElse
+            -> "Else:"
         MsgEmperor
             -> "The Holy Roman Emperor:"
         MsgAllCountries
             -> "All countries in the world:"
+        MsgAllNeighborCountries
+            -> "All neighbouring countries:"
+        MsgEveryActiveTradeNode
+            -> "Every trade node with a merchant present:"
+        MsgEveryAlly
+            -> "Every ally:"
         MsgEveryCountry
             -> "Every country in the world:"
+        MsgEveryCoreCountry
+            -> "Every country with a core:"
+        MsgEveryCoreProvince
+            -> "Every core province:"
         MsgEveryEnemyCountry
             -> "Every enemy country:"
+        MsgEveryHereticProvince
+            -> "Every province with heretic religion:"
         MsgEveryKnownCountry
             -> "Every known country:"
         MsgEveryNeighborCountry
@@ -1228,6 +1292,10 @@ instance RenderMessage Script ScriptMessage where
             -> "If:"
         MsgLimit
             -> "Limited to:"
+        MsgMostProvinceTradePower
+            -> "The country with the most provincial trade power:"
+        MsgOverlord
+            -> "Overlord:"
         MsgOwner
             -> "Province owner:"
         MsgRandomActiveTradeNode
@@ -1235,9 +1303,17 @@ instance RenderMessage Script ScriptMessage where
         MsgRandomAlly
             -> "One random ally:"
         MsgRandomCoreCountry
-            -> "One random country with a core on this province:"
+            -> "One random country with a core:"
+        MsgRandomCoreProvince
+            -> "One random core province:"
         MsgRandomCountry
             -> "One random country:"
+        MsgRandomElector
+            -> "One random elector:"
+        MsgRandomEmptyNeighborProvince
+            -> "One random neighbouring uncolonized province:"
+        MsgRandomHereticProvince
+            -> "One random province with heretic religion:"
         MsgRandomKnownCountry
             -> "One random known country:"
         MsgRandomList
@@ -1248,10 +1324,20 @@ instance RenderMessage Script ScriptMessage where
             -> "One random neighbouring province:"
         MsgRandomOwnedProvince
             -> "One random owned province:"
+        MsgRandomPrivateeringCountry
+            -> "One random country privateering in this node:"
         MsgRandomProvince
             -> "One random province:"
         MsgRandomRival
             -> "One random rival:"
+        MsgRandomSubjectCountry
+            -> "One random subject country:"
+        MsgRandomTradeNode
+            -> "One random trade node:"
+        MsgStrongestTradePower
+            -> "The country with the most trade power:"
+        MsgWhile
+            -> "While:"
         MsgRandomChance {scriptMessageChance = _chance}
             -> mconcat
                 [ toMessage (plainPc _chance)
@@ -3066,7 +3152,7 @@ instance RenderMessage Script ScriptMessage where
                 , _name
                 , " religion"
                 ]
-        MsgStrongestTradePower {scriptMessageWho = _who}
+        MsgIsStrongestTradePower {scriptMessageWho = _who}
             -> mconcat
                 [ _who
                 , " is the strongest trade power in this node"
@@ -4743,6 +4829,58 @@ instance RenderMessage Script ScriptMessage where
                 , _icon
                 , " "
                 , _what
+                ]
+        MsgIsFreeOrTributaryTrigger -> "(THIS) {{is_free_or_tributary_trigger}}"
+        MsgAbsolutism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " Absolutism is at least "
+                , toMessage (colourNum True _amt)
+                ]
+        MsgGainAbsolutism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ gainOrLose _amt
+                , " "
+                , _icon
+                , " "
+                , toMessage (colourNum True _amt)
+                , " Absolutism"
+                ]
+        MsgMaxAbsolutism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourNumSign True) _amt)
+                , " Maximum absolutism"
+                ]
+        MsgYearlyAbsolutism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourNumSign True) _amt)
+                , " Yearly absolutism"
+                ]
+        MsgCurrentAge {scriptMessageIcon = _icon, scriptMessageWhat = _what}
+            -> mconcat
+                [ "It is currently the "
+                , _icon
+                , " "
+                , _what
+                ]
+        MsgAcceptedCulture {scriptMessageWhat = _what}
+            -> mconcat
+                [ case _what of {
+                      "PREV" -> "(Previously mentioned thing)"
+                    ; "ROOT" -> "(Top-level thing)"
+                    ; _      -> _what
+                    }
+                , " is accepted culture"
+                ]
+        MsgCalcTrueIf {scriptMessageAmt = _amt}
+            -> mconcat
+                [ "At least "
+                , toMessage (plainNum _amt)
+                , " of the following are true:"
                 ]
 
 type IndentedMessage = (Int, ScriptMessage)
