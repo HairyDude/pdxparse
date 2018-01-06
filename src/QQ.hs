@@ -87,6 +87,8 @@ module QQ (
 
 import Control.Applicative (Applicative (..), Alternative (..))
 import Data.Monoid ((<>))
+import Data.Either (partitionEithers)
+import Data.Maybe (isNothing)
 
 import Data.Attoparsec.Text (Parser)
 import qualified Data.Attoparsec.Text as Ap
@@ -103,6 +105,16 @@ import Language.Haskell.Meta (parseExp, parsePat)
 
 import Abstract
 
+-------------
+-- Helpers --
+-------------
+
+-- | Haskell code or string literal?
+data StringOrCode
+    = StringNotCode String
+    | CodeNotString String
+    deriving (Show, Eq, Ord)
+
 -----------------
 -- Expressions --
 -----------------
@@ -111,8 +123,12 @@ import Abstract
 -- on a LHS or RHS. Not all constructors actually make sense in both contexts;
 -- e.g. 'ExpHsCompound' doesn't make sense on the left.
 data StExp
-    = ExpHsDirect String    -- %foo => foo :: GenericLhs etc.
-    | ExpHsGeneric String   -- $foo => Generic[LR]hs foo
+    = ExpHsDirect String    -- %foo => foo :: <inferred type>
+    | ExpHsGeneric StringOrCode (Maybe StringOrCode)
+                            -- $foo => Generic[LR]hs foo Nothing
+                            -- $foo:bar => Generic[LR]hs (CodeNotString foo) (Just (StringNotCode "bar"))
+                            -- foo:$bar => Generic[LR]hs (StringNotCode "foo") (Just (CodeNotString bar))
+                            -- $foo:$bar => Generic[LR]hs (CodeNotString foo) (Just (CodeNotString bar))
     | ExpHsString String    -- ?foo => StringRhs foo
     | ExpHsInt String       -- !foo => IntRhs foo
     | ExpHsCompound String  -- @foo => CompoundRhs foo
@@ -121,18 +137,30 @@ data StExp
 type StExpL = StExp
 type StExpR = StExp
 
+-- | Parse a generic LHS/RHS with sigils.
+expHsGeneric :: Parser StExp
+expHsGeneric =
+        ExpHsGeneric <$> (CodeNotString . T.unpack <$> ("$" *> haskell))
+                     <*> Ap.option Nothing
+                         (   (Just . CodeNotString . T.unpack <$> (":$" *> haskell))
+                         <|> (Just . StringNotCode . T.unpack <$> (":" *> ident))
+                         )
+    <|> ExpHsGeneric <$> (StringNotCode . T.unpack <$> ident)
+                     <*> (Just . CodeNotString . T.unpack <$> (":$" *> haskell))
+
+
 -- | Custom component for statement LHS. This parses the LHS variable sigils.
 e_lhs :: Parser StExpL
-e_lhs = ExpHsGeneric . T.unpack <$> (Ap.string "$" *> haskell)
-    <|> ExpHsDirect  . T.unpack <$> (Ap.string "%" *> haskell)
-    <|> ExpHsInt     . T.unpack <$> (Ap.string "!" *> haskell)
+e_lhs = expHsGeneric
+    <|> ExpHsDirect  . T.unpack <$> ("%" *> haskell)
+    <|> ExpHsInt     . T.unpack <$> ("!" *> haskell)
 
 -- | Custom component for statement RHS. This parses the RHS variable sigils.
 e_rhs :: Parser StExpR
-e_rhs = ExpHsDirect   . T.unpack <$> (Ap.string "%" *> haskell)
-    <|> ExpHsGeneric  . T.unpack <$> (Ap.string "$" *> haskell)
-    <|> ExpHsString   . T.unpack <$> (Ap.string "?" *> haskell)
-    <|> ExpHsCompound . T.unpack <$> (Ap.string "@" *> haskell)
+e_rhs = expHsGeneric
+    <|> ExpHsDirect   . T.unpack <$> ("%" *> haskell)
+    <|> ExpHsString   . T.unpack <$> ("?" *> haskell)
+    <|> ExpHsCompound . T.unpack <$> ("@" *> haskell)
 
 -- | Haskell expression: either a variable, or a more complex expression in
 -- parentheses. Permitted syntax is whatever is supported by
@@ -174,19 +202,32 @@ prostmt2stmt :: Statement StExpL StExpR -> Q Exp
 prostmt2stmt (StatementBare _) = error "bare statement passed to prostmt2stmt"
 prostmt2stmt (Statement lhs op rhs) = [| Statement $(lhs2exp lhs) $(op2exp op) $(rhs2exp rhs) |]
 
--- | Construct an expression splice from a Haskell snippet applied to the given
--- constructor.
-mkHsVal :: Name -- ^ The constructor 
-        -> String -- ^ Haskell expression concrete syntax
+-- | Construct an expression splice from a Haskell snippet. If parsing fails,
+-- abort.
+mkHsVal :: String -- ^ Haskell expression concrete syntax
         -> Q Exp
-mkHsVal con s = case parseExp s of
-    Right expr -> return $ AppE (ConE con) expr
+mkHsVal s = case parseExp s of
+    Right expr -> return expr
     Left err -> fail ("couldn't parse haskell: " ++ err)
 
 -- | Turn an LHS AST expression into a splice. If it started with a sigil,
 -- interpret the Haskell expression following it.
 lhs2exp :: Lhs StExpL -> Q Exp
-lhs2exp (CustomLhs (ExpHsGeneric s)) = mkHsVal 'GenericLhs s
+lhs2exp (CustomLhs (ExpHsGeneric (CodeNotString s) mt))
+    = let genE = mkHsVal s in case mt of
+        Nothing -> [| GenericLhs $genE Nothing |]
+        Just (StringNotCode t) -> [| GenericLhs $genE $(stringE t) |]
+        Just (CodeNotString t) -> [| GenericLhs $genE $(mkHsVal t) |]
+lhs2exp (CustomLhs (ExpHsGeneric (StringNotCode s) mt))
+    | Just (CodeNotString t) <- mt = [| GenericLhs $(stringE s) $(mkHsVal t) |]
+    -- This function should only be called when there was a splice with Haskell
+    -- code. If we find none, this suggests a bug somewhere.
+    | Just (StringNotCode t) <- mt =
+        reportWarning "lhs2exp: no code" >>
+        [| GenericLhs $(stringE s) $(stringE t) |]
+    | Nothing <- mt =
+        reportWarning "lhs2exp: no code" >>
+        [| GenericLhs $(stringE s) Nothing |]
 lhs2exp (CustomLhs (ExpHsDirect s)) = varE (mkName s)
 lhs2exp (CustomLhs _) = fail "BUG: invalid lhs"
 lhs2exp other = [| other |]
@@ -203,10 +244,23 @@ rhs2exp :: Rhs StExpL StExpR -> Q Exp
 rhs2exp (CustomRhs (ExpHsDirect s)) = case parseExp s of
     Right expr -> return expr
     Left err -> fail ("couldn't parse haskell: " ++ err)
-rhs2exp (CustomRhs (ExpHsGeneric s))  = mkHsVal 'GenericRhs s
-rhs2exp (CustomRhs (ExpHsString s))   = mkHsVal 'StringRhs s
-rhs2exp (CustomRhs (ExpHsInt s))      = mkHsVal 'IntRhs s
-rhs2exp (CustomRhs (ExpHsCompound s)) = mkHsVal 'CompoundRhs s
+rhs2exp (CustomRhs (ExpHsGeneric (CodeNotString s) mt))
+    | Nothing <- mt = [| GenericRhs $(mkHsVal s) Nothing |]
+    | Just (StringNotCode t) <- mt = [| GenericRhs $(mkHsVal s) $(stringE t) |]
+    | Just (CodeNotString t) <- mt = [| GenericRhs $(mkHsVal s) $(mkHsVal t) |]
+rhs2exp (CustomRhs (ExpHsGeneric (StringNotCode s) mt))
+    | Just (CodeNotString t) <- mt = [| GenericRhs $(stringE s) $(stringE t) |]
+    -- This function should only be called when there was a splice with Haskell
+    -- code. If we find none, this suggests a bug somewhere.
+    | Just (StringNotCode t) <- mt =
+        reportWarning "rhs2exp: no code" >>
+        [| GenericRhs $(stringE s) $(stringE t) |]
+    | Nothing <- mt =
+        reportWarning "rhs2exp: no code" >>
+        [| GenericRhs $(stringE s) Nothing |]
+rhs2exp (CustomRhs (ExpHsString s))   = [| StringRhs   $(mkHsVal s) |]
+rhs2exp (CustomRhs (ExpHsInt s))      = [| IntRhs      $(mkHsVal s) |]
+rhs2exp (CustomRhs (ExpHsCompound s)) = [| CompoundRhs $(mkHsVal s) |]
 rhs2exp other = [| other |]
 
 --------------
@@ -224,24 +278,36 @@ data StPat
     = PatHs String          -- ^ %foo => (pattern) foo
     | PatStringlike String  -- ^ ?foo => (textRhs -> foo) (Only makes sense on RHS)
     | PatStringOrNum String -- ^ ?!foo => (floatOrTextRhs -> foo) (Only makes sense on RHS)
-    | PatSomeGeneric String -- ^ $foo => GenericLhs foo
+    | PatSomeGeneric StringOrCode (Maybe StringOrCode)
+        -- ^ * $foo => PatSomeGeneric (CodeNotString foo) Nothing
+        --   * foo:bar => handled elsewhere
+        --   * $foo:bar => PatSomeGeneric (CodeNotString foo) (StringNotCode bar)
+        --   * foo:$bar => PatSomeGeneric (StringNotCode foo) (CodeNotString bar)
+        --   * $foo:bar => PatSomeGeneric (CodeNotString foo) (CodeNotString bar)
     | PatSomeInt String     -- ^ !foo => (floatRhs -> foo) (Only makes sense on RHS)
-    | PatCompound String    -- ^ @foo => CompoundRhs (Only makes sense on RHS)
+    | PatCompound String    -- ^ @foo => CompoundRhs foo (Only makes sense on RHS)
     deriving (Show, Eq, Ord)
 type StPatL = StPat
 type StPatR = StPat
 
 -- | Custom component for statement LHS. This parses the LHS variable sigils.
 p_lhs :: Parser StPatL
-p_lhs = (PatHs          . T.unpack) <$> (Ap.string "%"  *> haskell)
-    <|> (PatSomeGeneric . T.unpack) <$> (Ap.string "$"  *> haskell)
-    <|> (PatSomeInt     . T.unpack) <$> (Ap.string "!" *> haskell)
+p_lhs = (PatHs          . T.unpack) <$> ("%"  *> haskell) -- %foo => type inferred
+    <|> (PatSomeGeneric <$> (CodeNotString . T.unpack <$> ("$"  *> haskell)) -- $foo or $foo:... => Text
+                        <*> Ap.option Nothing -- $foo (no tag)
+                            (    (Just . CodeNotString . T.unpack <$> (":$" *> haskell)) -- $foo:$bar
+                            <|>  (Just . StringNotCode . T.unpack <$> (":" *> ident)) -- $foo:bar
+                            ))
+    <|> (PatSomeGeneric <$> (StringNotCode . T.unpack <$> ident) -- foo:$bar
+                        <*> (Just . CodeNotString . T.unpack <$> (":$" *> haskell)))
+    -- If no sigil, fall back to normal handling.
+    <|> (PatSomeInt     . T.unpack) <$> ("!" *> haskell)
 
 -- | Custom component for statement RHS. This parses the RHS variable sigils.
 p_rhs :: Parser StPatR
-p_rhs = (PatStringOrNum . T.unpack) <$> (Ap.string "?!" *> haskell)
-    <|> (PatStringlike  . T.unpack) <$> (Ap.string "?" *> haskell)
-    <|> (PatCompound    . T.unpack) <$> (Ap.string "@" *> haskell)
+p_rhs = (PatStringOrNum . T.unpack) <$> ("?!" *> haskell)
+    <|> (PatStringlike  . T.unpack) <$> ("?" *> haskell)
+    <|> (PatCompound    . T.unpack) <$> ("@" *> haskell)
     <|> p_lhs
 
 -- | Convert a statement into the equivalent pattern.
@@ -258,19 +324,35 @@ lhs2pat lhs = case lhs of
         Right pat' -> return pat'
         Left err -> fail ("couldn't parse pattern: " ++ err)
     -- $foo => generic lhs, name stored in a variable foo
-    --  e.g. $color = yes => Statement (GenericLhs color) (GenericRhs "yes")
-    CustomLhs (PatSomeGeneric gen) ->
-        if gen == "_"
-        then wildP
-        else conP 'GenericLhs [varP (mkName gen)]
+    --  e.g. $color = yes => Statement (GenericLhs (CodeNotString color) Nothing)
+    --                                 (GenericRhs (StringNotCode "yes") Nothing)
+    CustomLhs (PatSomeGeneric s mt) ->
+        let tag = case mt of
+                Nothing -> [p| Nothing |]
+                Just (StringNotCode t) -> [p| Just $(litP (stringL t)) |]
+                Just (CodeNotString t) -> [p| Just $(case parsePat t of
+                    Right t' -> return t'
+                    Left err -> fail ("couldn't parse generic pattern: " ++ err)) |]
+        in case s of
+            CodeNotString c ->
+                if isNothing mt && c == "_"
+                    then [p| _ |] -- wildcard, not a variable named "_"!
+                    else [p| GenericLhs $(varP (mkName c)) $tag |]
+            StringNotCode c ->
+                [p| GenericRhs $(litP (stringL c)) $tag |]
     -- not supported in LHS
-    CustomLhs (PatSomeInt n) -> conP 'IntLhs [varP (mkName n)]
+    CustomLhs (PatSomeInt n) -> [p| IntLhs $(varP (mkName n)) |]
     CustomLhs (PatCompound _) -> error "compound pattern not supported on LHS"
     CustomLhs (PatStringlike _) -> error "stringlike pattern not supported on LHS"
     CustomLhs (PatStringOrNum _) -> error "string-or-num pattern not supported on LHS"
+    -- non-custom
     AtLhs label -> error "statement starting with @ not supported on LHS"
     IntLhs _ -> error "int pattern not supported on LHS"
-    GenericLhs gen -> conP 'GenericLhs [litP (stringL (T.unpack gen))]
+    GenericLhs gs gt ->
+        [p| GenericLhs $(litP (stringL (T.unpack gs)))
+                       $(case gt of
+                            Nothing -> [p| Nothing |]
+                            Just t  -> [p| Just t |]) |]
 
 -- | Splice an operator from its AST.
 op2pat :: Operator -> Q Pat
@@ -294,27 +376,37 @@ rhs2pat rhs = case rhs of
     CustomRhs (PatStringOrNum patS) -> case parsePat patS of
         Right pat' -> viewP [| floatOrTextRhs |] (return pat')
         Left  err  -> fail ("couldn't parse string pattern: " ++ err)
-    CustomRhs (PatSomeGeneric patS) -> case parsePat patS of
-        Right pat' -> [p| GenericRhs $(return pat') |]
-        Left  err  -> fail ("couldn't parse generic pattern: " ++ err)
+    CustomRhs (PatSomeGeneric s mt) ->
+        let tag = case mt of
+                Nothing -> [p| Nothing |]
+                Just (StringNotCode t) -> [p| Just $(litP (stringL t)) |]
+                Just (CodeNotString t) -> [p| Just $(case parsePat t of
+                    Right t' -> return t'
+                    Left err -> fail ("couldn't parse generic pattern: " ++ err)) |]
+        in case s of
+            CodeNotString patS -> case parsePat patS of
+                Right pat' -> [p| GenericRhs $(return pat') $tag |]
+                Left err -> fail ("couldn't parse generic pattern: " ++ err)
+            StringNotCode s -> [p| GenericRhs $(litP (stringL s)) $tag |]
     CustomRhs (PatSomeInt patS) -> case parsePat patS of
         Right pat' -> viewP [| floatRhs |] [p| Just $(return pat') |]
         Left  err  -> fail ("couldn't parse integer pattern: " ++ err)
     CustomRhs (PatCompound patS) -> case parsePat patS of
         Right pat' -> [p| CompoundRhs $(return pat') |]
         Left  err  -> fail ("couldn't parse compound pattern: " ++ err)
-    GenericRhs gen    -> [p| GenericRhs  $(litP  (stringL (T.unpack gen))) |]
-    StringRhs  str    -> [p| StringRhs   $(litP  (stringL (T.unpack str))) |]
-    IntRhs     int    -> [p| IntRhs      $(litP  (integerL (fromIntegral int))) |]
-    CompoundRhs stmts -> [p| CompoundRhs $(listP (map propat2pat stmts)) |]
-    FloatRhs   flt    -> [p| FloatRhs    $(litP  (doublePrimL (toRational flt))) |]
-    DateRhs    _      -> error "date literal not yet supported in patterns, sorry!"
+    GenericRhs gen tag -> [p| GenericRhs  $(litP  (stringL (T.unpack gen)))
+                                          $(maybe [p| Nothing |] (litP . stringL . T.unpack) tag) |]
+    StringRhs  str     -> [p| StringRhs   $(litP  (stringL (T.unpack str))) |]
+    IntRhs     int     -> [p| IntRhs      $(litP  (integerL (fromIntegral int))) |]
+    CompoundRhs stmts  -> [p| CompoundRhs $(listP (map propat2pat stmts)) |]
+    FloatRhs   flt     -> [p| FloatRhs    $(litP  (doublePrimL (toRational flt))) |]
+    DateRhs    _       -> error "date literal not yet supported in patterns, sorry!"
 
 ---------------------
 -- The quasiquoter --
 ---------------------
 
-TL.deriveLiftMany [''Lhs, ''Rhs, ''Operator, ''Date, ''Statement, ''StPat, ''StExp]
+TL.deriveLiftMany [''StringOrCode, ''Lhs, ''Rhs, ''Operator, ''Date, ''Statement, ''StPat, ''StExp]
 
 -- | The quasiquoter. Support is provided for expression and pattern contexts;
 -- type and declaration contexts are not meaningful and therefore not

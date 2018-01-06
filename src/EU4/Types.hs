@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleContexts, QuasiQuotes #-}
 {-|
 Module      : EU4.Types
 Description : Types specific to Europa Universalis IV
@@ -25,6 +25,7 @@ import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
 
 import Abstract -- everything
+import QQ (pdx)
 import SettingsTypes ( PPT, Settings
                      , IsGame (..), IsGameData (..), IsGameState (..))
 --import Doc
@@ -119,6 +120,8 @@ data EU4Event = EU4Event {
     ,   eu4evt_hide_window :: Bool
     -- | List of options for the player/AI to choose from.
     ,   eu4evt_options :: Maybe [EU4Option]
+    -- | Effects that take place after any option is selected.
+    ,   eu4evt_after :: Maybe GenericScript
     -- | The event's source file.
     ,   eu4evt_path :: Maybe FilePath
     } deriving (Show)
@@ -207,7 +210,7 @@ newAIModifier = AIModifier Nothing []
 aiWillDo :: GenericScript -> AIWillDo
 aiWillDo = foldl' aiWillDoAddSection newAIWillDo
 aiWillDoAddSection :: AIWillDo -> GenericStatement -> AIWillDo
-aiWillDoAddSection awd (Statement (GenericLhs left) OpEq right) = case T.toLower left of
+aiWillDoAddSection awd [pdx| $left = %right |] = case T.toLower left of
     "factor" -> case floatRhs right of
         Just fac -> awd { awd_base = Just fac }
         _        -> awd
@@ -221,7 +224,7 @@ aiWillDoAddSection awd _ = awd
 awdModifier :: GenericScript -> AIModifier
 awdModifier = foldl' awdModifierAddSection newAIModifier
 awdModifierAddSection :: AIModifier -> GenericStatement -> AIModifier
-awdModifierAddSection aim stmt@(Statement (GenericLhs left) OpEq right) = case T.toLower left of
+awdModifierAddSection aim stmt@[pdx| $left = %right |] = case T.toLower left of
     "factor" -> case floatRhs right of
         Just fac -> aim { aim_factor = Just fac }
         Nothing  -> aim

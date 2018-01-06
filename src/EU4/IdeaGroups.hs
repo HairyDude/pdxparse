@@ -79,7 +79,7 @@ parseIdeaGroup [pdx| %left = %right |] = case right of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
         AtLhs _ -> throwError "statement starting with @ in idea group file"
-        GenericLhs name -> do
+        GenericLhs name _ -> do
             name_loc <- lift $ getGameL10n name
             ig <- foldM (curry (lift . uncurry ideaGroupAddSection))
                       (newIdeaGroup { ig_name = name
@@ -124,7 +124,7 @@ ideaGroupAddSection ig  _ = return ig
 -- | Pick an icon for the idea, based on the first of its effects.
 iconForIdea' :: Idea -> Maybe Text
 iconForIdea' idea = case idea_effects idea of
-    (Statement (GenericLhs eff) OpEq _:_) -> iconKey eff
+    ([pdx| $eff = %_ |]:_) -> iconKey eff
     _ -> Nothing
 
 iconForIdea :: Idea -> Doc

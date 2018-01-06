@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, QuasiQuotes, FlexibleContexts #-}
+{-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, QuasiQuotes, FlexibleContexts, LambdaCase #-}
 {-|
 Module      : EU4.Common
 Description : Message handler for Europa Universalis IV
@@ -96,7 +96,6 @@ getProvLoc n =
     let provid_t = T.pack (show n)
     in getGameL10nDefault provid_t ("PROV" <> provid_t)
 
-
 -- Emit flag template if the argument is a tag.
 flag :: (IsGameData (GameData g), Monad m) => Text -> PPT g m Doc
 flag name =
@@ -108,11 +107,33 @@ flag name =
                 -- Suggestions of a description for FROM are welcome.
                 _ -> Doc.strictText name
 
+-- Tagged messages
+varTags :: Trie (Text -> ScriptMessage)
+varTags = Tr.fromList . map (first TE.encodeUtf8) $
+    [("event_target", MsgEventTargetVar)
+    ]
+
+-- Argument may be a tag or a tagged variable. Emit a flag in the former case,
+-- and localize in the latter case.
+eflag :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
+            Either Text (Text, Text) -> PPT g m (Maybe Text)
+eflag = \case
+    Left name -> Just <$> flagText name
+    Right (flip Tr.lookup varTags . TE.encodeUtf8 -> Just msg, tag)
+        -> Just <$> messageText (msg tag)
+    _ -> return Nothing
+
 flagText :: (IsGameData (GameData g),
              IsGameState (GameState g),
              Monad m) =>
     Text -> PPT g m Text
 flagText = fmap Doc.doc2text . flag
+
+flagTextMaybe :: (IsGameData (GameData g),
+             IsGameState (GameState g),
+             Monad m) =>
+    Text -> PPT g m (Text,Text)
+flagTextMaybe = fmap (\t -> (mempty, t)) . flagText
 
 -- Emit icon template.
 icon :: Text -> Doc
@@ -199,6 +220,9 @@ ppHandlers = foldl' Tr.unionL Tr.empty
 handlersRhsIrrelevant :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersRhsIrrelevant = Tr.fromList
         [("add_cardinal"           , const (msgToPP MsgAddCardinal))
+        ,("add_mandate_effect"     , const (msgToPP MsgAddMandateEffect))
+        ,("add_mandate_large_effect", const (msgToPP MsgAddMandateLargeEffect))
+        ,("add_meritocracy_effect" , const (msgToPP MsgAddMeritocracyEffect))
         ,("cancel_construction"    , const (msgToPP MsgCancelConstruction)) -- Canals
         ,("cb_on_overseas"         , const (msgToPP MsgGainOverseasCB)) -- Full Expansion
         ,("cb_on_primitives"       , const (msgToPP MsgGainPrimitivesCB)) -- Full Exploration
@@ -224,8 +248,16 @@ handlersRhsIrrelevant = Tr.fromList
 handlersNumeric :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersNumeric = Tr.fromList
         [("add_authority"                    , numeric MsgGainAuth) -- Inti
+        ,("add_colonysize"                   , numeric MsgGainColonyPopulation)
+        ,("add_construction_progress"        , numeric MsgGainConstructionProgress)
         ,("add_doom"                         , numeric MsgGainDoom)
+        ,("add_harmonization_progress"       , numeric MsgGainHarmonizationProgress)
         ,("add_heir_claim"                   , numeric MsgHeirGainClaim)
+        ,("add_heir_support"                 , numeric MsgGainHeirSupport) -- elective monarchy
+        ,("add_isolationism"                 , numeric MsgAddIsolationism)
+        ,("add_next_inistutition_embracement", numeric MsgAddNextInstitutionEmbracement)
+        ,("add_nationalism"                  , numeric MsgGainYearsOfSeparatism)
+        ,("authority"                        , numeric MsgAuth) -- Inti?
         ,("change_siege"                     , numeric MsgGainSiegeProgress)
         ,("colonysize"                       , numeric MsgColonySettlers)
         ,("had_recent_war"                   , numeric MsgWasAtWar)
@@ -254,13 +286,17 @@ handlersNumericIcons = Tr.fromList
         ,("add_absolutism"           , numericIcon "absolutism" MsgGainAbsolutism)
         ,("add_adm_power"            , numericIcon "adm" MsgGainADM)
         ,("add_army_tradition"       , numericIcon "army tradition" MsgGainAT)
+        ,("add_army_professionalism" , numericIcon "army professionalism" MsgGainArmyProfessionalism)
         ,("add_base_manpower"        , numericIcon "manpower" MsgGainBM)
         ,("add_base_production"      , numericIcon "production" MsgGainBP)
         ,("add_base_tax"             , numericIcon "base tax" MsgGainBT)
         ,("add_church_power"         , numericIcon "church power" MsgGainChurchPower)
+        ,("add_corruption"           , numericIcon "corruption" MsgGainCorruption)
+        ,("add_devastation"          , numericIcon "devastation" MsgGainDevastation)
         ,("add_devotion"             , numericIcon "devotion" MsgGainDevotion)
         ,("add_dip_power"            , numericIcon "dip" MsgGainDIP)
         ,("add_fervor"               , numericIcon "monthly fervor" MsgGainFervor)
+        ,("add_harmony"              , numericIcon "yearly harmony" MsgGainHarmony)
         ,("add_horde_unity"          , numericIcon "horde unity" MsgGainHordeUnity)
         ,("add_imperial_influence"   , numericIcon "imperial authority" MsgGainImperialAuthority)
         ,("add_inflation"            , numericIcon "inflation" MsgGainInflation)
@@ -268,22 +304,29 @@ handlersNumericIcons = Tr.fromList
         ,("add_legitimacy"           , numericIcon "legitimacy" MsgGainLegitimacy)
         ,("add_liberty_desire"       , numericIcon "liberty desire" MsgGainLibertyDesire)
         ,("add_local_autonomy"       , numericIcon "local autonomy" MsgGainLocalAutonomy)
+        ,("add_mandate"              , numericIcon "mandate" MsgGainMandate)
         ,("add_mercantilism"         , numericIcon "mercantilism" MsgGainMercantilism)
         ,("add_mil_power"            , numericIcon "mil" MsgGainMIL)
+        ,("add_militarized_society"  , numericIcon "militarization of state" MsgGainMilitarization)
         ,("add_navy_tradition"       , numericIcon "navy tradition" MsgGainNavyTradition)
         ,("add_papal_influence"      , numericIcon "papal influence" MsgGainPapalInfluence)
         ,("add_patriarch_authority"  , numericIcon "patriarch authority" MsgGainPatAuth)
         ,("add_piety"                , numericIcon "piety" MsgGainPiety)
         ,("add_prestige"             , numericIcon "prestige" MsgGainPrestige)
+        ,("add_prosperity"           , numericIcon "prosperity" MsgGainProsperity)
         ,("add_reform_desire"        , numericIcon "reform desire" MsgGainReformDesire)
         ,("add_republican_tradition" , numericIcon "republican tradition" MsgGainRepTrad)
         ,("add_stability"            , numericIcon "stability" MsgGainStability)
+        ,("add_splendor"             , numericIcon "splendor" MsgGainSplendor)
+        ,("add_tariff_value"         , numericIcon "gloabl tariffs" MsgAddTariffValue)
         ,("add_treasury"             , numericIcon "ducats" MsgAddTreasury)
         ,("add_unrest"               , numericIcon "local unrest" MsgAddLocalUnrest)
         ,("add_war_exhaustion"       , numericIcon "war exhaustion" MsgGainWarExhaustion)
         ,("add_yearly_manpower"      , numericIcon "manpower" MsgGainYearlyManpower)
+        ,("add_yearly_sailors"       , numericIcon "sailors" MsgGainYearlySailors)
         ,("add_years_of_income"      , numericIcon "ducats" MsgAddYearsOfIncome)
         ,("adm"                      , numericIcon "adm" MsgRulerADM)
+        ,("administrative_efficiency", numericIconBonus "administrative efficiency" MsgAdminEfficiencyBonus MsgAdminEfficiency)
         ,("adm_power"                , numericIcon "adm" MsgHasADM)
         ,("adm_tech"                 , numericIcon "adm tech" MsgADMTech)
         ,("army_reformer"            , numericIcon "army reformer" MsgHasArmyReformerLevel)
@@ -296,6 +339,7 @@ handlersNumericIcons = Tr.fromList
         ,("change_adm"               , numericIcon "adm" MsgGainADMSkill)
         ,("change_dip"               , numericIcon "dip" MsgGainDIPSkill)
         ,("change_mil"               , numericIcon "mil" MsgGainMILSkill)
+        ,("corruption"               , numericIcon "corruption" MsgCorruption)
         ,("create_admiral"           , numericIcon "admiral" MsgCreateAdmiral)
         ,("create_conquistador"      , numericIcon "conquistador" MsgCreateConquistador)
         ,("create_explorer"          , numericIcon "explorer" MsgCreateExplorer)
@@ -342,6 +386,7 @@ handlersNumericIcons = Tr.fromList
         ,("reform_desire"            , numericIcon "reform desire" MsgReformDesire)
         ,("religious_unity"          , numericIconBonus "religious unity" MsgReligiousUnity MsgReligiousUnityBonus)
         ,("republican_tradition"     , numericIconBonus "republican tradition" MsgRepTrad MsgYearlyRepTrad)
+        ,("sailors_percentage"       , numericIcon "sailors" MsgSailorsPercentage)
         ,("stability"                , numericIcon "stability" MsgStability)
         ,("statesman"                , numericIcon "statesman" MsgHasStatesmanLevel)
         ,("theologian"               , numericIcon "theologian" MsgHasTheologianLevel)
@@ -447,7 +492,7 @@ handlersNumericIcons = Tr.fromList
         ,("prestige_from_land"                , numericIcon "prestige from land" MsgPrestigeFromLand)
         ,("prestige_from_naval"               , numericIcon "prestige from naval" MsgPrestigeFromNaval)
         ,("privateer_efficiency"              , numericIcon "privateer efficiency" MsgPrivateerEff)
-        ,("production_efficiency"             , numericIcon "production efficiency" MsgProdEff)
+        ,("production_efficiency"             , numericIconBonus "production efficiency" MsgProdEff MsgProdEffBonus)
         ,("province_warscore_cost"            , numericIcon "province warscore cost" MsgProvinceWarscoreCost)
         ,("rebel_support_efficiency"          , numericIcon "reform desire" MsgRebelSupportEff)
         ,("recover_army_morale_speed"         , numericIcon "recover army morale speed" MsgRecoverArmyMoraleSpeed)
@@ -474,6 +519,7 @@ handlersNumericIcons = Tr.fromList
 handlersModifiers :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersModifiers = Tr.fromList
         [("add_country_modifier"           , addModifier MsgCountryMod)
+        ,("add_disaster_modifier"          , addModifier MsgDisasterMod)
         ,("add_permanent_province_modifier", addModifier MsgPermanentProvMod)
         ,("add_province_modifier"          , addModifier MsgProvMod)
         ,("add_ruler_modifier"             , addModifier MsgRulerMod)
@@ -498,6 +544,8 @@ handlersCompound = Tr.fromList
         ,("prev", compoundMessage MsgPREV)
         ,("not" , compoundMessage MsgNoneOf)
         ,("or"  , compoundMessage MsgAtLeastOneOf)
+        -- Tagged blocks
+        ,("event_target", compoundMessageTagged MsgEventTarget)
         -- There is a semantic distinction between "all" and "every",
         -- namely that the former means "this is true for all <type>" while
         -- the latter means "do this for every <type>."
@@ -573,8 +621,7 @@ handlersCompound = Tr.fromList
 -- | Handlers for simple statements where RHS is a localizable atom
 handlersLocRhs :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersLocRhs = Tr.fromList
-        [("accepted_culture"      , withLocAtom MsgAcceptedCulture)
-        ,("add_great_project"     , withLocAtom MsgStartConstructingGreatProject)
+        [("add_great_project"     , withLocAtom MsgStartConstructingGreatProject)
         ,("change_government"     , withLocAtom MsgChangeGovernment)
         ,("continent"             , withLocAtom MsgContinentIs)
         ,("change_culture"        , withLocAtom MsgChangeCulture)
@@ -615,7 +662,8 @@ handlersProvince = Tr.fromList
 -- | Handlers for statements whose RHS is a flag OR a province ID
 handlersFlagOrProvince :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersFlagOrProvince = Tr.fromList
-        [("add_permanent_claim", withFlagOrProvince MsgGainPermanentClaimCountry MsgGainPermanentClaimProvince)
+        [("add_claim"          , withFlagOrProvince MsgAddClaimFor MsgAddClaimOn)
+        ,("add_permanent_claim", withFlagOrProvince MsgGainPermanentClaimCountry MsgGainPermanentClaimProvince)
         ,("cavalry"            , withFlagOrProvince MsgCavalrySpawnsCountry MsgCavalrySpawnsProvince)
         ,("infantry"           , withFlagOrProvince MsgInfantrySpawnsCountry MsgInfantrySpawnsProvince)
         ,("remove_core"        , withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince)
@@ -650,7 +698,15 @@ handlersTypewriter = Tr.fromList
 -- | Handlers for simple statements with icon
 handlersSimpleIcon :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersSimpleIcon = Tr.fromList
-        [("advisor"                 , withLocAtomIcon MsgHasAdvisorType)
+        [("accepted_culture"        , withLocAtomAndIcon "max accepted cultures" MsgAcceptedCulture)
+        ,("add_accepted_culture"    , withLocAtomAndIcon "max accepted cultures" MsgAddAcceptedCulture)
+        ,("add_building"            , withLocAtomIcon MsgAddBuilding)
+        ,("add_harmonized_religion" , withLocAtomIcon MsgAddHarmonizedReligion)
+        ,("add_heir_personality"    , withLocAtomIcon MsgAddHeirPersonality)
+        ,("add_queen_personality"   , withLocAtomIcon MsgAddConsortPersonality)
+        ,("add_reform_center"       , withLocAtomIcon MsgAddCenterOfReformation)
+        ,("add_ruler_personality"   , withLocAtomIcon MsgAddRulerPersonality)
+        ,("advisor"                 , withLocAtomIcon MsgHasAdvisorType)
         ,("change_technology_group" , withLocAtomIcon MsgChangeTechGroup)
         ,("change_trade_goods"      , withLocAtomIcon MsgChangeGoods)
         ,("change_unit_type"        , withLocAtomIcon MsgChangeUnitType)
@@ -676,7 +732,9 @@ handlersSimpleIcon = Tr.fromList
 -- | Handlers for simple statements with a flag
 handlersSimpleFlag :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersSimpleFlag = Tr.fromList
-        [("alliance_with"           , withFlag MsgAlliedWith)
+        [("add_historical_rival"    , withFlag MsgAddHistoricalRival)
+        ,("add_truce_with"          , withFlag MsgAddTruceWith)
+        ,("alliance_with"           , withFlag MsgAlliedWith)
         ,("cede_province"           , withFlag MsgCedeProvinceTo)
         ,("change_tag"              , withFlag MsgChangeTag)
         ,("controlled_by"           , withFlag MsgControlledBy)
@@ -830,12 +888,25 @@ handlersNumProvinces = Tr.fromList
 -- $textvalue
 handlersTextValue :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersTextValue = Tr.fromList
-        [("estate_influence"             , textValue "estate" "influence" MsgEstateInfluence MsgEstateInfluence tryLoc)
-        ,("estate_loyalty"               , textValue "estate" "loyalty" MsgEstateLoyalty MsgEstateLoyalty tryLoc)
-        ,("had_country_flag"             , textValue "flag" "days" MsgHadCountryFlag MsgHadCountryFlag tryLoc)
-        ,("had_global_flag"              , textValue "flag" "days" MsgHadGlobalFlag MsgHadGlobalFlag tryLoc)
-        ,("had_province_flag"            , textValue "flag" "days" MsgHadProvinceFlag MsgHadProvinceFlag tryLoc)
-        ,("had_ruler_flag"               , textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLoc)
+        [("add_incident_variable_value" , textValue "incident" "value" MsgAddIncidentVariableValue MsgAddIncidentVariableValue tryLocAndIcon)
+        ,("add_institution_embracement" , textValue "which" "value" MsgAddInstitutionEmbracement MsgAddInstitutionEmbracement tryLocAndIcon)
+        ,("add_estate_loyalty"          , textValue "estate" "loyalty" MsgAddEstateLoyalty MsgAddEstateLoyalty tryLocAndIcon)
+        ,("add_spy_network_from"        , textValue "who" "value" MsgAddSpyNetworkFrom MsgAddEstateLoyalty flagTextMaybe)
+        ,("add_spy_network_in"          , textValue "who" "value" MsgAddSpyNetworkIn MsgAddEstateLoyalty flagTextMaybe)
+        ,("check_variable"              , textValue "which" "value" MsgCheckVariable MsgCheckVariable tryLocAndIcon)
+        ,("estate_influence"            , textValue "estate" "influence" MsgEstateInfluence MsgEstateInfluence tryLocAndIcon)
+        ,("estate_influence"            , textValue "estate" "influence" MsgEstateInfluence MsgEstateInfluence tryLocAndIcon)
+        ,("estate_loyalty"              , textValue "estate" "loyalty" MsgEstateLoyalty MsgEstateLoyalty tryLocAndIcon)
+        ,("estate_loyalty"              , textValue "estate" "loyalty" MsgEstateLoyalty MsgEstateLoyalty tryLocAndIcon)
+        ,("had_country_flag"            , textValue "flag" "days" MsgHadCountryFlag MsgHadCountryFlag tryLocAndIcon)
+        ,("had_country_flag"            , textValue "flag" "days" MsgHadCountryFlag MsgHadCountryFlag tryLocAndIcon)
+        ,("had_global_flag"             , textValue "flag" "days" MsgHadGlobalFlag MsgHadGlobalFlag tryLocAndIcon)
+        ,("had_global_flag"             , textValue "flag" "days" MsgHadGlobalFlag MsgHadGlobalFlag tryLocAndIcon)
+        ,("had_province_flag"           , textValue "flag" "days" MsgHadProvinceFlag MsgHadProvinceFlag tryLocAndIcon)
+        ,("had_province_flag"           , textValue "flag" "days" MsgHadProvinceFlag MsgHadProvinceFlag tryLocAndIcon)
+        ,("had_ruler_flag"              , textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLocAndIcon)
+        ,("had_ruler_flag"              , textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLocAndIcon)
+        ,("num_of_religion"             , textValue "religion" "value" MsgNumOfReligion MsgNumOfReligion tryLocAndIcon)
         ]
 
 -- | Handlers for special complex statements
@@ -843,34 +914,26 @@ handlersSpecialComplex :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersSpecialComplex = Tr.fromList
         [("add_casus_belli"              , addCB True)
         ,("add_faction_influence"        , factionInfluence)
-        ,("add_estate_loyalty"           , textValue "estate" "loyalty" MsgAddEstateLoyalty MsgAddEstateLoyalty tryLoc)
         ,("add_estate_influence_modifier", estateInfluenceModifier MsgEstateInfluenceModifier)
+        ,("add_mutual_opinion_modifier_effect", opinion MsgMutualOpinion MsgMutualOpinionDur)
         ,("add_opinion"                  , opinion MsgAddOpinion MsgAddOpinionDur)
         ,("reverse_add_opinion"          , opinion MsgReverseAddOpinion MsgReverseAddOpinionDur)
         ,("area"                         , area)
         ,("custom_trigger_tooltip"       , customTriggerTooltip)
         ,("define_heir"                  , defineHeir)
         ,("build_to_forcelimit"          , buildToForcelimit)
-        ,("check_variable"               , textValue "which" "value" MsgCheckVariable MsgCheckVariable tryLoc)
         ,("country_event"                , scope EU4Country . triggerEvent MsgCountryEvent)
         ,("declare_war_with_cb"          , declareWarWithCB)
         ,("define_advisor"               , defineAdvisor)
         ,("define_ruler"                 , defineRuler)
-        ,("estate_influence"             , textValue "estate" "influence" MsgEstateInfluence MsgEstateInfluence tryLoc)
-        ,("estate_loyalty"               , textValue "estate" "loyalty" MsgEstateLoyalty MsgEstateLoyalty tryLoc)
-        ,("had_country_flag"             , textValue "flag" "days" MsgHadCountryFlag MsgHadCountryFlag tryLoc)
-        ,("had_global_flag"              , textValue "flag" "days" MsgHadGlobalFlag MsgHadGlobalFlag tryLoc)
-        ,("had_province_flag"            , textValue "flag" "days" MsgHadProvinceFlag MsgHadProvinceFlag tryLoc)
-        ,("had_ruler_flag"               , textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLoc)
         ,("has_estate_influence_modifier", hasEstateInfluenceModifier)
         ,("has_opinion"                  , hasOpinion)
-        ,("has_opinion_modifier"         , opinion MsgHasOpinionMod (\what who _years -> MsgHasOpinionMod what who))
+        ,("has_opinion_modifier"         , opinion MsgHasOpinionMod (\modid what who _years -> MsgHasOpinionMod modid what who))
         ,("province_event"               , scope EU4Province . triggerEvent MsgProvinceEvent)
-        ,("remove_opinion"               , opinion MsgRemoveOpinionMod (\what who _years -> MsgRemoveOpinionMod what who))
+        ,("remove_opinion"               , opinion MsgRemoveOpinionMod (\modid what who _years -> MsgRemoveOpinionMod modid what who))
         ,("religion_years"               , religionYears)
         ,("reverse_add_casus_belli"      , addCB False)
         ,("trigger_switch"               , triggerSwitch)
-        ,("num_of_religion"              , textValue "religion" "value" MsgNumOfReligion MsgNumOfReligion tryLoc)
         ]
 
 -- | Handlers for statements pertaining to rebels
@@ -905,7 +968,8 @@ handlersMisc = Tr.fromList
         [("random", random)
         -- Special
         ,("add_core"            , addCore)
-        ,("add_manpower"        , gainManpower)
+        ,("add_manpower"        , gainMen)
+        ,("add_sailors"         , gainMen)
         ,("calc_true_if"        , calcTrueIf)
         ,("dominant_culture"    , dominantCulture)
         ,("faction_in_power"    , factionInPower)
@@ -929,7 +993,7 @@ handlersIgnored = Tr.fromList
 -- may produce many lines (via 'ppMany'), since some statements are compound.
 ppOne :: (EU4Info g, Monad m) => StatementHandler g m
 ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
-    GenericLhs label -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
+    GenericLhs label _ -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
         Just handler -> handler stmt
         -- default
         Nothing -> if isTag label
@@ -1076,6 +1140,14 @@ compoundMessage header [pdx| %_ = @scr |]
         script_pp'd <- ppMany scr
         return ((i, header) : script_pp'd)
 compoundMessage _ stmt = preStatement stmt
+
+-- | Generic handler for a simple compound statement with a tagged header.
+compoundMessageTagged :: (EU4Info g, Monad m) =>
+    (Text -> ScriptMessage) -- ^ Message to use as the block header
+    -> StatementHandler g m
+compoundMessageTagged header stmt@[pdx| $_:$tag = %_ |]
+    = compoundMessage (header tag) stmt
+compoundMessageTagged _ stmt = preStatement stmt
 
 -- | Generic handler for a statement whose RHS is a localizable atom.
 withLocAtom :: (IsGameData (GameData g),
@@ -1379,9 +1451,8 @@ numericIconBonus _ _ _ stmt = plainMsg $ pre_statement' stmt
 --          religion = catholic
 --          value = 0.5
 --      }
--- There are several statements of this form, but with different "what" labels,
--- so the first parameter says what that label is. There's also one for value,
--- in case there are other labels for that.
+-- There are several statements of this form, but with different "what" and
+-- "value" labels, so the first two parameters say what those label are.
 --
 -- There are two message parameters, one for value < 1 and one for value >= 1.
 -- In the example num_of_religion, value is interpreted as a percentage of
@@ -1395,6 +1466,14 @@ numericIconBonus _ _ _ stmt = plainMsg $ pre_statement' stmt
 tryLoc :: (IsGameData (GameData g), Monad m) => Text -> PPT g m (Maybe Text)
 tryLoc = getGameL10nIfPresent
 
+-- | Get icon and localization for the atom given. Return @mempty@ if there is
+-- no icon, and wrapped in @<tt>@ tags if there is no localization.
+tryLocAndIcon :: (IsGameData (GameData g), Monad m) => Text -> PPT g m (Text,Text)
+tryLocAndIcon atom = do
+    loc <- tryLoc atom
+    return (maybe ("<tt>" <> atom <> "</tt>") id (iconKey atom),
+            maybe mempty id loc)
+
 data TextValue = TextValue
         {   tv_what :: Maybe Text
         ,   tv_value :: Maybe Double
@@ -1406,7 +1485,7 @@ textValue :: forall g m. (IsGameState (GameState g), Monad m) =>
         -> Text                                      -- ^ Label for "how much"
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value < 1
         -> (Text -> Text -> Double -> ScriptMessage) -- ^ Message constructor, if abs value >= 1
-        -> (Text -> PPT g m (Maybe Text)) -- ^ Action to localize, get icon, etc. (applied to RHS of "what")
+        -> (Text -> PPT g m (Text, Text)) -- ^ Action to localize and get icon (applied to RHS of "what")
         -> StatementHandler g m
 textValue whatlabel vallabel smallmsg bigmsg loc stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_tv (foldl' addLine newTV scr)
@@ -1420,9 +1499,7 @@ textValue whatlabel vallabel smallmsg bigmsg loc stmt@[pdx| %_ = @scr |]
         pp_tv :: TextValue -> PPT g m ScriptMessage
         pp_tv tv = case (tv_what tv, tv_value tv) of
             (Just what, Just value) -> do
-                mwhat_loc <- loc what
-                let what_icon = iconText what
-                    what_loc = fromMaybe ("<tt>" <> what <> "</tt>") mwhat_loc
+                (what_icon, what_loc) <- loc what
                 return $ (if abs value < 1 then smallmsg else bigmsg) what_icon what_loc value
             _ -> return $ preMessage stmt
 textValue _ _ _ _ _ stmt = preStatement stmt
@@ -1517,6 +1594,10 @@ facInfluence_iconkey fac = case fac of
         "mr_aristocrats"   -> Just "aristocrats influence"
         "mr_guilds"        -> Just "guilds influence"
         "mr_traders"       -> Just "traders influence"
+        -- Revolutionary republic
+        "rr_jacobins"      -> Just "jacobin influence"
+        "rr_royalists"     -> Just "royalist influence"
+        "rr_girondists"    -> Just "girondist influence"
         _ {- unknown -}    -> Nothing
 
 -- | Convert the atom used in scripts for a faction to the corresponding icon
@@ -1531,6 +1612,10 @@ fac_iconkey fac = case fac of
         "mr_aristocrats"   -> Just "aristocrats"
         "mr_guilds"        -> Just "guilds"
         "mr_traders"       -> Just "traders"
+        -- Revolutionary republic
+        "rr_jacobins"      -> Just "jacobins"
+        "rr_royalists"     -> Just "royalists"
+        "rr_girondists"    -> Just "girondists"
         _ {- unknown -}    -> Nothing
 
 data FactionInfluence = FactionInfluence {
@@ -1645,7 +1730,7 @@ addCore stmt = preStatement stmt
 
 -- Add an opinion modifier towards someone (for a number of years).
 data AddOpinion = AddOpinion {
-        op_who :: Maybe Text
+        op_who :: Maybe (Either Text (Text, Text))
     ,   op_modifier :: Maybe Text
     ,   op_years :: Maybe Double
     } deriving Show
@@ -1653,25 +1738,31 @@ newAddOpinion :: AddOpinion
 newAddOpinion = AddOpinion Nothing Nothing Nothing
 
 opinion :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
-    (Text -> Text -> ScriptMessage)
-        -> (Text -> Text -> Double -> ScriptMessage)
+    (Text -> Text -> Text -> ScriptMessage)
+        -> (Text -> Text -> Text -> Double -> ScriptMessage)
         -> StatementHandler g m
 opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_add_opinion (foldl' addLine newAddOpinion scr)
     where
         addLine :: AddOpinion -> GenericStatement -> AddOpinion
-        addLine op [pdx| who      = $tag   |] = op { op_who = Just tag }
-        addLine op [pdx| modifier = ?label |] = op { op_modifier = Just label }
-        addLine op [pdx| years    = !n     |] = op { op_years = Just n }
+        addLine op [pdx| who           = $tag         |] = op { op_who = Just (Left tag) }
+        addLine op [pdx| who           = $vartag:$var |] = op { op_who = Just (Right (vartag, var)) }
+        addLine op [pdx| modifier      = ?label       |] = op { op_modifier = Just label }
+        addLine op [pdx| years         = !n           |] = op { op_years = Just n }
+        -- following two for add_mutual_opinion_modifier_effect
+        addLine op [pdx| scope_country = $tag         |] = op { op_who = Just (Left tag) }
+        addLine op [pdx| scope_country = $vartag:$var |] = op { op_who = Just (Right (vartag, var)) }
+        addLine op [pdx| opinion_modifier = ?label    |] = op { op_modifier = Just label }
         addLine op _ = op
         pp_add_opinion op = case (op_who op, op_modifier op) of
-            (Just whom, Just modifier) -> do
-                whomflag <- Doc.doc2text <$> flag whom
+            (Just ewhom, Just modifier) -> do
+                mwhomflag <- eflag ewhom
                 mod_loc <- getGameL10n modifier
-                case op_years op of
-                    Nothing -> return $ msgIndef mod_loc whomflag
-                    Just years -> return $ msgDur mod_loc whomflag years
-            _ -> trace ("failed! modifier op is " ++ show (op_modifier op)) $ return (preMessage stmt)
+                case (mwhomflag, op_years op) of
+                    (Just whomflag, Nothing) -> return $ msgIndef modifier mod_loc whomflag
+                    (Just whomflag, Just years) -> return $ msgDur modifier mod_loc whomflag years
+                    _ -> return (preMessage stmt)
+            _ -> trace ("opinion: who or modifier missing: " ++ show stmt) $ return (preMessage stmt)
 opinion _ _ stmt = preStatement stmt
 
 data HasOpinion = HasOpinion
@@ -1859,15 +1950,18 @@ triggerEvent _ stmt = preStatement stmt
 
 -- Specific values
 
-gainManpower :: (IsGameState (GameState g), Monad m) => StatementHandler g m
-gainManpower [pdx| %_ = !amt |] = msgToPP =<<
-    let mpicon = iconText "manpower"
-    in if abs (amt::Double) < 1
-        --  interpret amt as a fraction of max
-        then return $ MsgGainMPFrac mpicon amt
-        --  interpret amt as a multiple of 1,000
-        else return $ MsgGainMP mpicon (amt*1000)
-gainManpower stmt = preStatement stmt
+gainMen :: forall g m. (IsGameState (GameState g), Monad m) => StatementHandler g m
+gainMen [pdx| $head = !amt |]
+    | "add_manpower" <- head = gainMen' ("manpower"::Text) MsgGainMPFrac MsgGainMP 1000
+    | "add_sailors" <- head = gainMen' ("sailors"::Text) MsgGainSailorsFrac MsgGainSailors 1
+    where
+        gainMen' theicon msgFrac msgWhole mult = msgToPP =<<
+            if abs (amt::Double) < 1
+            --  interpret amt as a fraction of max
+            then return $ msgFrac theicon amt
+            --  interpret amt as exact number, multiplied by mult
+            else return $ msgWhole theicon (amt*mult)
+gainMen stmt = preStatement stmt
 
 -- Casus belli
 
@@ -1958,7 +2052,7 @@ defineAdvisor stmt@[pdx| %_ = @scr |]
         addLine da [pdx| $lhs = %rhs |] = case T.map toLower lhs of
             "type" ->
                 let mthe_type = case rhs of
-                        GenericRhs a_type -> Just a_type
+                        GenericRhs a_type Nothing -> Just a_type
                         StringRhs a_type -> Just a_type
                         _ -> Nothing
                 in (\mtype_loc -> da
@@ -1967,13 +2061,13 @@ defineAdvisor stmt@[pdx| %_ = @scr |]
                    <$> maybe (return Nothing) getGameL10nIfPresent mthe_type
             "name" -> return $
                 let mthe_name = case rhs of
-                        GenericRhs a_name -> Just a_name
+                        GenericRhs a_name Nothing -> Just a_name
                         StringRhs a_name -> Just a_name
                         _ -> Nothing
                 in da { da_name = mthe_name }
             "discount" -> return $
                 let yn = case rhs of
-                        GenericRhs yn' -> Just yn'
+                        GenericRhs yn' Nothing -> Just yn'
                         StringRhs yn' -> Just yn'
                         _ -> Nothing
                 in if yn == Just "yes" then da { da_discount = Just True }
@@ -1987,7 +2081,7 @@ defineAdvisor stmt@[pdx| %_ = @scr |]
             "skill" -> return $ da { da_skill = floatRhs rhs }
             "female" -> return $
                 let yn = case rhs of
-                        GenericRhs yn' -> Just yn'
+                        GenericRhs yn' Nothing -> Just yn'
                         StringRhs yn' -> Just yn'
                         _ -> Nothing
                 in if yn == Just "yes" then da { da_female = Just True }

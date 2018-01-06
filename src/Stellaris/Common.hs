@@ -214,7 +214,7 @@ ppOne :: (StellarisInfo g, Monad m) =>
     GenericStatement -> PPT g m IndentedMessages
 ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
     AtLhs _ -> return [] -- Don't know how to deal with these
-    GenericLhs label -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
+    GenericLhs label _ -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
         Just handler -> handler stmt
         -- default
         Nothing -> do
@@ -758,8 +758,8 @@ newAddOpinion :: AddOpinion
 newAddOpinion = AddOpinion Nothing Nothing Nothing
 
 opinion :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
-    (Text -> Text -> ScriptMessage)
-        -> (Text -> Text -> Double -> ScriptMessage)
+    (Text -> Text -> Text -> ScriptMessage)
+        -> (Text -> Text -> Text -> Double -> ScriptMessage)
         -> GenericStatement -> PPT g m IndentedMessages
 opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
     = msgToPP =<< pp_add_opinion (foldl' addLine newAddOpinion scr)
@@ -773,8 +773,8 @@ opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
             (Just whom, Just modifier) -> do
                 mod_loc <- getGameL10n modifier
                 case op_years op of
-                    Nothing -> return $ msgIndef mod_loc whom
-                    Just years -> return $ msgDur mod_loc whom years
+                    Nothing -> return $ msgIndef modifier mod_loc whom
+                    Just years -> return $ msgDur modifier mod_loc whom years
             _ -> trace ("failed! modifier op is " ++ show (op_modifier op)) $ return (preMessage stmt)
 opinion _ _ stmt = preStatement stmt
 

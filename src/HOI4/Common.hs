@@ -249,7 +249,7 @@ ppHandlers = Tr.fromList
 
 ppOne :: (HOI4Info g, Monad m) => StatementHandler g m
 ppOne stmt@[pdx| %lhs = %rhs |] = case lhs of
-    GenericLhs label -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
+    GenericLhs label _ -> case Tr.lookup (TE.encodeUtf8 (T.toLower label)) ppHandlers of
         Just handler -> handler stmt
         -- default
         Nothing -> do

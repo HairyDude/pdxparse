@@ -123,9 +123,9 @@ showOpD = Doc.strictText . showOp
 -- @
 data Lhs lhs
     = CustomLhs lhs
-    | GenericLhs Text
-    | AtLhs Text
-    | IntLhs Int -- used frequently in EU4
+    | GenericLhs Text (Maybe Text)  -- ^ foo = ... or foo:bar = ...
+    | AtLhs Text                    -- ^ @foo = ...
+    | IntLhs Int                    -- ^ 1234 = ...
     deriving (Eq, Ord, Show, Read)
 -- | LHS with no custom elements.
 type GenericLhs = Lhs ()
@@ -140,12 +140,12 @@ type GenericLhs = Lhs ()
 -- @
 data Rhs lhs rhs
     = CustomRhs rhs
-    | GenericRhs Text
-    | StringRhs Text
-    | IntRhs Int
-    | FloatRhs Double
-    | CompoundRhs [Statement lhs rhs]
-    | DateRhs Date
+    | GenericRhs Text (Maybe Text)  -- ^ ... = foo or ... = foo:bar
+    | StringRhs Text                -- ^ ... = "foo"
+    | IntRhs Int                    -- ^ ... = 1234
+    | FloatRhs Double               -- ^ ... = 1.234
+    | CompoundRhs [Statement lhs rhs] -- ^ ... = { ... }
+    | DateRhs Date                  -- ^ ... = 11.10.1234
     deriving (Eq, Ord, Show, Read)
 -- | RHS with no custom elements.
 type GenericRhs = Rhs () ()
@@ -164,7 +164,7 @@ data Date = Date { year :: Int, month :: Int, day :: Int }
 
 -- | A very common type of statement: @s_yes "foo"@ produces @foo = yes@.
 s_yes :: Text -> Statement lhs rhs
-s_yes tok = Statement (GenericLhs tok) OpEq (GenericRhs "yes")
+s_yes tok = Statement (GenericLhs tok Nothing) OpEq (GenericRhs "yes" Nothing)
 
 -- | Class for painlessly getting the type of number we want out of a value
 -- that might have parsed as something else.
@@ -189,7 +189,7 @@ floatRhs _ = Nothing
 
 -- | Get a Text from a RHS.
 textRhs :: GenericRhs -> Maybe Text
-textRhs (GenericRhs s) = Just s
+textRhs (GenericRhs s mt) = Just (s <> maybe "" (":" <>) mt)
 textRhs (StringRhs s) = Just s
 textRhs _ = Nothing
 
@@ -222,10 +222,10 @@ restOfLine = (Ap.many1' Ap.endOfLine >> return "")
          <|> (T.cons <$> Ap.anyChar <*> restOfLine)
 
 -- | An identifier, or atom. An atom can start with a letter or an underscore
--- and continue with letters, numbers, underscores, full stops, and colons.
+-- and continue with letters, numbers, underscores, and full stops.
 ident :: Parser Text
 ident = (<>) <$> (T.singleton <$> (Ap.satisfy (\c -> c  == '_' || isAlpha c)))
-             <*> Ap.takeWhile (\c -> c `elem` ['_','.',':'] || isAlphaNum c)
+             <*> Ap.takeWhile (\c -> c `elem` ['_','.'] || isAlphaNum c)
     <?> "identifier"
 
 -- | A string literal: any number of characters other than a double quotation
@@ -309,7 +309,7 @@ script customLhs customRhs = statement customLhs customRhs `Ap.sepBy` skipSpace
 lhs :: Parser lhs -> Parser (Lhs lhs)
 lhs custom = CustomLhs <$> custom
          <|> AtLhs <$> ("@" *> ident) -- guessing at the syntax here...
-         <|> GenericLhs <$> ident
+         <|> GenericLhs <$> ident <*> Ap.option Nothing (Just <$> (":" *> ident))
          <|> IntLhs <$> Ap.decimal
     <?> "statement LHS"
 
@@ -334,7 +334,7 @@ operator = "=" *> pure OpEq
 rhs :: Parser lhs -> Parser rhs -> Parser (Rhs lhs rhs)
 rhs customLhs customRhs
           = (CustomRhs  <$> customRhs
-        <|> GenericRhs  <$> ident
+        <|> GenericRhs <$> ident <*> Ap.option Nothing (Just <$> (":" *> ident))
         <|> StringRhs   <$> stringLit
         <|> DateRhs     <$> dateLit
         <|> FloatRhs    <$> floatLit
@@ -350,9 +350,9 @@ rhs customLhs customRhs
 -- @
 compoundRhs :: Parser lhs -> Parser rhs -> Parser (Script lhs rhs)
 compoundRhs customLhs customRhs
-    = ("{" >> skipSpace)
+    = ("{" *> skipSpace)
       *> script customLhs customRhs
-      <* (skipSpace >> "}")
+      <* (skipSpace *> "}")
     <?> "compound RHS"
 
 -- | A statement with no custom elements. Use this as a starting point for
@@ -395,14 +395,14 @@ statement2doc customLhs customRhs (Statement lhs op rhs)
 -- | Pretty-printer for a LHS, possibly with custom elements.
 lhs2doc :: (lhs -> Doc) -> Lhs lhs -> Doc
 lhs2doc customLhs (CustomLhs lhs) = customLhs lhs
-lhs2doc _         (AtLhs lhs) = PP.text (TL.fromStrict ("@" <> lhs))
-lhs2doc _         (GenericLhs lhs) = PP.text (TL.fromStrict lhs)
+lhs2doc _         (AtLhs lhs) = Doc.strictText ("@" <> lhs)
+lhs2doc _         (GenericLhs s t) = Doc.strictText s <> maybe "" ((":" <>) . Doc.strictText) t
 lhs2doc _         (IntLhs lhs) = PP.text (TL.pack (show lhs))
 
 -- | Pretty-printer for a RHS, possibly with custom elements.
 rhs2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Rhs lhs rhs -> Doc
 rhs2doc _ customRhs (CustomRhs rhs) = customRhs rhs
-rhs2doc _ _ (GenericRhs rhs) = Doc.strictText rhs
+rhs2doc _ _ (GenericRhs s t) = Doc.strictText s <> maybe "" ((":" <>) . Doc.strictText) t
 rhs2doc _ _ (StringRhs rhs) = PP.text (TL.pack (show rhs))
 rhs2doc _ _ (IntRhs rhs) = PP.text (TL.pack (show rhs))
 rhs2doc _ _ (FloatRhs rhs) = Doc.pp_float rhs
