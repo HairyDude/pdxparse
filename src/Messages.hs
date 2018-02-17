@@ -562,14 +562,7 @@ data ScriptMessage
     | MsgAIFactorOneline {scriptMessageFactor :: Text, scriptMessageMultiplier :: Double}
     | MsgAIFactorHeader {scriptMessageMultiplier :: Double}
     | MsgLucky {scriptMessageYn :: Bool}
-    | MsgHasArtistLevel {scriptMessageIcon :: Text, scriptMessageLevel :: Double}
-    | MsgHasDiplomatLevel {scriptMessageIcon :: Text, scriptMessageLevel :: Double}
-    | MsgHasArmyReformerLevel {scriptMessageIcon :: Text, scriptMessageLevel :: Double}
-    | MsgHasNaturalScientistLevel {scriptMessageIcon :: Text, scriptMessageLevel :: Double}
-    | MsgHasNavyReformerLevel {scriptMessageIcon :: Text, scriptMessageLevel :: Double}
-    | MsgHasTheologianLevel {scriptMessageIcon :: Text, scriptMessageLevel :: Double}
-    | MsgHasTraderLevel {scriptMessageIcon :: Text, scriptMessageLevel :: Double}
-    | MsgHasStatesmanLevel {scriptMessageIcon :: Text, scriptMessageLevel :: Double}
+    | MsgHasAdvisorLevel {scriptMessageIcon :: Text, scriptMessageWhat :: Text, scriptMessageLevel :: Double}
     | MsgNumRoyalMarriages {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgIsBankrupt {scriptMessageYn :: Bool}
     | MsgNumColonialSubjects {scriptMessageAmt :: Double}
@@ -775,11 +768,32 @@ data ScriptMessage
     | MsgAddMandateEffect
     | MsgAddMandateLargeEffect
     | MsgAddMeritocracyEffect
+    | MsgAddMeritocracyLargeEffect
     | MsgAddNextInstitutionEmbracement {scriptMessageAmt :: Double}
     | MsgAddSpyNetworkFrom {scriptMessageIcon :: Text, scriptMessageWhom :: Text, scriptMessageAmt :: Double}
     | MsgAddSpyNetworkIn {scriptMessageIcon :: Text, scriptMessageWhom :: Text, scriptMessageAmt :: Double}
     | MsgEventTarget {scriptMessageTag :: Text}
     | MsgEventTargetVar {scriptMessageTag :: Text}
+    | MsgSudebnikProgress {scriptMessageAmt :: Double}
+    | MsgOprichninaProgress {scriptMessageAmt :: Double}
+    | MsgStreltsyProgress {scriptMessageAmt :: Double}
+    | MsgAddLootFromProvinceEffect
+    | MsgAddBurghersLoyalty
+    | MsgAddChurchLoyalty
+    | MsgAddCossacksLoyalty
+    | MsgAddDhimmiLoyalty
+    | MsgAddNoblesLoyalty
+    | MsgReduceBurghersLoyalty
+    | MsgReduceChurchLoyalty
+    | MsgReduceCossacksLoyalty
+    | MsgReduceDhimmiLoyalty
+    | MsgReduceNoblesLoyalty
+    | MsgAddStabilityOrAdm
+    | MsgAddTrust {scriptMessageWhom :: Text, scriptMessageAmt :: Double}
+    | MsgAddTrustMutual {scriptMessageWhom :: Text, scriptMessageAmt :: Double}
+    | MsgSaveEventTargetAs {scriptMessageName :: Text}
+    | MsgHasSavedEventTarget {scriptMessageName :: Text}
+    | MsgRemoveClaim {scriptMessageWho :: Text}
 
 -- | Whether to default to English localization.
 useEnglish :: [Text] -> Bool
@@ -3358,7 +3372,7 @@ instance RenderMessage Script ScriptMessage where
                 , toMessage (roundNum _amt)
                 , " "
                 , plural (round _amt) "province" "provinces"
-                , " of "
+                , " following the "
                 , _icon
                 , " "
                 , _name
@@ -3913,69 +3927,15 @@ instance RenderMessage Script ScriptMessage where
                 , toMessage (ifThenElseT _yn "" " ''not''")
                 , " a lucky nation"
                 ]
-        MsgHasArtistLevel {scriptMessageIcon = _icon, scriptMessageLevel = _level}
+        MsgHasAdvisorLevel {scriptMessageIcon = _icon, scriptMessageWhat = _what, scriptMessageLevel = _level}
             -> mconcat
                 [ "Has a level "
                 , toMessage (roundNum _level)
                 , " "
                 , _icon
-                , " Statesman advisor"
-                ]
-        MsgHasDiplomatLevel {scriptMessageIcon = _icon, scriptMessageLevel = _level}
-            -> mconcat
-                [ "Has a level "
-                , toMessage (roundNum _level)
                 , " "
-                , _icon
-                , " Statesman advisor"
-                ]
-        MsgHasArmyReformerLevel {scriptMessageIcon = _icon, scriptMessageLevel = _level}
-            -> mconcat
-                [ "Has a level "
-                , toMessage (roundNum _level)
-                , " "
-                , _icon
-                , " Army Reformer advisor"
-                ]
-        MsgHasNaturalScientistLevel {scriptMessageIcon = _icon, scriptMessageLevel = _level}
-            -> mconcat
-                [ "Has a level "
-                , toMessage (roundNum _level)
-                , " "
-                , _icon
-                , " Natural Scientist advisor"
-                ]
-        MsgHasNavyReformerLevel {scriptMessageIcon = _icon, scriptMessageLevel = _level}
-            -> mconcat
-                [ "Has a level "
-                , toMessage (roundNum _level)
-                , " "
-                , _icon
-                , " Navy Reformer advisor"
-                ]
-        MsgHasTheologianLevel {scriptMessageIcon = _icon, scriptMessageLevel = _level}
-            -> mconcat
-                [ "Has a level "
-                , toMessage (roundNum _level)
-                , " "
-                , _icon
-                , " Theologian advisor"
-                ]
-        MsgHasTraderLevel {scriptMessageIcon = _icon, scriptMessageLevel = _level}
-            -> mconcat
-                [ "Has a level "
-                , toMessage (roundNum _level)
-                , " "
-                , _icon
-                , " Trader advisor"
-                ]
-        MsgHasStatesmanLevel {scriptMessageIcon = _icon, scriptMessageLevel = _level}
-            -> mconcat
-                [ "Has a level "
-                , toMessage (roundNum _level)
-                , " "
-                , _icon
-                , " Statesman advisor"
+                , _what
+                , " advisor"
                 ]
         MsgNumRoyalMarriages {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
@@ -5264,9 +5224,11 @@ instance RenderMessage Script ScriptMessage where
         MsgAddMandateEffect
             -> "{{add mandate effect}}"
         MsgAddMandateLargeEffect
-            -> "{{add mandate large effect}}"
+            -> "{{add mandate effect|large=yes}}"
         MsgAddMeritocracyEffect
             -> "{{add meritocracy effect}}"
+        MsgAddMeritocracyLargeEffect
+            -> "{{add meritocracy effect|large=yes}}"
         MsgMutualOpinion {scriptMessageModid = _modid, scriptMessageWhat = _what, scriptMessageWhom = _whom}
             -> mconcat
                 [ "This country and "
@@ -5322,6 +5284,83 @@ instance RenderMessage Script ScriptMessage where
                 [ "event target <tt>"
                 , _tag
                 , "</tt>"
+                ]
+        MsgSudebnikProgress {scriptMessageAmt = _amt}
+            -> mconcat
+                [ gainOrLose _amt
+                , " "
+                , toMessage (colourNum True _amt)
+                , " Sudebnik progress"
+                ]
+        MsgOprichninaProgress {scriptMessageAmt = _amt}
+            -> mconcat
+                [ gainOrLose _amt
+                , " "
+                , toMessage (colourNum True _amt)
+                , " Oprichnina progress"
+                ]
+        MsgStreltsyProgress {scriptMessageAmt = _amt}
+            -> mconcat
+                [ gainOrLose _amt
+                , " "
+                , toMessage (colourNum True _amt)
+                , " Streltsy progress"
+                ]
+        MsgAddLootFromProvinceEffect
+            -> "Gain {{icon|ducats}} ducats and {{icon|mil}} military power scaling with province development"
+        MsgAddBurghersLoyalty
+            -> "{{add estate loyalty effect|burghers}}"
+        MsgAddChurchLoyalty
+            -> "{{add estate loyalty effect|clergy}}"
+        MsgAddCossacksLoyalty
+            -> "{{add estate loyalty effect|cossacks}}"
+        MsgAddDhimmiLoyalty
+            -> "{{add estate loyalty effect|dhimmi}}"
+        MsgAddNoblesLoyalty
+            -> "{{add estate loyalty effect|nobility}}"
+        MsgReduceBurghersLoyalty
+            -> "{{add estate loyalty effect|burghers|reduce}}"
+        MsgReduceChurchLoyalty
+            -> "{{add estate loyalty effect|clergy|reduce}}"
+        MsgReduceCossacksLoyalty
+            -> "{{add estate loyalty effect|cossacks|reduce}}"
+        MsgReduceDhimmiLoyalty
+            -> "{{add estate loyalty effect|dhimmi|reduce}}"
+        MsgReduceNoblesLoyalty
+            -> "{{add estate loyalty effect|nobility|reduce}}"
+        MsgAddStabilityOrAdm
+            -> "{{add stability or adm power}}"
+        MsgAddTrust {scriptMessageWhom = _whom, scriptMessageAmt = _amt}
+            -> mconcat
+                [ "Gain "
+                , toMessage (colourNum True _amt)
+                , " trust towards "
+                , toMessage _whom
+                ]
+        MsgAddTrustMutual {scriptMessageWhom = _whom, scriptMessageAmt = _amt}
+            -> mconcat
+                [ "This country and "
+                , toMessage _whom
+                , " gain "
+                , toMessage (colourNum True _amt)
+                , " trust towards each other"
+                ]
+        MsgSaveEventTargetAs {scriptMessageName = _name}
+            -> mconcat
+                [ "Save as event target named <tt>"
+                , _name
+                , "</tt>"
+                ]
+        MsgHasSavedEventTarget {scriptMessageName = _name}
+            -> mconcat
+                [ "An event target named <tt>"
+                , _name
+                , "</tt> has been saved"
+                ]
+        MsgRemoveClaim {scriptMessageWho = _who}
+            -> mconcat
+                [ _who
+                , " loses their claim on this province"
                 ]
     renderMessage _ _ _ = error "Sorry, non-English localisation not yet supported."
 

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleContexts, QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleContexts, QuasiQuotes, DeriveGeneric #-}
 {-|
 Module      : EU4.Types
 Description : Types specific to Europa Universalis IV
@@ -23,6 +23,8 @@ import Data.List (foldl')
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
+import Data.Hashable (Hashable)
+import GHC.Generics (Generic)
 
 import Abstract -- everything
 import QQ (pdx)
@@ -178,7 +180,8 @@ data EU4Decision = EU4Decision
 data MonarchPower = Administrative
                   | Diplomatic
                   | Military
-    deriving (Show, Eq, Ord)
+    deriving (Show, Eq, Ord, Generic)
+instance Hashable MonarchPower
 
 -- | Scopes
 data EU4Scope
