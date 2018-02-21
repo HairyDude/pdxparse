@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, QuasiQuotes, ViewPatterns, LambdaCase #-}
 {-|
 Module      : EU4.Events
 Description : Feature handler for Europa Universalis IV events

@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, QuasiQuotes, FlexibleContexts, TypeFamilies #-}
 module Stellaris.Common (
         pp_script
     ,   pp_mtth

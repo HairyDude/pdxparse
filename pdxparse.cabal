@@ -55,13 +55,18 @@ executable pdxparse
                        Vic2.Types,
                        Yaml
 
-  other-extensions:    FlexibleContexts,
+  extensions:          DeriveGeneric,
+                       FlexibleContexts,
                        FlexibleInstances,
+                       GADTs,
                        LambdaCase,
                        MultiParamTypeClasses,
                        OverloadedStrings,
+                       QuasiQuotes,
                        ScopedTypeVariables,
+                       StandaloneDeriving,
                        TemplateHaskell,
+                       TypeFamilies,
                        ViewPatterns
   
 --  build-depends:       base >=4.7 && <4.9,

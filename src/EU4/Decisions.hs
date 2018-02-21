@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, QuasiQuotes, FlexibleContexts, LambdaCase #-}
 {-
 Module      : EU4.Decisions
 Description : Feature handler for Europa Universalis IV decisions

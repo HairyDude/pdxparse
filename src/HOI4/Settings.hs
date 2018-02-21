@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleInstances, ScopedTypeVariables #-}
 module HOI4.Settings (
         HOI4 (..)
     ,   module HOI4.Types

@@ -1,5 +1,3 @@
-{-# LANGUAGE QuasiQuotes, ScopedTypeVariables, ViewPatterns, OverloadedStrings #-}
-{-# LANGUAGE FlexibleContexts #-}
 module Shared.Common (
         StatementHandler
     ,   msgToPP

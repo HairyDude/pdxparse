@@ -1,5 +1,3 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, TypeFamilies #-}
-{-# LANGUAGE QuasiQuotes, LambdaCase, ViewPatterns #-}
 module Stellaris.Events (
         parseStellarisEvents
     ,   writeStellarisEvents

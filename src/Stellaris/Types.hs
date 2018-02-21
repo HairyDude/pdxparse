@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleContexts #-}
 module Stellaris.Types (
         -- Used by Settings
         StellarisInfo (..)

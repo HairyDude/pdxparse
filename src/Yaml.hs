@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-|
 Module      : Yaml
 Description : Quasi-YAML parser and localization types

@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, TemplateHaskell, QuasiQuotes #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-
 Module      : QQ

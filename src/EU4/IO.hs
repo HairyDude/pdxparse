@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-|
 Module      : EU4.IO
 Description : Read Europa Universalis IV scripts and parse to raw AST

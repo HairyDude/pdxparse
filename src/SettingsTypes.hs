@@ -1,8 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
---, RankNTypes, 
-{-# LANGUAGE GADTs, TypeFamilies #-}
-{-# LANGUAGE StandaloneDeriving, FlexibleContexts, FlexibleInstances  #-}
-
 {- |
 Module      : SettingsTypes
 Description : Types for program configuration and structure

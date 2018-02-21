@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables, FlexibleContexts, QuasiQuotes, LambdaCase, ViewPatterns, TypeFamilies #-}
 {-|
 Module      : HOI4.Events
 Description : Feature handler for Hearts of Iron IV events

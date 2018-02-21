@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-|
 Module      : Localization
 Description : Load localization files

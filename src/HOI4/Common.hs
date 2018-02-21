@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, QuasiQuotes, FlexibleContexts #-}
 {-|
 Module      : HOI4.Common
 Description : Statement handlers for Hearts of Iron IV
@@ -136,9 +135,6 @@ preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
 -- | Extract the appropriate message(s) from a script.
 ppMany :: (HOI4Info g, Monad m) => GenericScript -> PPT g m IndentedMessages
 ppMany scr = indentUp (concat <$> mapM ppOne scr)
-
--- | Convenience synonym.
-type StatementHandler g m = GenericStatement -> PPT g m IndentedMessages
 
 -- Table of handlers for statements.
 -- Dispatch on strings is /much/ quicker using a lookup table than a

@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
 {-|
 Module      : EU4.Policies
 Description : Feature handler for Europa Universalis IV policies
