@@ -277,6 +277,7 @@ handlersNumeric = Tr.fromList
         ,("add_isolationism"                 , numeric MsgAddIsolationism)
         ,("add_next_institution_embracement" , numeric MsgAddNextInstitutionEmbracement)
         ,("add_nationalism"                  , numeric MsgGainYearsOfSeparatism)
+        ,("army_size_percentage"             , numeric MsgArmySizePc) -- Inti?
         ,("authority"                        , numeric MsgAuth) -- Inti?
         ,("change_siege"                     , numeric MsgGainSiegeProgress)
         ,("colonysize"                       , numeric MsgColonySettlers)
@@ -340,6 +341,7 @@ handlersNumericIcons = Tr.fromList
         ,("add_splendor"             , numericIcon "splendor" MsgGainSplendor)
         ,("add_tariff_value"         , numericIcon "gloabl tariffs" MsgAddTariffValue)
         ,("add_treasury"             , numericIcon "ducats" MsgAddTreasury)
+        ,("add_tribal_allegiance"    , numericIcon "tribal allegiance" MsgGainTribalAllegiance)
         ,("add_unrest"               , numericIcon "local unrest" MsgAddLocalUnrest)
         ,("add_war_exhaustion"       , numericIcon "war exhaustion" MsgGainWarExhaustion)
         ,("add_yearly_manpower"      , numericIcon "manpower" MsgGainYearlyManpower)
@@ -422,10 +424,12 @@ handlersNumericIcons = Tr.fromList
         ,("trade_efficiency"         , numericIconBonus "trade efficiency" MsgTradeEfficiency MsgTradeEfficiencyBonus)
         ,("trader"                   , numericIconLoc "trader" "trader" MsgHasAdvisorLevel)
         ,("treasury"                 , numericIcon "ducats" MsgHasDucats)
+        ,("tribal_allegiance"        , numericIconBonus "tribal allegiance" MsgTribalAllegiance MsgTribalAllegianceBonus)
         ,("unrest"                   , numericIcon "unrest" MsgUnrest)
         ,("war_exhaustion"           , numericIconBonus "war exhaustion" MsgWarExhaustion MsgMonthlyWarExhaustion)
         ,("war_score"                , numericIcon "war score" MsgWarScore)
         ,("yearly_absolutism"        , numericIcon "absolutism" MsgYearlyAbsolutism)
+        ,("yearly_tribal_allegiance" , numericIcon "tribal allegiance" MsgTribalAllegianceBonus)
         ,("years_of_income"          , numericIcon "ducats" MsgYearsOfIncome)
         -- Used in ideas and other bonuses, omit "gain/lose" in l10n
         ,("accepted_culture_threshold"        , numericIcon "accepted culture threshold" MsgAccCultureThreshold)
@@ -2383,6 +2387,48 @@ buildToForcelimit stmt@[pdx| %_ = @scr |]
                                                 gallIcon galley
                                                 transpIcon transport
 buildToForcelimit stmt = preStatement stmt
+
+data UnitType
+    = UnitInfantry
+    | UnitCavalry
+    | UnitArtillery
+    | UnitHeavyShip
+    | UnitLightShip
+    | UnitGalley
+    | UnitTransport
+data UnitConstruction = UnitConstruction
+    {   uc_amount :: (Maybe Double)
+    ,   uc_type :: (Maybe UnitType)
+    ,   uc_speed :: Double
+    ,   uc_cost :: Double
+    ,   uc_optionalArg :: (Maybe Double)
+    }
+newUnitConstruction :: UnitConstruction
+newUnitConstruction = UnitConstruction Nothing Nothing 1 1 Nothing
+addUnitConstruction :: (IsGameState (GameState g),
+                        Monad m) => Text -> StatementHandler g m
+addUnitConstruction extraArg stmt@[pdx| %_ = @scr |]
+    = ((msgToPP . pp) $ (foldl' addLine newUnitConstruction scr)) where
+        addLine :: UnitConstruction -> GenericStatement -> UnitConstruction
+        addLine acc [pdx| amount = !amt |] = acc { uc_amount = Just amt }
+        addLine acc [pdx| type = heavy_ship |] = acc { uc_type = Just UnitHeavyShip }
+        addLine acc [pdx| type = light_ship |] = acc { uc_type = Just UnitLightShip }
+        addLine acc [pdx| type = galley |] = acc { uc_type = Just UnitGalley }
+        addLine acc [pdx| type = transport |] = acc { uc_type = Just UnitTransport }
+        addLine acc [pdx| speed = !speed |] = acc { uc_speed = speed }
+        addLine acc [pdx| cost = !cost |] = acc { uc_cost = cost }
+        addLine acc _ = acc
+        pp acc = case (uc_amount acc, uc_type acc, uc_speed acc, uc_cost acc, uc_optionalArg acc) of
+            (Just _amount, Just _type, _speed, _cost, _optionalArg) ->
+                (case _type of
+                    UnitHeavyShip -> MsgBuildHeavyShips (iconText "heavy ship")
+                    UnitLightShip -> MsgBuildLightShips (iconText "light ship")
+                    UnitGalley -> MsgBuildGalleys (iconText "galley")
+                    UnitTransport -> MsgBuildTransports (iconText "transport"))
+                _amount _speed _cost
+            _ -> trace "addUnitConstruction: one or more required fields not present"
+                $ preMessage stmt
+addUnitConstruction _ stmt = preStatement stmt
 
 -- War
 

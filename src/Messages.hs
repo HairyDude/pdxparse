@@ -794,6 +794,14 @@ data ScriptMessage
     | MsgSaveEventTargetAs {scriptMessageName :: Text}
     | MsgHasSavedEventTarget {scriptMessageName :: Text}
     | MsgRemoveClaim {scriptMessageWho :: Text}
+    | MsgTribalAllegianceBonus {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgTribalAllegiance {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgGainTribalAllegiance {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgArmySizePc {scriptMessageAmt :: Double}
+    | MsgBuildHeavyShips {scriptMessageIcon :: Text, scriptMessageAmt :: Double, scriptMessageSpeed :: Double, scriptMessageCost :: Double}
+    | MsgBuildLightShips {scriptMessageIcon :: Text, scriptMessageAmt :: Double, scriptMessageSpeed :: Double, scriptMessageCost :: Double}
+    | MsgBuildGalleys {scriptMessageIcon :: Text, scriptMessageAmt :: Double, scriptMessageSpeed :: Double, scriptMessageCost :: Double}
+    | MsgBuildTransports {scriptMessageIcon :: Text, scriptMessageAmt :: Double, scriptMessageSpeed :: Double, scriptMessageCost :: Double}
 
 -- | Whether to default to English localization.
 useEnglish :: [Text] -> Bool
@@ -5361,6 +5369,82 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ _who
                 , " loses their claim on this province"
+                ]
+        MsgTribalAllegianceBonus {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign True _amt)
+                , " {{DLC-only|Yearly tribal allegiance}}"
+                ]
+        MsgTribalAllegiance {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , "{{DLC-only|Tribal allegiance}} is at least "
+                , toMessage (plainNum _amt)
+                ]
+        MsgGainTribalAllegiance {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ gainOrLose _amt
+                , " "
+                , _icon
+                , " "
+                , toMessage (colourNum True _amt)
+                , " {{DLC-only|tribal allegiance}}"
+                ]
+        MsgArmySizePc {scriptMessageAmt = _amt}
+            -> mconcat
+                [ "Army size is at least "
+                , toMessage (plainPc _amt)
+                , " of force limit"
+                ]
+        MsgBuildHeavyShips {scriptMessageIcon = _icon, scriptMessageAmt = _amt, scriptMessageSpeed = _speed, scriptMessageCost = _cost}
+            -> mconcat
+                [ "Build "
+                , _icon
+                , " "
+                , toMessage (reducedNum plainNum _amt)
+                , " heavy ships at "
+                , toMessage (plainPc _cost)
+                , " of normal cost, taking "
+                , toMessage (plainPc _speed)
+                , " of normal time"
+                ]
+        MsgBuildLightShips {scriptMessageIcon = _icon, scriptMessageAmt = _amt, scriptMessageSpeed = _speed, scriptMessageCost = _cost}
+            -> mconcat
+                [ "Build "
+                , _icon
+                , " "
+                , toMessage (reducedNum plainNum _amt)
+                , " light ships at "
+                , toMessage (plainPc _cost)
+                , " of normal cost, taking "
+                , toMessage (plainPc _speed)
+                , " of normal time"
+                ]
+        MsgBuildGalleys {scriptMessageIcon = _icon, scriptMessageAmt = _amt, scriptMessageSpeed = _speed, scriptMessageCost = _cost}
+            -> mconcat
+                [ "Build "
+                , _icon
+                , " "
+                , toMessage (reducedNum plainNum _amt)
+                , " galleys at "
+                , toMessage (plainPc _cost)
+                , " of normal cost, taking "
+                , toMessage (plainPc _speed)
+                , " of normal time"
+                ]
+        MsgBuildTransports {scriptMessageIcon = _icon, scriptMessageAmt = _amt, scriptMessageSpeed = _speed, scriptMessageCost = _cost}
+            -> mconcat
+                [ "Build "
+                , _icon
+                , " "
+                , toMessage (reducedNum plainNum _amt)
+                , " transports at "
+                , toMessage (plainPc _cost)
+                , " of normal cost, taking "
+                , toMessage (plainPc _speed)
+                , " of normal time"
                 ]
     renderMessage _ _ _ = error "Sorry, non-English localisation not yet supported."
 
