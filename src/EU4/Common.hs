@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, QuasiQuotes, FlexibleContexts, LambdaCase #-}
 {-|
 Module      : EU4.Common
 Description : Message handler for Europa Universalis IV

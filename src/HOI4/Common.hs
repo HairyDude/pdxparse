@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, ViewPatterns, ScopedTypeVariables, QuasiQuotes, FlexibleContexts #-}
 {-|
 Module      : HOI4.Common
 Description : Statement handlers for Hearts of Iron IV

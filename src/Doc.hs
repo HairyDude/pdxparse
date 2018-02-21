@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-|
 Module      : Doc
 Description : Front end to Wadler/Leijen pretty printer

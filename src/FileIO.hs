@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, ScopedTypeVariables #-}
 {-|
 Module      : FileIO
 Description : High level I/O for Clausewitz scripts

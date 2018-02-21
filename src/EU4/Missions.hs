@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts #-}
 {-|
 Module      : EU4.Missions
 Description : Feature handler for Europa Universalis IV missions

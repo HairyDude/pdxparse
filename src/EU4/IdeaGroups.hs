@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, FlexibleContexts, QuasiQuotes #-}
 {-|
 Module      : EU4.IdeaGroups
 Description : Feature handler for Europa Universalis IV idea groups

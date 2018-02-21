@@ -1,4 +1,3 @@
-{-# LANGUAGE TemplateHaskell, ViewPatterns, OverloadedStrings, FlexibleContexts #-}
 module EU4.TemplateTest where
 
 import Data.List (foldl')

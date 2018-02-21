@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleContexts #-}
 module HOI4.Types (
         -- Used by Settings
         HOI4Data (..)

@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleInstances, ScopedTypeVariables #-}
 {-|
 Module      : EU4.Settings
 Description : Interface for Europa Universalis IV backend

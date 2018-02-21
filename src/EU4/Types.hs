@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, TypeFamilies, FlexibleContexts, QuasiQuotes, DeriveGeneric #-}
 {-|
 Module      : EU4.Types
 Description : Types specific to Europa Universalis IV

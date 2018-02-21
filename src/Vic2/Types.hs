@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 module Vic2.Types (
         -- Features
         Vic2Event (..), Vic2Option (..)

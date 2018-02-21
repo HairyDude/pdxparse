@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, TypeFamilies, ScopedTypeVariables #-}
 module Vic2.Settings (
         Vic2 (..)
     ,   writeVic2Scripts

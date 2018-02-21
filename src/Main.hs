@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings, LambdaCase #-}
 {-|
 Module      : Main
 Description : Entry point for pdxparse executable

@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 {- |
 Module      : Settings
 Description : Load configuration files and localization

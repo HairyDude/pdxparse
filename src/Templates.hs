@@ -1,4 +1,3 @@
-{-# LANGUAGE TemplateHaskell, QuasiQuotes, ViewPatterns #-}
 module Templates (
         StatementHandler
     ,   Param (..)
