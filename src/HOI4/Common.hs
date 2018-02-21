@@ -136,9 +136,6 @@ preStatement stmt = (:[]) <$> alsoIndent' (preMessage stmt)
 ppMany :: (HOI4Info g, Monad m) => GenericScript -> PPT g m IndentedMessages
 ppMany scr = indentUp (concat <$> mapM ppOne scr)
 
--- | Convenience synonym.
-type StatementHandler g m = GenericStatement -> PPT g m IndentedMessages
-
 -- Table of handlers for statements.
 -- Dispatch on strings is /much/ quicker using a lookup table than a
 -- huge case statement, which uses (==) on each one in turn.

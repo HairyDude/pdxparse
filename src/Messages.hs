@@ -27,6 +27,7 @@ module due to TH stage restrictions.
 -}
 module Messages (
         ScriptMessage (..)
+    ,   StatementHandler
     ,   template, templateDoc
     ,   message, messageText
     ,   imsg2doc, imsg2doc_html
@@ -42,6 +43,7 @@ import Text.PrettyPrint.Leijen.Text (Doc)
 import qualified Text.PrettyPrint.Leijen.Text as PP
 import Text.Shakespeare.I18N (RenderMessage (..))
 
+import Abstract (GenericStatement)
 import qualified Doc
 import MessageTools -- import everything
 import SettingsTypes (PPT, getLangs, GameData (..), IsGameData (..))
@@ -5451,6 +5453,9 @@ instance RenderMessage Script ScriptMessage where
 type IndentedMessage = (Int, ScriptMessage)
 -- | List of messages, paired with their respective indentation levels.
 type IndentedMessages = [IndentedMessage]
+
+-- | Convenience synonym.
+type StatementHandler g m = GenericStatement -> PPT g m IndentedMessages
 
 -- | Convert a single message to Text.
 messageText :: (IsGameData (GameData g), Monad m) => ScriptMessage -> PPT g m Text

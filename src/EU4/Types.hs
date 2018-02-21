@@ -16,6 +16,7 @@ module EU4.Types (
     ,   AIWillDo (..)
     ,   AIModifier (..)
     ,   aiWillDo
+    ,   isGeographic
     ) where
 
 import Data.List (foldl')
@@ -233,4 +234,11 @@ awdModifierAddSection aim stmt@[pdx| $left = %right |] = case T.toLower left of
     _ -> -- the rest of the statements are just the conditions.
         aim { aim_triggers = aim_triggers aim ++ [stmt] }
 awdModifierAddSection aim _ = aim
+
+isGeographic :: EU4Scope -> Bool
+isGeographic EU4Country = False
+isGeographic EU4Province = True
+isGeographic EU4TradeNode = True
+isGeographic EU4Geographic = True
+isGeographic EU4Bonus = False
 
