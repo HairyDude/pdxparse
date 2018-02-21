@@ -112,6 +112,7 @@ import SettingsTypes ( PPT, IsGameData (..), GameData (..), IsGameState (..), Ga
                      , indentUp, indentDown, withCurrentIndent, withCurrentIndentZero, alsoIndent, alsoIndent'
                      , getGameL10n, getGameL10nIfPresent, getGameL10nDefault
                      , unfoldM, unsnoc )
+import Templates
 import {-# SOURCE #-} EU4.Common (pp_script, ppMany, ppOne)
 import EU4.Types -- everything
 
@@ -1458,71 +1459,79 @@ defineRuler stmt = preStatement stmt
 
 -- Building units
 
-data BuildToForcelimit = BuildToForcelimit
-    {   btf_infantry :: Maybe Double
-    ,   btf_cavalry :: Maybe Double
-    ,   btf_artillery :: Maybe Double
-    ,   btf_heavy_ship :: Maybe Double
-    ,   btf_light_ship :: Maybe Double
-    ,   btf_galley :: Maybe Double
-    ,   btf_transport :: Maybe Double
-    }
-newBuildToForcelimit :: BuildToForcelimit
-newBuildToForcelimit = BuildToForcelimit Nothing Nothing Nothing Nothing Nothing Nothing Nothing
+data UnitType
+    = UnitInfantry
+    | UnitCavalry
+    | UnitArtillery
+    | UnitHeavyShip
+    | UnitLightShip
+    | UnitGalley
+    | UnitTransport
+    deriving (Show)
 
-buildToForcelimit :: (IsGameState (GameState g), Monad m) => StatementHandler g m
-buildToForcelimit stmt@[pdx| %_ = @scr |]
-    = msgToPP . pp_build_to_forcelimit $ foldl' addLine newBuildToForcelimit scr where
-        addLine :: BuildToForcelimit -> GenericStatement -> BuildToForcelimit
-        addLine dr [pdx| $lhs = !howmuch |]
-            = case T.map toLower lhs of
-                "infantry"   -> dr { btf_infantry   = Just howmuch }
-                "cavalry"    -> dr { btf_cavalry    = Just howmuch }
-                "artillery"  -> dr { btf_artillery  = Just howmuch }
-                "heavy_ship" -> dr { btf_heavy_ship = Just howmuch }
-                "light_ship" -> dr { btf_light_ship = Just howmuch }
-                "galley"     -> dr { btf_galley     = Just howmuch }
-                "transport"  -> dr { btf_transport  = Just howmuch }
-                _ -> dr
-        addLine dr _ = dr
-        pp_build_to_forcelimit :: BuildToForcelimit -> ScriptMessage
-        pp_build_to_forcelimit dr =
-            let has_infantry = isJust (btf_infantry dr)
-                has_cavalry = isJust (btf_cavalry dr)
-                has_artillery = isJust (btf_artillery dr)
-                has_heavy_ship = isJust (btf_heavy_ship dr)
-                has_light_ship = isJust (btf_light_ship dr)
-                has_galley = isJust (btf_galley dr)
-                has_transport = isJust (btf_transport dr)
-                infantry = fromMaybe 0 (btf_infantry dr)
-                cavalry = fromMaybe 0 (btf_cavalry dr)
-                artillery = fromMaybe 0 (btf_artillery dr)
-                heavy_ship = fromMaybe 0 (btf_heavy_ship dr)
-                light_ship = fromMaybe 0 (btf_light_ship dr)
-                galley = fromMaybe 0 (btf_galley dr)
-                transport = fromMaybe 0 (btf_transport dr)
-                has_land = has_infantry || has_cavalry || has_artillery
-                has_navy = has_heavy_ship || has_light_ship || has_galley || has_transport
-            in  if has_land == has_navy then
-                    -- Neither or both. Unlikely, not provided for
-                    preMessage stmt
-                else if has_land then let
-                    infIcon = iconText "infantry"
+instance Param UnitType where
+    toParam (textRhs -> Just "heavy_ship") = Just UnitHeavyShip
+    toParam (textRhs -> Just "light_ship") = Just UnitLightShip
+    toParam (textRhs -> Just "galley")     = Just UnitGalley
+    toParam (textRhs -> Just "transport")  = Just UnitTransport
+    toParam _ = Nothing
+
+--foldCompound :: String -> String -> String -> [(String, Q Type)] -> [CompField] -> Q Exp -> Q [Dec]
+$(foldCompound "buildToForcelimit" "BuildToForcelimit" "btf"
+    []
+    [CompField "infantry" [t|Double|] (Just [|0|]) False
+    ,CompField "cavalry" [t|Double|] (Just [|0|]) False
+    ,CompField "artillery" [t|Double|] (Just [|0|]) False
+    ,CompField "heavy_ship" [t|Double|] (Just [|0|]) False
+    ,CompField "light_ship" [t|Double|] (Just [|0|]) False
+    ,CompField "galley" [t|Double|] (Just [|0|]) False
+    ,CompField "transport" [t|Double|] (Just [|0|]) False
+    ]
+    [| let has_infantry = _infantry > 0
+           has_cavalry = _cavalry > 0
+           has_artillery = _artillery > 0
+           has_heavy_ship = _heavy_ship > 0
+           has_light_ship = _light_ship > 0
+           has_galley = _galley > 0
+           has_transport = _transport > 0
+           has_land = has_infantry || has_cavalry || has_artillery
+           has_navy = has_heavy_ship || has_light_ship || has_galley || has_transport
+       in if has_land == has_navy then
+                -- Neither or both. Unlikely, not provided for
+                preMessage stmt
+            else if has_land then
+                let infIcon = iconText "infantry"
                     cavIcon = iconText "cavalry"
                     artIcon = iconText "artillery"
-                    in MsgBuildToForcelimitLand infIcon infantry
-                                                cavIcon cavalry
-                                                artIcon artillery
-                else let -- has_navy == True
-                    heavyIcon = iconText "heavy ship"
+                in MsgBuildToForcelimitLand infIcon _infantry
+                                            cavIcon _cavalry
+                                            artIcon _artillery
+            else -- has_navy == True
+                let heavyIcon = iconText "heavy ship"
                     lightIcon = iconText "light ship"
                     gallIcon = iconText "galley"
                     transpIcon = iconText "transport"
-                    in MsgBuildToForcelimitNavy heavyIcon heavy_ship
-                                                lightIcon light_ship
-                                                gallIcon galley
-                                                transpIcon transport
-buildToForcelimit stmt = preStatement stmt
+                in MsgBuildToForcelimitNavy heavyIcon _heavy_ship
+                                            lightIcon _light_ship
+                                            gallIcon _galley
+                                            transpIcon _transport
+    |])
+
+--foldCompound :: String -> String -> String -> [(String, Q Type)] -> [CompField] -> Q Exp -> Q [Dec]
+$(foldCompound "addUnitConstruction" "UnitConstruction" "uc"
+    [("extraArg", [t|Text|])]
+    [CompField "amount" [t|Double|] Nothing True
+    ,CompField "type" [t|UnitType|] Nothing True
+    ,CompField "speed" [t|Double|] (Just [|1|]) False
+    ,CompField "cost" [t|Double|] (Just [|1|]) False
+    ,CompField "optionalArg" [t|Double|] Nothing False]
+    [| (case _type of
+            UnitHeavyShip -> MsgBuildHeavyShips (iconText "heavy ship")
+            UnitLightShip -> MsgBuildLightShips (iconText "light ship")
+            UnitGalley    -> MsgBuildGalleys    (iconText "galley")
+            UnitTransport -> MsgBuildTransports (iconText "transport")
+       ) _amount _speed _cost
+    |])
 
 -- War
 

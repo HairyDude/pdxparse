@@ -1,6 +1,5 @@
 module Templates (
-        StatementHandler
-    ,   Param (..)
+        Param (..)
     ,   CompField (..)
     ,   foldCompound
     ) where
@@ -33,9 +32,6 @@ instance Param Double where
     toParam = floatRhs
 instance Param Text where
     toParam = textRhs
-
--- | Convenience synonym.
-type StatementHandler g m = GenericStatement -> PPT g m IndentedMessages
 
 foldCompound :: String -> String -> String -> [(String, Q Type)] -> [CompField] -> Q Exp -> Q [Dec]
 foldCompound funname s_tyname prefix extraArgs fieldspecs eval = do
