@@ -12,3 +12,4 @@ output/
 dist/
 .cabal-sandbox
 .stack-work
+*.dump-splices
