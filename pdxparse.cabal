@@ -28,6 +28,7 @@ executable pdxparse
                        EU4.Common,
                        EU4.Decisions,
                        EU4.Events,
+                       EU4.Handlers
                        EU4.IdeaGroups,
                        EU4.IO,
                        EU4.Missions,
@@ -51,11 +52,12 @@ executable pdxparse
                        Stellaris.Events,
                        Stellaris.Settings,
                        Stellaris.Types,
+                       Templates,
                        Vic2.Settings,
                        Vic2.Types,
                        Yaml
 
-  extensions:          DeriveGeneric,
+  default-extensions:  DeriveGeneric,
                        FlexibleContexts,
                        FlexibleInstances,
                        GADTs,

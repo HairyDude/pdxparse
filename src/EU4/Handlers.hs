@@ -23,6 +23,7 @@ module EU4.Handlers (
     ,   tagOrProvince
     ,   numeric
     ,   numericOrTag
+    ,   numericIconOrTag
     ,   withFlag 
     ,   withBool
     ,   withFlagOrBool
@@ -443,6 +444,7 @@ scriptIconTable = HM.fromList
     ,("age_of_revolutions", "age of revolutions")
     ,("aristocracy_ideas", "aristocratic")
     ,("army_organizer", "army organizer")
+    ,("army_organiser", "army organizer") -- both are used
     ,("army_reformer", "army reformer")
     ,("base_production", "production")
     ,("colonial_governor", "colonial governor")
@@ -567,6 +569,25 @@ numericOrTag numMsg tagMsg stmt@[pdx| %_ = %rhs |] = msgToPP =<<
             Nothing -> return (preMessage stmt)
 numericOrTag _ _ stmt = preStatement stmt
 
+-- | Handler for statements where the RHS is either a number or a tag, that
+-- also require an icon.
+numericIconOrTag :: (IsGameData (GameData g),
+                 IsGameState (GameState g),
+                 Monad m) =>
+    Text
+        -> (Text -> Double -> ScriptMessage)
+        -> (Text -> Text -> ScriptMessage)
+        -> StatementHandler g m
+numericIconOrTag icon numMsg tagMsg stmt@[pdx| %_ = %rhs |] = msgToPP =<<
+    case floatRhs rhs of
+        Just n -> return $ numMsg icon n
+        Nothing -> case textRhs rhs of
+            Just t -> do -- assume it's a country
+                tflag <- flag t
+                return $ tagMsg (iconText icon) (Doc.doc2text tflag)
+            Nothing -> return (preMessage stmt)
+numericIconOrTag _ _ _ stmt = preStatement stmt
+
 -- | Handler for a statement referring to a country. Use a flag.
 withFlag :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
     (Text -> ScriptMessage) -> StatementHandler g m
@@ -625,13 +646,14 @@ numericIcon _ _ stmt = plainMsg $ pre_statement' stmt
 
 -- | Handler for statements that have a number and an icon, plus a fixed
 -- localizable atom.
-numericIconLoc :: (IsGameState (GameState g), Monad m) =>
+numericIconLoc :: (IsGameState (GameState g), IsGameData (GameData g), Monad m) =>
     Text
         -> Text
         -> (Text -> Text -> Double -> ScriptMessage)
         -> StatementHandler g m
 numericIconLoc the_icon what msg [pdx| %_ = !amt |]
-    = msgToPP $ msg (iconText the_icon) what amt
+    = do whatloc <- getGameL10n what
+         msgToPP $ msg (iconText the_icon) whatloc amt
 numericIconLoc _ _ _ stmt = plainMsg $ pre_statement' stmt
 
 -- | Handler for statements that have a number and an icon, whose meaning

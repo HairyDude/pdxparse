@@ -237,6 +237,7 @@ handlersNumericIcons = Tr.fromList
         ,("administrative_efficiency", numericIconBonus "administrative efficiency" MsgAdminEfficiencyBonus MsgAdminEfficiency)
         ,("adm_power"                , numericIcon "adm" MsgHasADM)
         ,("adm_tech"                 , numericIcon "adm tech" MsgADMTech)
+        ,("army_organiser"           , numericIconLoc "army organizer" "army_organiser" MsgHasAdvisorLevel)
         ,("army_reformer"            , numericIconLoc "army reformer" "army_reformer" MsgHasAdvisorLevel)
         ,("army_tradition"           , numericIconBonus "army tradition" MsgArmyTradition MsgYearlyArmyTradition)
         ,("artist"                   , numericIconLoc "artist" "artist" MsgHasAdvisorLevel)
@@ -324,6 +325,7 @@ handlersNumericIcons = Tr.fromList
         ,("advisor_pool"                      , numericIcon "advisor pool" MsgPossibleAdvisors)
         ,("ae_impact"                         , numericIcon "ae impact" MsgAEImpact)
         ,("army_tradition_decay"              , numericIcon "army tradition decay" MsgArmyTraditionDecay)
+        ,("artillery_cost"                    , numericIcon "artillery cost" MsgArtilleryCost)
         ,("artillery_power"                   , numericIcon "artillery power" MsgArtilleryCombatAbility)
         ,("blockade_efficiency"               , numericIcon "blockade efficiency" MsgBlockadeEfficiency)
         ,("build_cost"                        , numericIcon "build cost" MsgBuildCost)
@@ -470,6 +472,7 @@ handlersCompound = Tr.fromList
         ,("all_country" {- sic -}   , scope EU4Country   . compoundMessage MsgAllCountries)
         ,("all_neighbor_country"    , scope EU4Country   . compoundMessage MsgAllNeighborCountries)
         ,("all_owned_province"      , scope EU4Province  . compoundMessage MsgEveryOwnedProvince)
+        ,("all_province"            , scope EU4Province  . compoundMessage MsgAllProvince)
         ,("all_subject_country"     , scope EU4Country   . compoundMessage MsgAllSubjectCountries)
         ,("any_active_trade_node"   , scope EU4TradeNode . compoundMessage MsgAnyActiveTradeNode)
         ,("any_ally"                , scope EU4Country   . compoundMessage MsgAnyAlly)
@@ -772,7 +775,8 @@ handlersYesNo = Tr.fromList
 -- | Handlers for statements that may be numeric or a tag
 handlersNumericOrTag :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersNumericOrTag = Tr.fromList
-        [("num_of_cities", numericOrTag MsgNumCities MsgNumCitiesThan)
+        [("num_of_cities"       , numericOrTag MsgNumCities MsgNumCitiesThan)
+        ,("army_professionalism", numericIconOrTag "army professionalism" MsgArmyProfessionalism MsgArmyProfessionalismAs)
         ]
 
 -- | Handlers for signed numeric statements

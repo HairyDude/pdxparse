@@ -122,6 +122,7 @@ data ScriptMessage
     | MsgPREV
     | MsgNoneOf
     | MsgAllCoreProvince
+    | MsgAllProvince
     | MsgArea
     | MsgAtLeastOneOf
     | MsgAnyActiveTradeNode
@@ -247,6 +248,7 @@ data ScriptMessage
     | MsgADMTech {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgArmyTradition {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgYearlyArmyTradition {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgArmyTraditionFromBattles {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgBaseManpower {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgBaseProduction {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgBaseTax {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -694,6 +696,7 @@ data ScriptMessage
     | MsgNavyTraditionDecay {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgInfantryCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgCavalryCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgArtilleryCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgMILTechCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgHostileCoreCreation {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgCaravanPower {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -758,6 +761,8 @@ data ScriptMessage
     | MsgAddTruceWith {scriptMessageWho :: Text}
     | MsgGainSailors {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainSailorsFrac {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgArmyProfessionalism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgArmyProfessionalismAs {scriptMessageIcon :: Text, scriptMessageWhom :: Text}
     | MsgGainArmyProfessionalism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgSailorsPercentage {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgNationalSailorsMod {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -1310,6 +1315,8 @@ instance RenderMessage Script ScriptMessage where
             -> "None of:"
         MsgAllCoreProvince
             -> "All core provinces:"
+        MsgAllProvince
+            -> "All provinces:"
         MsgAllSubjectCountries
             -> "All subject countries:"
         MsgArea
@@ -1796,6 +1803,13 @@ instance RenderMessage Script ScriptMessage where
                 [ _icon
                 , " Army tradition is at least "
                 , toMessage (plainNum _amt)
+                ]
+        MsgArmyTraditionFromBattles {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNum True _amt)
+                , " Army tradition from battles"
                 ]
         MsgYearlyArmyTradition {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
@@ -4762,6 +4776,13 @@ instance RenderMessage Script ScriptMessage where
                 , toMessage (reducedNum (colourPcSign False) _amt)
                 , " Cavalry cost"
                 ]
+        MsgArtilleryCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign False) _amt)
+                , " Artillery cost"
+                ]
         MsgMILTechCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
                 [ _icon
@@ -5166,6 +5187,18 @@ instance RenderMessage Script ScriptMessage where
                 , " sailors equal to "
                 , toMessage (reducedNum (colourPc True) _amt)
                 , " of maximum"
+                ]
+        MsgArmyProfessionalism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " Army professionalism is at least "
+                , toMessage (reducedNum plainPc _amt)
+                ]
+        MsgArmyProfessionalismAs {scriptMessageIcon = _icon, scriptMessageWhom = _whom}
+            -> mconcat
+                [ _icon
+                , " Army professionalism is at least that of "
+                , _whom
                 ]
         MsgGainArmyProfessionalism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
