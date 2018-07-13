@@ -15,6 +15,8 @@ import Control.Monad.State (MonadState (..), StateT (..), modify, gets)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
+import Data.Text (Text)
+
 import System.Directory (getDirectoryContents, doesFileExist)
 import System.FilePath ((</>))
 import System.IO (hPutStrLn, stderr)
@@ -31,6 +33,8 @@ import EU4.Types -- everything
 -- Handlers
 import EU4.Decisions (parseEU4Decisions, writeEU4Decisions)
 import EU4.IdeaGroups (parseEU4IdeaGroups, writeEU4IdeaGroups)
+import EU4.Modifiers ( parseEU4Modifiers, writeEU4Modifiers
+                     , parseEU4OpinionModifiers, writeEU4OpinionModifiers)
 --import EU4.Missions (parseEU4Missions, writeEU4Missions)
 import EU4.Events (parseEU4Events, writeEU4Events)
 --import EU4.Policies (parseEU4Policies, writeEU4Policies)
@@ -54,6 +58,10 @@ instance IsGame EU4 where
                 ,   eu4decisionScripts = HM.empty
                 ,   eu4ideaGroups = HM.empty
                 ,   eu4ideaGroupScripts = HM.empty
+                ,   eu4modifiers = HM.empty
+                ,   eu4modifierScripts = HM.empty
+                ,   eu4opmods = HM.empty
+                ,   eu4opmodScripts = HM.empty
                 }))
                 (EU4S $ EU4State {
                     eu4currentFile = Nothing
@@ -100,6 +108,18 @@ instance EU4Info EU4 where
     getDecisions = do
         EU4D ed <- get
         return (eu4decisions ed)
+    getModifierScripts = do
+        EU4D ed <- get
+        return (eu4modifierScripts ed)
+    getModifiers = do
+        EU4D ed <- get
+        return (eu4modifiers ed)
+    getOpinionModifierScripts = do
+        EU4D ed <- get
+        return (eu4opmodScripts ed)
+    getOpinionModifiers = do
+        EU4D ed <- get
+        return (eu4opmods ed)
 
 instance IsGameData (GameData EU4) where
     getSettings (EU4D ed) = eu4settings ed
@@ -126,6 +146,8 @@ readEU4Scripts = do
             let sourceSubdir = case category of
                     "policies" -> "common" </> "policies"
                     "ideagroups" -> "common" </> "ideas"
+                    "modifiers" -> "common" </> "event_modifiers"
+                    "opinion_modifiers" -> "common" </> "opinion_modifiers"
                     _          -> category
                 sourceDir = buildPath settings sourceSubdir
             files <- liftIO (filterM (doesFileExist . buildPath settings . (sourceSubdir </>))
@@ -144,16 +166,23 @@ readEU4Scripts = do
     ideaGroups <- readEU4Script "ideagroups"
     decisions <- readEU4Script "decisions"
     events <- readEU4Script "events"
+    modifiers <- readEU4Script "modifiers"
+    opinion_modifiers <- readEU4Script "opinion_modifiers"
     modify $ \(EU4D s) -> EU4D $ s {
             eu4ideaGroupScripts = ideaGroups
         ,   eu4decisionScripts = decisions
         ,   eu4eventScripts = events
+        ,   eu4modifierScripts = modifiers
+        ,   eu4opmodScripts = opinion_modifiers
         }
 
 -- | Interpret the script ASTs as usable data.
 parseEU4Scripts :: Monad m => PPT EU4 m ()
 parseEU4Scripts = do
+    -- Need idea groups and modifiers before everything else
     ideaGroups <- parseEU4IdeaGroups =<< getIdeaGroupScripts
+    modifiers <- parseEU4Modifiers =<< getModifierScripts
+    opinionModifiers <- parseEU4OpinionModifiers =<< getOpinionModifierScripts
     decisions <- parseEU4Decisions =<< getDecisionScripts
     events <- parseEU4Events =<< getEventScripts
     
@@ -161,6 +190,8 @@ parseEU4Scripts = do
             s { eu4events = events
             ,   eu4decisions = decisions
             ,   eu4ideaGroups = ideaGroups
+            ,   eu4modifiers = modifiers
+            ,   eu4opmods = opinionModifiers
             }
 
 -- | Output the game data as wiki text.

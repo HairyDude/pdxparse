@@ -2,9 +2,9 @@
 module MessageTools (
     -- * Numbers
     -- ** Plain formatting
-        plainNum, roundNum
+        plainNum, roundNum, plainNumSign
     ,   roundNumNoSpace
-    ,   plainPc, roundPc
+    ,   plainPc, roundPc, plainPcSign
     -- ** Coloured formatting
     -- | These functions take an additional 'Bool' argument that specifies
     -- whether a positive quantity is good (@True@) or bad (@False@). It
@@ -109,9 +109,17 @@ instance PPSep Double where
 plainNum :: Double -> Doc
 plainNum = ppNum False False False False
 
+-- | Format a number as is, except add thousands separators and a sign.
+plainNumSign :: Double -> Doc
+plainNumSign = ppNum False False False True
+
 -- | Format a number as a percentage. Add thousands separators.
 plainPc :: Double -> Doc
 plainPc = ppNum False True False False
+
+-- | Format a number as is, except add thousands separators, a sign and a percent sign.
+plainPcSign :: Double -> Doc
+plainPcSign = ppNum False True False True
 
 -- | Front end to 'ppNum' for uncoloured numbers.
 roundNum' :: Bool -- ^ Whether to treat this number as a percentage

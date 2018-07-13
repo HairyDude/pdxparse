@@ -32,6 +32,7 @@ executable pdxparse
                        EU4.IdeaGroups,
                        EU4.IO,
                        EU4.Missions,
+                       EU4.Modifiers,
                        EU4.Policies,
                        EU4.Settings,
                        EU4.Types,

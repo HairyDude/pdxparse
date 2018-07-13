@@ -10,6 +10,7 @@ module EU4.Types (
     ,   EU4EvtDesc (..), EU4Event (..), EU4Option (..)
     ,   EU4Decision (..)
     ,   IdeaGroup (..), Idea (..), IdeaTable
+    ,   EU4Modifier (..), EU4OpinionModifier (..)
         -- * Low level types
     ,   MonarchPower (..)
     ,   EU4Scope (..)
@@ -17,12 +18,15 @@ module EU4.Types (
     ,   AIModifier (..)
     ,   aiWillDo
     ,   isGeographic
+    -- utilities that can't go anywhere else
+    ,   getModifier
     ) where
 
 import Data.List (foldl')
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.HashMap.Strict (HashMap)
+import qualified Data.HashMap.Strict as HM
 import Data.Hashable (Hashable)
 import GHC.Generics (Generic)
 
@@ -42,9 +46,13 @@ data EU4Data = EU4Data {
     ,   eu4events :: HashMap Text EU4Event
     ,   eu4decisions :: HashMap Text EU4Decision
     ,   eu4ideaGroups :: IdeaTable
-    ,   eu4eventScripts :: HashMap String GenericScript
-    ,   eu4decisionScripts :: HashMap String GenericScript
-    ,   eu4ideaGroupScripts :: HashMap String GenericScript
+    ,   eu4modifiers :: HashMap Text EU4Modifier
+    ,   eu4opmods :: HashMap Text EU4OpinionModifier
+    ,   eu4eventScripts :: HashMap FilePath GenericScript
+    ,   eu4decisionScripts :: HashMap FilePath GenericScript
+    ,   eu4ideaGroupScripts :: HashMap FilePath GenericScript
+    ,   eu4modifierScripts :: HashMap FilePath GenericScript
+    ,   eu4opmodScripts :: HashMap FilePath GenericScript
     -- etc.
     }
 
@@ -76,6 +84,14 @@ class (IsGame g,
     getIdeaGroupScripts :: Monad m => PPT g m (HashMap FilePath GenericScript)
     -- | Get the parsed idea groups table (keyed on idea group ID).
     getIdeaGroups :: Monad m => PPT g m IdeaTable
+    -- | Get the contents of all modifier script files.
+    getModifierScripts :: Monad m => PPT g m (HashMap FilePath GenericScript)
+    -- | Get the parsed modifiers table (keyed on modifier ID).
+    getModifiers :: Monad m => PPT g m (HashMap Text EU4Modifier)
+    -- | Get the contents of all opinion modifier script files.
+    getOpinionModifierScripts :: Monad m => PPT g m (HashMap FilePath GenericScript)
+    -- | Get the parsed opinion modifiers table (keyed on modifier ID).
+    getOpinionModifiers :: Monad m => PPT g m (HashMap Text EU4OpinionModifier)
     -- | Get the contents of all decision script files.
     getDecisionScripts :: Monad m => PPT g m (HashMap FilePath GenericScript)
     -- | Get the parsed decisions table (keyed on decision ID).
@@ -172,6 +188,26 @@ data EU4Decision = EU4Decision
     ,   dec_path :: Maybe FilePath -- ^ Source file
     } deriving (Show)
 
+data EU4Modifier = EU4Modifier
+    {   modName :: Text
+    ,   modLocName :: Maybe Text
+    ,   modPath :: FilePath
+    ,   modEffects :: GenericScript
+    } deriving (Show)
+data EU4OpinionModifier = EU4OpinionModifier
+    {   omodName :: Text
+    ,   omodLocName :: Maybe Text
+    ,   omodPath :: FilePath
+    ,   omodOpinion :: Maybe Double
+    ,   omodMax :: Maybe Double
+    ,   omodMin :: Maybe Double
+    ,   omodYearlyDecay :: Maybe Double
+    ,   omodMonths :: Maybe Double
+    ,   omodYears :: Maybe Double
+    ,   omodMaxVassal :: Maybe Double
+    ,   omodMaxInOtherDirection :: Maybe Double
+    } deriving (Show)
+
 ------------------------------
 -- Shared lower level types --
 ------------------------------
@@ -241,4 +277,11 @@ isGeographic EU4Province = True
 isGeographic EU4TradeNode = True
 isGeographic EU4Geographic = True
 isGeographic EU4Bonus = False
+
+-----------------------------
+-- Miscellaneous utilities --
+-----------------------------
+
+getModifier :: (EU4Info g, Monad m) => Text -> PPT g m (Maybe EU4Modifier)
+getModifier id = HM.lookup id <$> getModifiers
 
