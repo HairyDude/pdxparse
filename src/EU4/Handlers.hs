@@ -1530,8 +1530,8 @@ instance Param UnitType where
     toParam (textRhs -> Just "transport")  = Just UnitTransport
     toParam _ = Nothing
 
---foldCompound :: String -> String -> String -> [(String, Q Type)] -> [CompField] -> Q Exp -> Q [Dec]
-$(foldCompound "buildToForcelimit" "BuildToForcelimit" "btf"
+--buildToForcelimit :: (IsGameState (GameState g), Monad m) => StatementHandler g m
+foldCompound "buildToForcelimit" "BuildToForcelimit" "btf"
     []
     [CompField "infantry" [t|Double|] (Just [|0|]) False
     ,CompField "cavalry" [t|Double|] (Just [|0|]) False
@@ -1569,10 +1569,10 @@ $(foldCompound "buildToForcelimit" "BuildToForcelimit" "btf"
                                             lightIcon _light_ship
                                             gallIcon _galley
                                             transpIcon _transport
-    |])
+    |]
 
---foldCompound :: String -> String -> String -> [(String, Q Type)] -> [CompField] -> Q Exp -> Q [Dec]
-$(foldCompound "addUnitConstruction" "UnitConstruction" "uc"
+--addUnitConstruction :: (IsGameState (GameState g), Monad m) => Text -> StatementHandler g m
+foldCompound "addUnitConstruction" "UnitConstruction" "uc"
     [("extraArg", [t|Text|])]
     [CompField "amount" [t|Double|] Nothing True
     ,CompField "type" [t|UnitType|] Nothing True
@@ -1585,7 +1585,7 @@ $(foldCompound "addUnitConstruction" "UnitConstruction" "uc"
             UnitGalley    -> MsgBuildGalleys    (iconText "galley")
             UnitTransport -> MsgBuildTransports (iconText "transport")
        ) _amount _speed _cost
-    |])
+    |]
 
 -- War
 

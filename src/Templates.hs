@@ -33,6 +33,50 @@ instance Param Double where
 instance Param Text where
     toParam = textRhs
 
+{- | Pattern for accumulating fields from a compound statement then analyzing them.
+ -
+ - Usage:
+ - @
+ -  foldCompound [function name] [data type name] [field prefix] [additional arguments] [field specs] [processing expression]
+ - @
+ -
+ - where
+ -
+ - [@[function name]@] Name of the function to be generated.
+ -
+ - [@[data type name]@] Name of the intermediate data type and its constructor.
+ -
+ - [@[field prefix]@] Prefix for the intermediate data type's field labels (an
+ -      additional underscore is added). This is purely to avoid name clashes.
+ -
+ - [@[additional arguments]@] List of pairs @([variable name], [type])@. The
+ -      function is given a number of additional arguments of these names and
+ -      types.
+ -
+ - [@field specs@] is a list of 'CompField' values:
+ -
+ -      @
+ -          CompField [field name] [field type] [default value] [required?]
+ -      @
+ -
+ -      where
+ -
+ -      [@[field name]@] Name of the field.
+ -      [@[type]@] Type of the field.
+ -      [@[default value]@] Default value for the field if not present (type
+ -          @Q Exp@). This expression is closed (has no free variables).
+ -      [@[required?]@] Boolean value indicating whether the field is required.
+ -
+ -  [@[processing expression]@] The expression used to bring the value
+ -      together. This should have type @ScriptMessage@, and has a number of free
+ -      variables: one for each additional argument, and one bound to each
+ -      field's value, prefixed with an underscore. The field variables have
+ -      their declared types if mandatory, and @Maybe@ those types otherwise.
+ -
+ - The resulting function has only the given additional arguments, and has
+ - return type @(IsGameState (GameState g), Monad m) => StatementHandler g m@.
+ -
+-}
 foldCompound :: String -> String -> String -> [(String, Q Type)] -> [CompField] -> Q Exp -> Q [Dec]
 foldCompound funname s_tyname prefix extraArgs fieldspecs eval = do
     let -- Missing TH library function
