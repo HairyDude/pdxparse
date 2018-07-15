@@ -54,7 +54,6 @@ parseEU4Modifiers scripts = HM.unions . HM.elems <$> do
                     Right mmod -> return mmod
                 where mkModMap :: [EU4Modifier] -> HashMap Text EU4Modifier
                       mkModMap = HM.fromList . map (modName &&& id)
-                        -- Events returned from parseEvent are guaranteed to have an id.
 
 parseEU4Modifier :: (IsGameData (GameData g), IsGameState (GameState g), MonadError Text m) =>
     GenericStatement -> PPT g m (Either Text (Maybe EU4Modifier))
@@ -97,12 +96,11 @@ parseEU4OpinionModifiers scripts = HM.unions . HM.elems <$> do
                     Right mmod -> return mmod
                 where mkModMap :: [EU4OpinionModifier] -> HashMap Text EU4OpinionModifier
                       mkModMap = HM.fromList . map (omodName &&& id)
-                        -- Events returned from parseEvent are guaranteed to have an id.
 
 newEU4OpinionModifier id locid path = EU4OpinionModifier id locid path Nothing Nothing Nothing Nothing Nothing Nothing Nothing Nothing
 
--- | Parse a statement in an events file. Some statements aren't events; for
--- those, and for any obvious errors, return Right Nothing.
+-- | Parse a statement in an opinion modifiers file. Some statements aren't
+-- modifiers; for those, and for any obvious errors, return Right Nothing.
 parseEU4OpinionModifier :: (IsGameState (GameState g), IsGameData (GameData g), MonadError Text m) =>
     GenericStatement -> PPT g m (Either Text (Maybe EU4OpinionModifier))
 parseEU4OpinionModifier (StatementBare _) = throwError "bare statement at top level"
@@ -126,8 +124,8 @@ parseEU4OpinionModifier [pdx| %left = %right |] = case right of
 parseEU4OpinionModifier _ = withCurrentFile $ \file ->
     throwError ("unrecognised form for opinion modifier in " <> T.pack file)
 
--- | Interpret one section of an event. If understood, add it to the event
--- data. If not understood, throw an exception.
+-- | Interpret one section of an opinion modifier. If understood, add it to the
+-- event data. If not understood, throw an exception.
 opinionModifierAddSection :: (IsGameState (GameState g), MonadError Text m) =>
     Maybe EU4OpinionModifier -> GenericStatement -> PPT g m (Maybe EU4OpinionModifier)
 opinionModifierAddSection Nothing _ = return Nothing
