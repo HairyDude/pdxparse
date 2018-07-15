@@ -63,6 +63,7 @@ data ScriptMessage
     | MsgHeirDies
     | MsgRulerDies
     | MsgLoseCardinal
+    | MsgLeaveHRE
     | MsgGainADM {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainAT {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainAuth {scriptMessageAmt :: Double}
@@ -843,6 +844,8 @@ instance RenderMessage Script ScriptMessage where
             -> "Ruler dies"
         MsgLoseCardinal
             -> "Lose a cardinal"
+        MsgLeaveHRE
+            -> "Remove all provinces from the Holy Roman Empire, unless an elector or the Emperor"
         MsgGainADM {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
                 [ gainOrLose _amt

@@ -145,6 +145,7 @@ handlersRhsIrrelevant = Tr.fromList
         ,("reduce_estate_dhimmi_loyalty_effect", const (msgToPP MsgReduceDhimmiLoyalty))
         ,("reduce_estate_nobles_loyalty_effect", const (msgToPP MsgReduceNoblesLoyalty))
         ,("remove_cardinal"        , const (msgToPP MsgLoseCardinal))
+        ,("remove_non_electors_emperors_from_empire_effect", const (msgToPP MsgLeaveHRE))
         ,("sea_repair"             , const (msgToPP MsgGainSeaRepair)) -- Full Maritime
         -- This should really be boolean, but it's never used in the negative
         ,("is_free_or_tributary_trigger", const (msgToPP MsgIsFreeOrTributaryTrigger))
