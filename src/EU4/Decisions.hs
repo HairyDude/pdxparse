@@ -152,6 +152,7 @@ pp_decision dec = do
         ["<section begin=", nameD, "/>"
         ,"{{Decision", PP.line
         ,"| version = ", Doc.strictText version, PP.line
+        ,"| decision_id = ", nameD, PP.line
         ,"| decision_name = ", Doc.strictText name_loc, PP.line
         ,maybe mempty
                (\txt -> mconcat ["| decision_text = ", Doc.strictText txt, PP.line])

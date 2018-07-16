@@ -455,7 +455,7 @@ handlersNumericIcons = Tr.fromList
         ,("naval_morale"                      , numericIcon "morale of navies" MsgMoraleOfNavies)
         ,("navy_tradition"                    , numericIcon "navy tradition" MsgYearlyNavyTradition)
         ,("navy_tradition_decay"              , numericIcon "navy tradition decay" MsgNavyTraditionDecay)
-        ,("papal_influence"                   , numericIcon "papal influence" MsgYearlyPapalInfluence)
+        ,("papal_influence"                   , numericIconBonus "papal influence" MsgPapalInfluence MsgYearlyPapalInfluence)
         ,("possible_mercenaries"              , numericIcon "available mercenaries" MsgAvailableMercs)
         ,("prestige"                          , numericIconBonus "prestige" MsgPrestige MsgYearlyPrestige)
         ,("prestige_decay"                    , numericIcon "prestige decay" MsgPrestigeDecay)

@@ -948,7 +948,7 @@ addModifier kind stmt@(Statement _ OpEq (CompoundRhs scr)) =
             mname_or_key = maybe mkey Just mname
             mname_or_key_loc = maybe mkey_loc Just mname_loc
             meffect = modEffects <$> mthemod
-        mpp_meffect <- maybeM ppMany meffect
+        mpp_meffect <- scope EU4Bonus $ maybeM ppMany meffect
 
         case mname_or_key of
             Just modid ->

@@ -528,6 +528,7 @@ data ScriptMessage
     | MsgToleranceHeathen {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgToleranceHeretic {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgToleranceTrue {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgPapalInfluence {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgYearlyPapalInfluence {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgYearlyDevotion {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgMonthlyFervor {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -3795,6 +3796,12 @@ instance RenderMessage Script ScriptMessage where
                 , " "
                 , toMessage (colourNumSign True _amt)
                 , " Tolerance of the true faith"
+                ]
+        MsgPapalInfluence {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " Papal influence is at least "
+                , toMessage (roundNum _amt)
                 ]
         MsgYearlyPapalInfluence {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
