@@ -64,9 +64,11 @@ data ScriptMessage
     | MsgRulerDies
     | MsgLoseCardinal
     | MsgLeaveHRE
+    | MsgIsJanissaryMod
     | MsgGainADM {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainAT {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainAuth {scriptMessageAmt :: Double}
+    | MsgDrillGainMod {scriptMessageAmt :: Double}
     | MsgGainBT {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainBP {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainBM {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -636,6 +638,7 @@ data ScriptMessage
     | MsgGainFervor {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainChurchPower {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgIncomeFromVassals {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgCostToFabricateClaims {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgTimeToFabricateClaims {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgDiploAnnexCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgAEImpact {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -815,6 +818,45 @@ data ScriptMessage
     | MsgBuildLightShips {scriptMessageIcon :: Text, scriptMessageAmt :: Double, scriptMessageSpeed :: Double, scriptMessageCost :: Double}
     | MsgBuildGalleys {scriptMessageIcon :: Text, scriptMessageAmt :: Double, scriptMessageSpeed :: Double, scriptMessageCost :: Double}
     | MsgBuildTransports {scriptMessageIcon :: Text, scriptMessageAmt :: Double, scriptMessageSpeed :: Double, scriptMessageCost :: Double}
+    | MsgAristocratsInfluence {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgDomesticTradePower {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgEmbracementCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgGlobalTaxIncome {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgHeavyShipCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgHeirChance {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgInstitutionSpread {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLandFireDamage {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalConstructionCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalCultureConversionCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalDefensiveness {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalGoodsProduced {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalGoodsProducedMod {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalHostileMovementSpeed {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalInstitutionSpread {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalManpowerMod {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalMissionaryStrength {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalMonthlyDevastation {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalProdEff {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalSettlerIncrease {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalStateMaintMod {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalTaxMod {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalTradePower {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalTradePowerMod {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgLocalUnrest {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgMaxPromotedCultures {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgMercenaryDiscipline {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgMeritocracy {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgProvTradePowerMod {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgRazingPowerGain {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgRecoverNavyMoraleSpeed {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgStateMaintMod {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgSubjectLibertyDesire {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgTaxIncome {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgTradePowerAbroad {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgTradeValueMod {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgYearlyArmyProfessionalism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgYearlyCorruption {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgYearlyMeritocracy {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
 
 -- | Whether to default to English localization.
 useEnglish :: [Text] -> Bool
@@ -846,6 +888,8 @@ instance RenderMessage Script ScriptMessage where
             -> "Lose a cardinal"
         MsgLeaveHRE
             -> "Remove all provinces from the Holy Roman Empire, unless an elector or the Emperor"
+        MsgIsJanissaryMod
+            -> "(This is a Janissary modifier.)"
         MsgGainADM {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
                 [ gainOrLose _amt
@@ -870,6 +914,11 @@ instance RenderMessage Script ScriptMessage where
                 , " "
                 , toMessage (colourNum True _amt)
                 , " authority"
+                ]
+        MsgDrillGainMod {scriptMessageAmt = _amt}
+            -> mconcat
+                [ toMessage (colourNum True _amt)
+                , " Army drill gain modifier"
                 ]
         MsgGainBT {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
@@ -3638,7 +3687,7 @@ instance RenderMessage Script ScriptMessage where
                 [ _icon
                 , " "
                 , toMessage (reducedNum (colourPcSign False) _amt)
-                , " Build cost"
+                , " Construction cost"
                 ]
         MsgYearlyInflationReduction {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
@@ -4398,6 +4447,13 @@ instance RenderMessage Script ScriptMessage where
                 , " "
                 , toMessage (reducedNum (colourPcSign True) _amt)
                 , " Income from vassals"
+                ]
+        MsgCostToFabricateClaims {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign False) _amt)
+                , " Cost to fabricate claims"
                 ]
         MsgTimeToFabricateClaims {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
@@ -5541,6 +5597,278 @@ instance RenderMessage Script ScriptMessage where
                 , " of normal cost, taking "
                 , toMessage (plainPc _speed)
                 , " of normal time"
+                ]
+        MsgAristocratsInfluence {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum plainPcSign _amt)
+                , " The Aristocrats influence"
+                ]
+        MsgDomesticTradePower {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Domestic trade power"
+                ]
+        MsgEmbracementCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign False) _amt)
+                , " Institution embracement cost"
+                ]
+        MsgGlobalTaxIncome {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign True _amt)
+                , " Tax income"
+                ]
+        MsgHeavyShipCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign False) _amt)
+                , " Heavy ship cost"
+                ]
+        MsgHeirChance {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Chance of new heir"
+                ]
+        MsgInstitutionSpread {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Institution spread"
+                ]
+        MsgLandFireDamage {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Land fire damage"
+                ]
+        MsgLocalConstructionCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign False) _amt)
+                , " Local construction cost"
+                ]
+        MsgLocalCultureConversionCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign False) _amt)
+                , " Local culture conversion cost"
+                ]
+        MsgLocalDefensiveness {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Local defensiveness"
+                ]
+        MsgLocalGoodsProduced {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign True _amt)
+                , " Local goods produced"
+                ]
+        MsgLocalGoodsProducedMod {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Local goods produced modifier"
+                ]
+        MsgLocalHostileMovementSpeed {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign False) _amt)
+                , " Local hostile movement speed"
+                ]
+        MsgLocalInstitutionSpread {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Local institution spread"
+                ]
+        MsgLocalUnrest {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign False _amt)
+                , " Local unrest"
+                ]
+        MsgLocalManpowerMod {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Local manpower modifier"
+                ]
+        MsgLocalMissionaryStrength {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Local missionary strength"
+                ]
+        MsgLocalMonthlyDevastation {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign False _amt)
+                , " Monthly devastation"
+                ]
+        MsgLocalProdEff {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Local production efficiency"
+                ]
+        MsgLocalSettlerIncrease {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign True _amt)
+                , " Local settler increase"
+                ]
+        MsgLocalStateMaintMod {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign False) _amt)
+                , " State maintenance"
+                ]
+        MsgLocalTaxMod {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Local tax modifier"
+                ]
+        MsgLocalTradePower {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign True _amt)
+                , " Local trade power"
+                ]
+        MsgLocalTradePowerMod {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Local trade power modifier"
+                ]
+        MsgMaxPromotedCultures {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign True _amt)
+                , " Max promoted cultures"
+                ]
+        MsgMercenaryDiscipline {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Mercenary discipline"
+                ]
+        MsgMeritocracy {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " Meritocracy is at least "
+                , toMessage (roundNum _amt)
+                ]
+        MsgProvTradePowerMod {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Provincial trade power modifier"
+                ]
+        MsgRazingPowerGain {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Razing power gain"
+                ]
+        MsgRecoverNavyMoraleSpeed {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Recover navy morale speed"
+                ]
+        MsgStateMaintMod {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign False) _amt)
+                , " State maintenance"
+                ]
+        MsgSubjectLibertyDesire {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourPcSign False (negate _amt))
+                , " Liberty desire in subjects"
+                ]
+        MsgTaxIncome {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign True _amt)
+                , " Tax income"
+                ]
+        MsgTradePowerAbroad {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Trade power abroad"
+                ]
+        MsgTradeValueMod {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Trade value modifier"
+                ]
+        MsgYearlyArmyProfessionalism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (reducedNum (colourPcSign True) _amt)
+                , " Yearly army professionalism"
+                ]
+        MsgYearlyCorruption {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign False _amt)
+                , " Yearly corruption"
+                ]
+        MsgYearlyMeritocracy {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign True _amt)
+                , " Yearly meritocracy"
                 ]
     renderMessage _ _ _ = error "Sorry, non-English localisation not yet supported."
 
