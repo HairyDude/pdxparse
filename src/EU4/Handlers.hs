@@ -1634,6 +1634,10 @@ hasDlc [pdx| %_ = ?dlc |]
             ,("The Cossacks", "cos")
             ,("Mare Nostrum", "mn")
             ,("Rights of Man", "rom")
+            ,("Mandate of Heaven", "moh")
+            ,("Third Rome", "tr")
+            ,("Cradle of Civilization", "coc")
+            ,("Rule Britannia", "rb")
             ]
         dlc_icon = maybe "" iconText mdlc_key
 hasDlc stmt = preStatement stmt
