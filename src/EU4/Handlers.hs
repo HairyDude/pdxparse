@@ -7,12 +7,15 @@ module EU4.Handlers (
     ,   pp_mtth
     ,   compound
     ,   compoundMessage
+    ,   compoundMessagePronoun 
     ,   compoundMessageTagged
+    ,   allowPronoun
     ,   withLocAtom
     ,   withLocAtom2
     ,   withLocAtomAndIcon
     ,   withLocAtomIcon
     ,   withLocAtomIconEU4Scope
+    ,   locAtomTagOrProvince
     ,   withProvince
     ,   withNonlocAtom
     ,   withNonlocAtom2
@@ -21,9 +24,10 @@ module EU4.Handlers (
     ,   iconFileB
     ,   iconOrFlag
     ,   tagOrProvince
+    ,   tagOrProvinceIcon
     ,   numeric
     ,   numericOrTag
-    ,   numericIconOrTag
+    ,   numericOrTagIcon
     ,   numericIconChange 
     ,   withFlag 
     ,   withBool
@@ -77,6 +81,9 @@ module EU4.Handlers (
     ,   hasIdea
     ,   trust
     ,   governmentPower
+    -- testing
+    ,   isPronoun
+    ,   flag
     ) where
 
 import Data.Char (toUpper, toLower, isUpper)
@@ -101,7 +108,7 @@ import Data.Maybe (isJust, fromMaybe)
 
 import Control.Applicative (liftA2)
 import Control.Arrow (first)
-import Control.Monad (foldM, mplus, forM, join)
+import Control.Monad (foldM, mplus, forM, join, when)
 import Data.Foldable (fold)
 import Data.Monoid ((<>))
 
@@ -164,37 +171,114 @@ iconText = Doc.doc2text . icon
 
 -- Argument may be a tag or a tagged variable. Emit a flag in the former case,
 -- and localize in the latter case.
-eflag :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
-            Either Text (Text, Text) -> PPT g m (Maybe Text)
-eflag = \case
-    Left name -> Just <$> flagText name
+eflag :: (EU4Info g, Monad m) =>
+            Maybe EU4Scope -> Either Text (Text, Text) -> PPT g m (Maybe Text)
+eflag expectScope = \case
+    Left name -> Just <$> flagText expectScope name
     Right (vartag, var) -> tagged vartag var
 
 -- | Look up the message corresponding to a tagged atom.
 --
 -- For example, to localize @event_target:some_name@, call
 -- @tagged "event_target" "some_name"@.
-tagged :: (IsGameData (GameData g), Monad m) => Text -> Text -> PPT g m (Maybe Text)
+tagged :: (EU4Info g, Monad m) =>
+    Text -> Text -> PPT g m (Maybe Text)
 tagged vartag var = case flip Tr.lookup varTags . TE.encodeUtf8 $ vartag of
     Just msg -> Just <$> messageText (msg var)
     Nothing -> return Nothing
 
-flagText :: (IsGameData (GameData g),
-             IsGameState (GameState g),
-             Monad m) =>
-    Text -> PPT g m Text
-flagText = fmap Doc.doc2text . flag
+flagText :: (EU4Info g, Monad m) =>
+    Maybe EU4Scope -> Text -> PPT g m Text
+flagText expectScope = fmap Doc.doc2text . flag expectScope
 
--- Emit flag template if the argument is a tag.
-flag :: (IsGameData (GameData g), Monad m) => Text -> PPT g m Doc
-flag name =
-    if isTag name
-        then template "flag" . (:[]) <$> getGameL10n name
-        else return $ case T.map toUpper name of
-                "ROOT" -> "(Our country)" -- will need editing for capitalization in some cases
-                "PREV" -> "(Previously mentioned country)"
-                -- Suggestions of a description for FROM are welcome.
-                _ -> Doc.strictText name
+-- Emit an appropriate phrase if the given text is a pronoun, otherwise use the
+-- provided localization function.
+allowPronoun :: (EU4Info g, Monad m) =>
+    Maybe EU4Scope -> (Text -> PPT g m Doc) -> Text -> PPT g m Doc
+allowPronoun expectedScope getLoc name =
+    if isPronoun name
+        then pronoun expectedScope name
+        else getLoc name
+
+-- | Emit flag template if the argument is a tag, or an appropriate phrase if
+-- it's a pronoun.
+flag :: (EU4Info g, Monad m) =>
+    Maybe EU4Scope -> Text -> PPT g m Doc
+flag expectscope = allowPronoun expectscope $ \name ->
+                    template "flag" . (:[]) <$> getGameL10n name
+
+getScopeForPronoun :: (EU4Info g, Monad m) =>
+    Text -> PPT g m (Maybe EU4Scope)
+getScopeForPronoun = helper . T.toLower where
+    helper "this" = getCurrentScope
+    helper "root" = getRootScope
+    helper "prev" = getPrevScope
+    helper "controller" = return (Just EU4Country)
+    helper "emperor" = return (Just EU4Country)
+    helper "capital" = return (Just EU4Province)
+    helper _ = return Nothing
+
+-- | Emit an appropriate phrase for a pronoun.
+-- If a scope is passed, that is the type the current command expects. If they
+-- don't match, it's a synecdoche; adjust the wording appropriately.
+--
+-- All handlers in this module that take an argument of type 'Maybe EU4Scope'
+-- call this function. Use whichever scope corresponds to what you expect to
+-- appear on the RHS. If it can be one of several (e.g. either a country or a
+-- province), or it doesn't correspond to any scope, use Nothing.
+pronoun :: (EU4Info g, Monad m) =>
+    Maybe EU4Scope -> Text -> PPT g m Doc
+pronoun expectedScope name = withCurrentFile $ \f -> case T.toLower name of
+    "root" -> getRootScope >>= \case -- will need editing
+        Just EU4Country
+            | expectedScope `matchScope` EU4Country -> message MsgROOTCountry
+            | otherwise                             -> message MsgROOTCountryAsOther
+        Just EU4Province
+            | expectedScope `matchScope` EU4Province -> message MsgROOTProvince
+            | expectedScope `matchScope` EU4Country -> message MsgROOTProvinceOwner
+            | otherwise                             -> message MsgROOTProvinceAsOther
+        -- No synecdoche possible
+        Just EU4TradeNode -> message MsgROOTTradeNode
+        -- No synecdoche possible
+        Just EU4Geographic -> message MsgROOTGeographic
+        _ -> return "ROOT"
+    "prev" -> --do
+--      ss <- getScopeStack
+--      traceM (f ++ ": pronoun PREV: scope stack is " ++ show ss)
+        getPrevScope >>= \_scope -> case _scope of -- will need editing
+            Just EU4Country
+                | expectedScope `matchScope` EU4Country -> message MsgPREVCountry
+                | otherwise                             -> message MsgPREVCountryAsOther
+            Just EU4Province
+                | expectedScope `matchScope` EU4Province -> message MsgPREVProvince
+                | expectedScope `matchScope` EU4Country -> message MsgPREVProvinceOwner
+                | otherwise                             -> message MsgPREVProvinceAsOther
+            Just EU4TradeNode -> message MsgPREVTradeNode
+            Just EU4Geographic -> message MsgPREVGeographic
+            _ -> return "PREV"
+    "this" -> getCurrentScope >>= \case -- will need editing
+        Just EU4Country
+            | expectedScope `matchScope` EU4Country -> message MsgTHISCountry
+            | otherwise                             -> message MsgTHISCountryAsOther
+        Just EU4Province
+            | expectedScope `matchScope` EU4Province -> message MsgTHISProvince
+            | expectedScope `matchScope` EU4Country -> message MsgTHISProvinceOwner
+            | otherwise                             -> message MsgTHISProvinceAsOther
+        Just EU4TradeNode -> message MsgTHISTradeNode
+        Just EU4Geographic -> message MsgTHISGeographic
+        _ -> return "PREV"
+    "controller" -> message MsgController
+    "emperor" -> message MsgEmperor
+    "original_dynasty" -> message MsgOriginalDynasty
+    "historic_dynasty" -> message MsgHistoricDynasty
+    "capital" -> message MsgCapital
+    -- Suggestions of a description for FROM are welcome.
+    _ -> return $ Doc.strictText name -- something else; regurgitate untouched
+    where
+        Nothing `matchScope` _ = True
+        Just expect `matchScope` actual
+            | expect == actual = True
+            | otherwise        = False
 
 isTag :: Text -> Bool
 isTag s = T.length s == 3 && T.all isUpper s
@@ -210,8 +294,13 @@ isPronoun s = T.map toLower s `S.member` pronouns where
     pronouns = S.fromList
         ["root"
         ,"prev"
+        ,"this"
         ,"owner"
         ,"controller"
+        ,"emperor"
+        ,"original_dynasty"
+        ,"historic_dynasty"
+        ,"capital"
         ]
 
 -- Get the localization for a province ID, if available.
@@ -230,7 +319,7 @@ data MTTH = MTTH
         {   mtth_years :: Maybe Int
         ,   mtth_months :: Maybe Int
         ,   mtth_days :: Maybe Int
-        ,   mtth_modifiers :: [MTTHModifier] -- TODO
+        ,   mtth_modifiers :: [MTTHModifier]
         } deriving Show
 -- | Data for @modifier@ clauses within @mean_time_to_happen@ clauses
 data MTTHModifier = MTTHModifier
@@ -338,13 +427,61 @@ compoundMessage header [pdx| %_ = @scr |]
         return ((i, header) : script_pp'd)
 compoundMessage _ stmt = preStatement stmt
 
+-- | Generic handler for a simple compound statement headed by a pronoun.
+compoundMessagePronoun :: (EU4Info g, Monad m) => StatementHandler g m
+compoundMessagePronoun stmt@[pdx| $head = @scr |] = withCurrentIndent $ \i -> do
+    params <- withCurrentFile $ \f -> case T.toLower head of
+        "root" -> do
+                newscope <- getRootScope
+                return (newscope, case newscope of
+                    Just EU4Country -> Just MsgROOTCountry
+                    Just EU4Province -> Just MsgROOTProvince
+                    Just EU4TradeNode -> Just MsgROOTTradeNode
+                    Just EU4Geographic -> Just MsgROOTGeographic
+                    Just EU4Bonus ->
+                        trace (f ++ ": compoundMessagePronoun called in bonus scope")
+                        $ Nothing
+                    Just EU4From ->
+                        trace (f ++ ": compoundMessagePronoun for ROOT somehow had FROM scope")
+                        $ Nothing
+                    Nothing -> 
+                        trace (f ++ ": compoundMessagePronoun for ROOT somehow had no scope")
+                        $ Nothing)
+        "prev" -> do
+                newscope <- getPrevScope
+                return (newscope, case newscope of
+                    Just EU4Country -> Just MsgPREVCountry
+                    Just EU4Province -> Just MsgPREVProvince
+                    Just EU4TradeNode -> Just MsgPREVTradeNode
+                    Just EU4Geographic -> Just MsgPREVGeographic
+                    Just EU4Bonus ->
+                        trace (f ++ ": compoundMessagePronoun called in bonus scope")
+                        $ Nothing
+                    Just EU4From -> Just MsgPREV -- Roll with it
+                    Nothing -> 
+                        trace (f ++ ": compoundMessagePronoun for PREV somehow had no scope")
+                        $ Nothing)
+        "from" -> return (Just EU4From, Just MsgFROM) -- don't know what type this is in general
+        _ -> trace (f ++ ": compoundMessagePronoun: don't know how to handle head " ++ T.unpack head)
+             $ return (Nothing, undefined)
+    case params of
+        (Nothing, _) -> preStatement stmt
+        (_, Nothing) -> preStatement stmt
+        (Just newscope, Just scopemsg) -> do
+            script_pp'd <- scope newscope $ ppMany scr
+            return $ (i, scopemsg) : script_pp'd
+compoundMessagePronoun stmt = preStatement stmt
+
 -- | Generic handler for a simple compound statement with a tagged header.
 compoundMessageTagged :: (EU4Info g, Monad m) =>
     (Text -> ScriptMessage) -- ^ Message to use as the block header
+    -> Maybe EU4Scope -- ^ Scope to push on the stack, if any
     -> StatementHandler g m
-compoundMessageTagged header stmt@[pdx| $_:$tag = %_ |]
-    = compoundMessage (header tag) stmt
-compoundMessageTagged _ stmt = preStatement stmt
+compoundMessageTagged header mscope stmt@[pdx| $_:$tag = %_ |]
+    = (case mscope of
+        Just newscope -> scope newscope
+        Nothing -> id) $ compoundMessage (header tag) stmt
+compoundMessageTagged _ _ stmt = preStatement stmt
 
 -- | Generic handler for a statement whose RHS is a localizable atom.
 withLocAtom :: (IsGameData (GameData g),
@@ -369,23 +506,19 @@ withLocAtom2 _ _ stmt = preStatement stmt
 
 -- | Generic handler for a statement whose RHS is a localizable atom, where we
 -- also need an icon.
-withLocAtomAndIcon :: (IsGameData (GameData g),
-                       IsGameState (GameState g),
-                       Monad m) =>
+withLocAtomAndIcon :: (EU4Info g, Monad m) =>
     Text -- ^ icon name - see
          -- <https://www.eu4wiki.com/Template:Icon Template:Icon> on the wiki
         -> (Text -> Text -> ScriptMessage)
         -> StatementHandler g m
 withLocAtomAndIcon iconkey msg [pdx| %_ = $key |]
-    = do what <- getGameL10n key
+    = do what <- Doc.doc2text <$> allowPronoun Nothing (fmap Doc.strictText . getGameL10n) key
          msgToPP $ msg (iconText iconkey) what
 withLocAtomAndIcon _ _ stmt = preStatement stmt
 
 -- | Generic handler for a statement whose RHS is a localizable atom that
 -- corresponds to an icon.
-withLocAtomIcon :: (IsGameData (GameData g),
-                    IsGameState (GameState g),
-                    Monad m) =>
+withLocAtomIcon :: (EU4Info g, Monad m) =>
     (Text -> Text -> ScriptMessage)
         -> StatementHandler g m
 withLocAtomIcon msg stmt@[pdx| %_ = $key |]
@@ -405,9 +538,20 @@ withLocAtomIconEU4Scope countrymsg provincemsg stmt = do
         Just EU4Province -> withLocAtomIcon provincemsg stmt
         _ -> preStatement stmt -- others don't make sense
 
-withProvince :: (IsGameData (GameData g),
-                 IsGameState (GameState g),
-                 Monad m) =>
+-- | Generic handler for a statement where the RHS is a localizable atom, but
+-- may be replaced with a tag or province to refer synecdochally to the
+-- corresponding value.
+locAtomTagOrProvince :: (EU4Info g, Monad m) =>
+    (Text -> Text -> ScriptMessage) -- ^ Message for atom
+        -> (Text -> ScriptMessage) -- ^ Message for synecdoche
+        -> StatementHandler g m
+locAtomTagOrProvince atomMsg synMsg stmt@[pdx| %_ = $val |] =
+    if isTag val || isPronoun val
+       then tagOrProvinceIcon synMsg synMsg stmt
+       else withLocAtomIcon atomMsg stmt
+locAtomTagOrProvince _ _ stmt = preStatement stmt
+
+withProvince :: (EU4Info g, Monad m) =>
     (Text -> ScriptMessage)
         -> StatementHandler g m
 withProvince msg stmt@[pdx| %lhs = $vartag:$var |] = do
@@ -415,6 +559,8 @@ withProvince msg stmt@[pdx| %lhs = $vartag:$var |] = do
     case mtagloc of
         Just tagloc -> msgToPP $ msg tagloc
         Nothing -> preStatement stmt
+withProvince msg stmt@[pdx| %lhs = $var |]
+    = msgToPP =<< msg . Doc.doc2text <$> pronoun (Just EU4Province) var
 withProvince msg [pdx| %lhs = !provid |]
     = withLocAtom msg [pdx| %lhs = $(T.pack ("PROV" <> show (provid::Int))) |]
 withProvince _ stmt = preStatement stmt
@@ -508,59 +654,80 @@ iconFileB = TE.encodeUtf8 . iconFile . TE.decodeUtf8
 --
 -- * say "same as <foo>" if foo refers to a country (in which case, add a flag if possible)
 -- * may not actually have an icon (localization file will know if it doesn't)
-iconOrFlag :: (IsGameData (GameData g),
-               IsGameState (GameState g),
-               Monad m) =>
+iconOrFlag :: (EU4Info g, Monad m) =>
     (Text -> Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
+        -> Maybe EU4Scope
         -> StatementHandler g m
-iconOrFlag _ flagmsg stmt@[pdx| %_ = $vartag:$var |] = do
-    mwhoflag <- eflag (Right (vartag, var))
+iconOrFlag _ flagmsg expectScope stmt@[pdx| %_ = $vartag:$var |] = do
+    mwhoflag <- eflag expectScope (Right (vartag, var))
     case mwhoflag of
         Just whoflag -> msgToPP . flagmsg $ whoflag
         Nothing -> preStatement stmt
-iconOrFlag iconmsg flagmsg [pdx| %_ = $name |] = msgToPP =<< do
-    nflag <- flag name -- laziness means this might not get evaluated
+iconOrFlag iconmsg flagmsg expectScope [pdx| $head = $name |] = msgToPP =<< do
+    nflag <- flag expectScope name -- laziness means this might not get evaluated
+--   when (T.toLower name == "prev") . withCurrentFile $ \f -> do
+--       traceM $ f ++ ": iconOrFlag: " ++ T.unpack head ++ " = " ++ T.unpack name
+--       ps <- getPrevScope
+--       traceM $ "PREV scope is: " ++ show ps
     if isTag name || isPronoun name
         then return . flagmsg . Doc.doc2text $ nflag
         else iconmsg <$> return (iconText . HM.lookupDefault name name $ scriptIconTable)
                      <*> getGameL10n name
-iconOrFlag _ _ stmt = plainMsg $ pre_statement' stmt
+iconOrFlag _ _ _ stmt = plainMsg $ pre_statement' stmt
 
 -- | Message with icon and tag.
-withFlagAndIcon :: (IsGameData (GameData g),
-                    IsGameState (GameState g),
+withFlagAndIcon :: (EU4Info g,
                     Monad m) =>
     Text
         -> (Text -> Text -> ScriptMessage)
+        -> Maybe EU4Scope
         -> StatementHandler g m
-withFlagAndIcon iconkey flagmsg stmt@[pdx| %_ = $vartag:$var |] = do
-    mwhoflag <- eflag (Right (vartag, var))
+withFlagAndIcon iconkey flagmsg expectScope stmt@[pdx| %_ = $vartag:$var |] = do
+    mwhoflag <- eflag expectScope (Right (vartag, var))
     case mwhoflag of
         Just whoflag -> msgToPP . flagmsg (iconText iconkey) $ whoflag
         Nothing -> preStatement stmt
-withFlagAndIcon iconkey flagmsg [pdx| %_ = $name |] = msgToPP =<< do
-    nflag <- flag name
+withFlagAndIcon iconkey flagmsg expectScope [pdx| %_ = $name |] = msgToPP =<< do
+    nflag <- flag expectScope name
     return . flagmsg (iconText iconkey) . Doc.doc2text $ nflag
-withFlagAndIcon _ _ stmt = plainMsg $ pre_statement' stmt
+withFlagAndIcon _ _ _ stmt = plainMsg $ pre_statement' stmt
 
 -- | Handler for statements where RHS is a tag or province id.
-tagOrProvince :: (IsGameData (GameData g),
-                  IsGameState (GameState g),
-                  Monad m) =>
+tagOrProvince :: (EU4Info g, Monad m) =>
     (Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
+        -> Maybe EU4Scope
         -> StatementHandler g m
-tagOrProvince tagmsg provmsg stmt@[pdx| %_ = ?!eobject |]
+tagOrProvince tagmsg provmsg expectScope stmt@[pdx| %_ = ?!eobject |]
     = msgToPP =<< case eobject of
-            Just (Right tag) -> do -- is a tag
-                tagflag <- flag tag
+            Just (Right tag) -> do
+                tagflag <- flag expectScope tag
                 return . tagmsg . Doc.doc2text $ tagflag
             Just (Left provid) -> do -- is a province id
                 prov_loc <- getProvLoc provid
                 return . provmsg $ prov_loc
             Nothing -> return (preMessage stmt)
-tagOrProvince _ _ stmt = preStatement stmt
+tagOrProvince _ _ _ stmt = preStatement stmt
+
+tagOrProvinceIcon :: (EU4Info g, Monad m) =>
+    (Text -> ScriptMessage)
+        -> (Text -> ScriptMessage)
+        -> StatementHandler g m
+tagOrProvinceIcon tagmsg provmsg stmt@[pdx| $head = ?!eobject |]
+    = msgToPP =<< case eobject of
+            Just (Right tag) -> do -- string: is a tag or pronoun
+--              when (T.toLower tag == "prev") . withCurrentFile $ \f -> do
+--                  traceM $ f ++ ": tagOrProvinceIcon: " ++ T.unpack head ++ " = " ++ T.unpack tag
+--                  ps <- getPrevScope
+--                  traceM $ "PREV scope is: " ++ show ps
+                tagflag <- flag Nothing tag
+                return . tagmsg . Doc.doc2text $ tagflag
+            Just (Left provid) -> do -- is a province id
+                prov_loc <- getProvLoc provid
+                return . provmsg $ prov_loc
+            Nothing -> return (preMessage stmt)
+tagOrProvinceIcon _ _ stmt = preStatement stmt
 
 -- TODO (if necessary): allow operators other than = and pass them to message
 -- handler
@@ -572,9 +739,7 @@ numeric msg [pdx| %_ = !n |] = msgToPP $ msg n
 numeric _ stmt = plainMsg $ pre_statement' stmt
 
 -- | Handler for statements where the RHS is either a number or a tag.
-numericOrTag :: (IsGameData (GameData g),
-                 IsGameState (GameState g),
-                 Monad m) =>
+numericOrTag :: (EU4Info g, Monad m) =>
     (Double -> ScriptMessage)
         -> (Text -> ScriptMessage)
         -> StatementHandler g m
@@ -583,40 +748,38 @@ numericOrTag numMsg tagMsg stmt@[pdx| %_ = %rhs |] = msgToPP =<<
         Just n -> return $ numMsg n
         Nothing -> case textRhs rhs of
             Just t -> do -- assume it's a country
-                tflag <- flag t
+                tflag <- flag (Just EU4Country) t
                 return $ tagMsg (Doc.doc2text tflag)
             Nothing -> return (preMessage stmt)
 numericOrTag _ _ stmt = preStatement stmt
 
 -- | Handler for statements where the RHS is either a number or a tag, that
 -- also require an icon.
-numericIconOrTag :: (IsGameData (GameData g),
-                 IsGameState (GameState g),
-                 Monad m) =>
+numericOrTagIcon :: (EU4Info g, Monad m) =>
     Text
         -> (Text -> Double -> ScriptMessage)
         -> (Text -> Text -> ScriptMessage)
         -> StatementHandler g m
-numericIconOrTag icon numMsg tagMsg stmt@[pdx| %_ = %rhs |] = msgToPP =<<
+numericOrTagIcon icon numMsg tagMsg stmt@[pdx| %_ = %rhs |] = msgToPP =<<
     case floatRhs rhs of
         Just n -> return $ numMsg icon n
         Nothing -> case textRhs rhs of
             Just t -> do -- assume it's a country
-                tflag <- flag t
+                tflag <- flag (Just EU4Country) t
                 return $ tagMsg (iconText icon) (Doc.doc2text tflag)
             Nothing -> return (preMessage stmt)
-numericIconOrTag _ _ _ stmt = preStatement stmt
+numericOrTagIcon _ _ _ stmt = preStatement stmt
 
 -- | Handler for a statement referring to a country. Use a flag.
-withFlag :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
+withFlag :: (EU4Info g, Monad m) =>
     (Text -> ScriptMessage) -> StatementHandler g m
 withFlag msg stmt@[pdx| %_ = $vartag:$var |] = do
-    mwhoflag <- eflag (Right (vartag, var))
+    mwhoflag <- eflag (Just EU4Country) (Right (vartag, var))
     case mwhoflag of
         Just whoflag -> msgToPP . msg $ whoflag
         Nothing -> preStatement stmt
 withFlag msg [pdx| %_ = $who |] = do
-    whoflag <- flag who
+    whoflag <- flag (Just EU4Country) who
     msgToPP . msg . Doc.doc2text $ whoflag
 withFlag _ stmt = preStatement stmt
 
@@ -644,9 +807,7 @@ withBool' msg [pdx| %_ = ?yn |] | T.map toLower yn `elem` ["yes","no","false"]
 withBool' _ _ = return Nothing
 
 -- | Handler for statements whose RHS may be "yes"/"no" or a tag.
-withFlagOrBool :: (IsGameData (GameData g),
-                   IsGameState (GameState g),
-                   Monad m) =>
+withFlagOrBool :: (EU4Info g, Monad m) =>
     (Bool -> ScriptMessage)
         -> (Text -> ScriptMessage)
         -> StatementHandler g m
@@ -655,9 +816,7 @@ withFlagOrBool bmsg _ [pdx| %_ = no  |]  = msgToPP (bmsg False)
 withFlagOrBool _ tmsg stmt = withFlag tmsg stmt
 
 -- | Handler for statements whose RHS is a number OR a tag/prounoun, with icon
-withTagOrNumber :: (IsGameData (GameData g),
-                    IsGameState (GameState g),
-                    Monad m) =>
+withTagOrNumber :: (EU4Info g, Monad m) =>
     Text
         -> (Text -> Double -> ScriptMessage)
         -> (Text -> Text -> ScriptMessage)
@@ -665,7 +824,7 @@ withTagOrNumber :: (IsGameData (GameData g),
 withTagOrNumber iconkey numMsg _ scr@[pdx| %_ = %num |]
     | FloatRhs _ <- num = numericIcon iconkey numMsg scr
 withTagOrNumber iconkey _ tagMsg scr@[pdx| %_ = $_ |]
-    = withFlagAndIcon iconkey tagMsg scr
+    = withFlagAndIcon iconkey tagMsg (Just EU4Country) scr
 withTagOrNumber  _ _ _ stmt = plainMsg $ pre_statement' stmt
 
 -- | Handler for statements that have a number and an icon.
@@ -973,7 +1132,9 @@ addModifier kind stmt@(Statement _ OpEq (CompoundRhs scr)) =
             mname = amod_name amod
         mthemod <- join <$> sequence (getModifier <$> mname) -- Nothing if trade modifier
         tkind <- messageText kind
-        mwho <- maybe (return Nothing) (fmap (Just . Doc.doc2text) . flag) (amod_who amod)
+        mwho <- maybe (return Nothing)
+                      (fmap (Just . Doc.doc2text) . flag (Just EU4Country))
+                      (amod_who amod)
         mname_loc <- maybeM getGameL10n mname
         mkey_loc <- maybeM getGameL10n mkey
         let mdur = amod_duration amod
@@ -1019,13 +1180,15 @@ addModifier _ stmt = preStatement stmt
 
 -- "add_core = <n>" in country scope means "Gain core on <localize PROVn>"
 -- "add_core = <tag>" in province scope means "<localize tag> gains core"
-addCore :: (IsGameData (GameData g),
-            IsGameState (GameState g),
-            Monad m) => StatementHandler g m
-addCore (Statement _ OpEq (textRhs -> Just tag)) = msgToPP =<< do -- tag
-    tagflag <- flagText tag
+-- TODO: cope with the case "add_core = <pronoun>"
+addCore :: (EU4Info g, Monad m) =>
+    StatementHandler g m
+addCore [pdx| %_ = $tag |]
+  = msgToPP =<< do -- tag
+    tagflag <- flagText (Just EU4Country) tag
     return $ MsgTagGainsCore tagflag
-addCore (Statement _ OpEq (floatRhs -> Just num)) = msgToPP =<< do -- province
+addCore [pdx| %_ = !num |]
+  = msgToPP =<< do -- province
     prov <- getProvLoc num
     return $ MsgGainCoreOnProvince prov
 addCore stmt = preStatement stmt
@@ -1041,11 +1204,11 @@ data AddOpinion = AddOpinion {
 newAddOpinion :: AddOpinion
 newAddOpinion = AddOpinion Nothing Nothing Nothing
 
-opinion :: (IsGameData (GameData g), IsGameState (GameState g), Monad m) =>
+opinion :: (EU4Info g, Monad m) =>
     (Text -> Text -> Text -> ScriptMessage)
         -> (Text -> Text -> Text -> Double -> ScriptMessage)
         -> StatementHandler g m
-opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
+opinion msgIndef msgDur stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_add_opinion (foldl' addLine newAddOpinion scr)
     where
         addLine :: AddOpinion -> GenericStatement -> AddOpinion
@@ -1060,7 +1223,7 @@ opinion msgIndef msgDur stmt@(Statement _ OpEq (CompoundRhs scr))
         addLine op _ = op
         pp_add_opinion op = case (op_who op, op_modifier op) of
             (Just ewhom, Just modifier) -> do
-                mwhomflag <- eflag ewhom
+                mwhomflag <- eflag (Just EU4Country) ewhom
                 mod_loc <- getGameL10n modifier
                 case (mwhomflag, op_years op) of
                     (Just whomflag, Nothing) -> return $ msgIndef modifier mod_loc whomflag
@@ -1075,10 +1238,9 @@ data HasOpinion = HasOpinion
         }
 newHasOpinion :: HasOpinion
 newHasOpinion = HasOpinion Nothing Nothing
-hasOpinion :: forall g m. (IsGameData (GameData g),
-                           IsGameState (GameState g),
-                           Monad m) => StatementHandler g m
-hasOpinion stmt@(Statement _ OpEq (CompoundRhs scr))
+hasOpinion :: forall g m. (EU4Info g, Monad m) =>
+    StatementHandler g m
+hasOpinion stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_hasOpinion (foldl' addLine newHasOpinion scr)
     where
         addLine :: HasOpinion -> GenericStatement -> HasOpinion
@@ -1088,7 +1250,7 @@ hasOpinion stmt@(Statement _ OpEq (CompoundRhs scr))
         pp_hasOpinion :: HasOpinion -> PPT g m ScriptMessage
         pp_hasOpinion hop = case (hop_who hop, hop_value hop) of
             (Just who, Just value) -> do
-                who_flag <- flag who
+                who_flag <- flag (Just EU4Country) who
                 return (MsgHasOpinion value (Doc.doc2text who_flag))
             _ -> return (preMessage stmt)
 hasOpinion stmt = preStatement stmt
@@ -1156,14 +1318,12 @@ data SpawnRebels = SpawnRebels {
 newSpawnRebels :: SpawnRebels
 newSpawnRebels = SpawnRebels Nothing Nothing Nothing False Nothing Nothing
 
-spawnRebels :: forall g m. (IsGameData (GameData g),
-                            IsGameState (GameState g),
-                            Monad m) =>
+spawnRebels :: forall g m. (EU4Info g, Monad m) =>
     Maybe Text -> StatementHandler g m
 spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
-    spawnRebels' Nothing (Statement _ OpEq (CompoundRhs scr))
+    spawnRebels' Nothing [pdx| %_ = @scr |]
         = pp_spawnRebels $ foldl' addLine newSpawnRebels scr
-    spawnRebels' rtype (Statement _ OpEq (floatRhs -> Just size))
+    spawnRebels' rtype [pdx| %_ = !size |]
         = pp_spawnRebels $ newSpawnRebels { rebelType = rtype, rebelSize = Just size }
     spawnRebels' _ stmt' = return (preMessage stmt')
 
@@ -1183,7 +1343,7 @@ spawnRebels mtype stmt = msgToPP =<< spawnRebels' mtype stmt where
                 let rtype_loc_icon = flip HM.lookup rebel_loc =<< rebelType reb
                 friendText <- case friend reb of
                     Just thefriend -> do
-                        cflag <- flagText thefriend
+                        cflag <- flagText (Just EU4Country) thefriend
                         mtext <- messageText (MsgRebelsFriendlyTo cflag)
                         return (" (" <> mtext <> ")")
                     Nothing -> return ""
@@ -1277,9 +1437,7 @@ data AddCB = AddCB
     }
 newAddCB :: AddCB
 newAddCB = AddCB Nothing Nothing Nothing Nothing
-addCB :: forall g m. (IsGameData (GameData g),
-                      IsGameState (GameState g),
-                      Monad m) =>
+addCB :: forall g m. (EU4Info g, Monad m) =>
     Bool -- ^ True for add_casus_belli, False for reverse_add_casus_belli
         -> StatementHandler g m
 addCB direct stmt@[pdx| %_ = @scr |]
@@ -1288,11 +1446,11 @@ addCB direct stmt@[pdx| %_ = @scr |]
         addLine acb [pdx| target = $target |]
             = (\target_loc -> acb
                   { acb_target_flag = target_loc })
-              <$> eflag (Left target)
+              <$> eflag (Just EU4Country) (Left target)
         addLine acb [pdx| target = $vartag:$var |]
             = (\target_loc -> acb
                   { acb_target_flag = target_loc })
-              <$> eflag (Right (vartag, var))
+              <$> eflag (Just EU4Country) (Right (vartag, var))
         addLine acb [pdx| type = $cbtype |]
             = (\cbtype_loc -> acb
                   { acb_type = Just cbtype
@@ -1459,10 +1617,16 @@ defineAdvisor stmt = preStatement stmt
 
 -- Rulers
 
+data Dynasty
+    = DynText Text
+    | DynPron Text
+    | DynOriginal
+    | DynHistoric
+
 data DefineRuler = DefineRuler
     {   dr_rebel :: Bool
     ,   dr_name :: Maybe Text
-    ,   dr_dynasty :: Maybe Text -- can be a tag/pronoun
+    ,   dr_dynasty :: Maybe Dynasty -- Left tag/pronoun, Right 
     ,   dr_age :: Maybe Double
     ,   dr_female :: Maybe Bool
     ,   dr_claim :: Maybe Double
@@ -1476,16 +1640,29 @@ data DefineRuler = DefineRuler
 newDefineRuler :: DefineRuler
 newDefineRuler = DefineRuler False Nothing Nothing Nothing Nothing Nothing False Nothing Nothing Nothing False Nothing
 
-defineRuler :: forall g m. (IsGameState (GameState g), Monad m) => StatementHandler g m
-defineRuler [pdx| %_ = @scr |]
-    = pp_define_ruler $ foldl' addLine newDefineRuler scr where
-        addLine :: DefineRuler -> GenericStatement -> DefineRuler
+defineRuler :: forall g m. (EU4Info g, Monad m) => StatementHandler g m
+defineRuler [pdx| %_ = @scr |] = do
+    -- Since addLine is pure, we have to prepare these in advance in case we
+    -- need them.
+    prevPronoun <- Doc.doc2text <$> pronoun Nothing "PREV"
+    rootPronoun <- Doc.doc2text <$> pronoun Nothing "ROOT"
+    thisPronoun <- Doc.doc2text <$> pronoun Nothing "THIS"
+    hrePronoun  <- Doc.doc2text <$> pronoun Nothing "emperor" -- needs l10n
+    let addLine :: DefineRuler -> GenericStatement -> DefineRuler
         addLine dr [pdx| $lhs = %rhs |] = case T.map toLower lhs of
             "rebel" -> case textRhs rhs of
                 Just "yes" -> dr { dr_rebel = True }
                 _ -> dr
             "name" -> dr { dr_name = textRhs rhs }
-            "dynasty" -> dr { dr_dynasty = textRhs rhs }
+            "dynasty" -> dr { dr_dynasty = case textRhs rhs of
+                Just "PREV" -> Just (DynPron prevPronoun)
+                Just "ROOT" -> Just (DynPron rootPronoun)
+                Just "THIS" -> Just (DynPron thisPronoun)
+                Just "emperor" -> Just (DynPron hrePronoun)
+                Just "original_dynasty" -> Just DynOriginal
+                Just "historic_dynasty" -> Just DynHistoric
+                Just other -> Just (DynText other)
+                _ -> Nothing }
             "age" -> dr { dr_age = floatRhs rhs }
             "female" -> case textRhs rhs of
                 Just "yes" -> dr { dr_female = Just True }
@@ -1520,9 +1697,20 @@ defineRuler [pdx| %_ = @scr |]
             [msg] <- msgToPP (MsgNewRulerName name)
             return (Just (msg, dr { dr_name = Nothing }))
         -- "Of the <foo> dynasty"
-        pp_define_ruler_attrib dr@DefineRuler { dr_dynasty = Just dynasty } = do
-            [msg] <- msgToPP (MsgNewRulerDynasty dynasty)
-            return (Just (msg, dr { dr_dynasty = Nothing }))
+        pp_define_ruler_attrib dr@DefineRuler { dr_dynasty = Just dynasty } =
+            case dynasty of
+                DynText dyntext -> do
+                    [msg] <- msgToPP (MsgNewRulerDynasty dyntext)
+                    return (Just (msg, dr { dr_dynasty = Nothing }))
+                DynPron dyntext -> do
+                    [msg] <- msgToPP (MsgNewRulerDynastyAs dyntext)
+                    return (Just (msg, dr { dr_dynasty = Nothing }))
+                DynOriginal -> do
+                    [msg] <- msgToPP (MsgNewRulerOriginalDynasty)
+                    return (Just (msg, dr { dr_dynasty = Nothing }))
+                DynHistoric -> do
+                    [msg] <- msgToPP (MsgNewRulerHistoricDynasty)
+                    return (Just (msg, dr { dr_dynasty = Nothing }))
         -- "Aged <foo> years"
         pp_define_ruler_attrib dr@DefineRuler { dr_age = Just age } = do
             [msg] <- msgToPP (MsgNewRulerAge age)
@@ -1541,6 +1729,7 @@ defineRuler [pdx| %_ = @scr |]
             return (Just (msg, dr { dr_mil = Nothing }))
         -- Nothing left
         pp_define_ruler_attrib _ = return Nothing
+    pp_define_ruler $ foldl' addLine newDefineRuler scr
 defineRuler stmt = preStatement stmt
 
 -- Building units
@@ -1628,9 +1817,7 @@ data DeclareWarWithCB = DeclareWarWithCB
 newDeclareWarWithCB :: DeclareWarWithCB
 newDeclareWarWithCB = DeclareWarWithCB Nothing Nothing
 
-declareWarWithCB :: forall g m. (IsGameData (GameData g),
-                                 IsGameState (GameState g),
-                                 Monad m) => StatementHandler g m
+declareWarWithCB :: forall g m. (EU4Info g, Monad m) => StatementHandler g m
 declareWarWithCB stmt@[pdx| %_ = @scr |]
     = msgToPP =<< pp_declare_war_with_cb (foldl' addLine newDeclareWarWithCB scr) where
         addLine :: DeclareWarWithCB -> GenericStatement -> DeclareWarWithCB
@@ -1644,7 +1831,7 @@ declareWarWithCB stmt@[pdx| %_ = @scr |]
         pp_declare_war_with_cb dwcb
               = case (dwcb_who dwcb, dwcb_cb dwcb) of
                 (Just who, Just cb) -> do
-                    whoflag <- Doc.doc2text <$> flag who
+                    whoflag <- Doc.doc2text <$> flag (Just EU4Country) who
                     cb_loc <- getGameL10n cb
                     return (MsgDeclareWarWithCB whoflag cb_loc)
                 _ -> return $ preMessage stmt
@@ -1821,9 +2008,7 @@ data Heir = Heir
         }
 newHeir :: Heir
 newHeir = Heir Nothing Nothing Nothing
-defineHeir :: forall g m. (IsGameData (GameData g),
-                           IsGameState (GameState g),
-                           Monad m) => StatementHandler g m
+defineHeir :: forall g m. (EU4Info g, Monad m) => StatementHandler g m
 defineHeir [pdx| %_ = @scr |]
     = msgToPP =<< pp_heir (foldl' addLine newHeir scr)
     where
@@ -1834,7 +2019,7 @@ defineHeir [pdx| %_ = @scr |]
         addLine heir _ = heir
         pp_heir :: IsGameData (GameData g) => Heir -> PPT g m ScriptMessage
         pp_heir heir = do
-            dynasty_flag <- fmap Doc.doc2text <$> maybeM flag (heir_dynasty heir)
+            dynasty_flag <- fmap Doc.doc2text <$> maybeM (flag (Just EU4Country)) (heir_dynasty heir)
             case (heir_age heir, dynasty_flag, heir_claim heir) of
                 (Nothing,  Nothing,   Nothing)     -> return $ MsgNewHeir
                 (Nothing,  Nothing,   Just claim)  -> return $ MsgNewHeirClaim claim
@@ -1913,16 +2098,14 @@ numProvinces micon msg [pdx| $what = !amt |] = do
     msgToPP (msg (iconText micon) what_loc amt)
 numProvinces _ _ stmt = preStatement stmt
 
-withFlagOrProvince :: (IsGameData (GameData g),
-                       IsGameState (GameState g),
-                       Monad m) =>
+withFlagOrProvince :: (EU4Info g, Monad m) =>
     (Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
         -> StatementHandler g m
 withFlagOrProvince countryMsg _ stmt@[pdx| %_ = ?_ |]
     = withFlag countryMsg stmt
 withFlagOrProvince countryMsg _ stmt@[pdx| %_ = $_:$_ |]
-    = withFlag countryMsg stmt
+    = withFlag countryMsg stmt -- could be either
 withFlagOrProvince _ provinceMsg stmt@[pdx| %_ = !(_ :: Double) |]
     = withProvince provinceMsg stmt
 withFlagOrProvince _ _ stmt = preStatement stmt
@@ -1942,13 +2125,13 @@ withFlagOrProvinceEU4Scope countryMsg geogMsg stmt = do
         -- Current usages (i.e. has_discovered) treat them all the same.
         withFlagOrProvince countryMsg countryMsg stmt
 
-tradeMod :: (IsGameData (GameData g),
-             IsGameState (GameState g),
-             Monad m) => StatementHandler g m
+tradeMod :: (EU4Info g, Monad m) => StatementHandler g m
 tradeMod stmt@[pdx| %_ = ?_ |]
     = withLocAtom2 MsgTradeMod MsgHasModifier stmt
 tradeMod stmt@[pdx| %_ = @_ |]
-    = textAtom "who" "name" MsgHasTradeModifier (fmap Just . flagText) stmt
+    = textAtom "who" "name" MsgHasTradeModifier
+        (fmap Just . flagText (Just EU4Country))
+        stmt
 tradeMod stmt = preStatement stmt
 
 isMonth :: (IsGameData (GameData g),
@@ -1957,32 +2140,30 @@ isMonth :: (IsGameData (GameData g),
 isMonth [pdx| %_ = !(num :: Int) |] | num >= 1, num <= 12
     = do
         month_loc <- getGameL10n $ case num of
-            1 -> "January"
-            2 -> "February"
-            3 -> "March"
-            4 -> "April"
-            5 -> "May"
-            6 -> "June"
-            7 -> "July"
-            8 -> "August"
-            9 -> "September"
-            10 -> "October"
-            11 -> "November"
-            12 -> "December"
+            0 -> "January" -- programmer counting -_-
+            1 -> "February"
+            2 -> "March"
+            3 -> "April"
+            4 -> "May"
+            5 -> "June"
+            6 -> "July"
+            7 -> "August"
+            8 -> "September"
+            9 -> "October"
+            10 -> "November"
+            11 -> "December"
             _ -> error "impossible: tried to localize bad month number"
         msgToPP $ MsgIsMonth month_loc
 isMonth stmt = preStatement stmt
 
-range :: (IsGameData (GameData g),
-          IsGameState (GameState g),
-          Monad m) => StatementHandler g m
+range :: (EU4Info g, Monad m) => StatementHandler g m
 range stmt@[pdx| %_ = !(_ :: Double) |]
     = numericIcon "colonial range" MsgGainColonialRange stmt
 range stmt = withFlag MsgIsInColonialRange stmt
 
 area :: (EU4Info g, Monad m) => StatementHandler g m
-area stmt@[pdx| %_ = @_ |] = compoundMessage MsgArea stmt
-area stmt                  = withLocAtom MsgAreaIs stmt
+area stmt@[pdx| %_ = @_ |] = scope EU4Geographic $ compoundMessage MsgArea stmt
+area stmt                  = locAtomTagOrProvince (const MsgAreaIs) MsgAreaIsAs stmt
 
 -- Currently dominant_culture only appears in decisions/Cultural.txt
 -- (dominant_culture = capital).
@@ -2037,20 +2218,19 @@ data Trust = Trust
         }
 newTrust :: Trust
 newTrust = Trust Nothing Nothing False
-trust :: (IsGameData (GameData g),
-                    IsGameState (GameState g),
-                    Monad m) => StatementHandler g m
+trust :: forall g m. (EU4Info g, Monad m) => StatementHandler g m
 trust stmt@[pdx| %_ = @scr |]
-    = msgToPP =<< pp_trust (foldl' addLine newTrust scr)
+    = msgToPP =<< pp_trust =<< foldM addLine newTrust scr
     where
-        addLine :: Trust -> GenericStatement -> Trust
-        addLine tr [pdx| who = $whom |]
-            = tr { tr_whom = Just whom }
+        addLine :: Trust -> GenericStatement -> PPT g m Trust
+        addLine tr [pdx| who = $whom |] = do
+            whom' <- Doc.doc2text <$> pronoun (Just EU4Country) whom
+            return tr { tr_whom = Just whom' }
         addLine tr [pdx| value = !amt      |]
-            = tr { tr_amount = Just amt }
+            = return tr { tr_amount = Just amt }
         addLine tr [pdx| mutual = yes |]
-            = tr { tr_mutual = True }
-        addLine tr _ = tr
+            = return tr { tr_mutual = True }
+        addLine tr _ = return tr
         pp_trust tr
             | (Just whom, Just amt) <- (tr_whom tr, tr_amount tr)
               = return $ (if tr_mutual tr then MsgAddTrustMutual else MsgAddTrust)

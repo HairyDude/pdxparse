@@ -23,7 +23,7 @@ import System.IO (hPutStrLn, stderr)
 
 import Abstract -- everything
 import FileIO (buildPath, readScript)
-import SettingsTypes (PPT, Settings, IsGame (..), L10nScheme (..))
+import SettingsTypes (PPT, Settings, IsGame (..), L10nScheme (..), safeIndex, safeLast)
 import Vic2.Types (Vic2Scope (..), Vic2Decision (..), Vic2Event (..))
 
 import Debug.Trace (trace)
@@ -60,6 +60,8 @@ instance IsGame Vic2 where
     scope s = local $ \(Vic2S st) ->
         Vic2S $ st { vic2ScopeStack = s : vic2ScopeStack st }
     getCurrentScope = asks $ listToMaybe . vic2ScopeStack . v2s
+    getPrevScope = asks $ safeIndex 1 . vic2ScopeStack . v2s
+    getRootScope = asks $ safeLast . vic2ScopeStack . v2s
 
 data Vic2Data = Vic2Data {
         vic2events :: HashMap Text Vic2Event

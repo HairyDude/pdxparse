@@ -6,9 +6,10 @@ module HOI4.Settings (
 import Control.Arrow (second)
 import Control.Monad (join, when, forM, filterM, void)
 import Control.Monad.Trans (MonadIO (..))
-import Control.Monad.Reader (MonadReader (..), ReaderT (..))
+import Control.Monad.Reader (MonadReader (..), ReaderT (..), asks)
 import Control.Monad.State (MonadState (..), StateT (..), modify, gets)
 
+import Data.Maybe (listToMaybe)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 import Data.Text (Text)
@@ -24,6 +25,7 @@ import SettingsTypes (PPT, Settings (..), L10nScheme (..), Game (..)
                      ,  IsGame (..), IsGameData (..), IsGameState (..)
                      ,  L10n
                      ,  getGameL10nIfPresent
+                     ,  safeIndex, safeLast
                      )
 import HOI4.Types -- everything
 import Yaml (LocEntry (..))
@@ -54,11 +56,9 @@ instance IsGame HOI4 where
     type Scope HOI4 = HOI4Scope
     scope s = local $ \(HOI4S st) -> HOI4S $
         st { hoi4scopeStack = s : hoi4scopeStack st }
-    getCurrentScope = do
-        HOI4S ss <- ask
-        return $ case hoi4scopeStack ss of
-            [] -> Nothing
-            (sc:_) -> Just sc
+    getCurrentScope = asks $ listToMaybe . hoi4scopeStack . hoi4s
+    getPrevScope = asks $ safeIndex 1 . hoi4scopeStack . hoi4s
+    getRootScope = asks $ safeLast . hoi4scopeStack . hoi4s
 
 instance HOI4Info HOI4 where
     getEventTitle eid = do

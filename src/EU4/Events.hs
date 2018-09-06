@@ -41,8 +41,8 @@ import SettingsTypes ( PPT, Settings (..), Game (..)
                      , hoistErrors, hoistExceptions)
 
 -- | Empty event value. Starts off Nothing/empty everywhere.
-newEU4Event :: EU4Scope -> EU4Event
-newEU4Event escope = EU4Event Nothing Nothing [] escope Nothing Nothing Nothing Nothing False Nothing Nothing Nothing
+newEU4Event :: EU4Scope -> FilePath -> EU4Event
+newEU4Event escope path = EU4Event Nothing Nothing [] escope Nothing Nothing Nothing Nothing False Nothing Nothing path
 -- | Empty event option vaule. Starts off Nothing everywhere.
 newEU4Option :: EU4Option
 newEU4Option = EU4Option Nothing Nothing Nothing Nothing
@@ -80,7 +80,7 @@ writeEU4Events = do
     events <- getEvents
     let pathedEvents :: [Feature EU4Event]
         pathedEvents = map (\evt -> Feature {
-                                    featurePath = eu4evt_path evt
+                                    featurePath = Just (eu4evt_path evt)
                                 ,   featureId = eu4evt_id evt
                                 ,   theFeature = Right evt })
                             (HM.elems events)
@@ -105,17 +105,16 @@ parseEU4Event stmt@[pdx| %left = %right |] = case right of
                     _ -> Nothing
             in case mescope of
                 Nothing -> throwError $ "unrecognized event type " <> etype
-                Just escope -> do
-                    mevt <- hoistErrors (foldM eventAddSection (Just (newEU4Event escope)) parts)
+                Just escope -> withCurrentFile $ \file -> do
+                    mevt <- hoistErrors (foldM eventAddSection (Just (newEU4Event escope file)) parts)
                     case mevt of
                         Left err -> return (Left err)
                         Right Nothing -> return (Right Nothing)
-                        Right (Just evt) -> withCurrentFile $ \file ->
-                            let pathedEvt = evt { eu4evt_path = Just file }
-                            in  if isJust (eu4evt_id pathedEvt)
-                                then return (Right (Just pathedEvt))
-                                else return (Left $ "error parsing events in " <> T.pack file
-                                             <> ": missing event id")
+                        Right (Just evt) ->
+                            if isJust (eu4evt_id evt)
+                            then return (Right (Just evt))
+                            else return (Left $ "error parsing events in " <> T.pack file
+                                         <> ": missing event id")
 
     _ -> return (Right Nothing)
 parseEU4Event _ = throwError "operator other than ="
@@ -273,7 +272,7 @@ pp_event :: forall g m. (EU4Info g, MonadError Text m) =>
 pp_event evt = case (eu4evt_id evt
                     ,eu4evt_title evt
                     ,eu4evt_options evt) of
-    (Just eid, Just title, Just options) -> do
+    (Just eid, Just title, Just options) -> setCurrentFile (eu4evt_path evt) $ do
         -- Valid event
         version <- gets (gameVersion . getSettings)
         (conditional, options_pp'd) <- pp_options (eu4evt_hide_window evt) eid options
@@ -326,7 +325,7 @@ pp_event evt = case (eu4evt_id evt
                     ,"* Unknown (Missing MTTH and is_triggered_only)", PP.line]
                 Just mtth_pp'd ->
                     ["| mtth = ", PP.line
-                    ,mtth_pp'd]) ++
+                    ,mtth_pp'd, PP.line]) ++
             immediate_pp'd ++
             (if conditional then ["| option conditions = yes", PP.line] else []) ++
             -- option_conditions = no (not implemented yet)

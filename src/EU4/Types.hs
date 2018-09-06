@@ -141,7 +141,7 @@ data EU4Event = EU4Event {
     -- | Effects that take place after any option is selected.
     ,   eu4evt_after :: Maybe GenericScript
     -- | The event's source file.
-    ,   eu4evt_path :: Maybe FilePath
+    ,   eu4evt_path :: FilePath
     } deriving (Show)
 -- | Event option data.
 data EU4Option = EU4Option
@@ -226,6 +226,7 @@ data EU4Scope
     | EU4TradeNode
     | EU4Geographic -- ^ Area, etc.
     | EU4Bonus
+    | EU4From -- ^ Usually country or province, varies by context
     deriving (Show, Eq, Ord, Enum, Bounded)
 
 -- | AI decision factors.
@@ -272,11 +273,10 @@ awdModifierAddSection aim stmt@[pdx| $left = %right |] = case T.toLower left of
 awdModifierAddSection aim _ = aim
 
 isGeographic :: EU4Scope -> Bool
-isGeographic EU4Country = False
 isGeographic EU4Province = True
 isGeographic EU4TradeNode = True
 isGeographic EU4Geographic = True
-isGeographic EU4Bonus = False
+isGeographic _ = False
 
 -----------------------------
 -- Miscellaneous utilities --

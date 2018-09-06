@@ -9,11 +9,13 @@ module EU4.Settings (
 
 import Control.Monad (join, when, forM, filterM, void)
 import Control.Monad.Trans (MonadIO (..), liftIO)
-import Control.Monad.Reader (MonadReader (..), ReaderT (..))
+import Control.Monad.Reader (MonadReader (..), ReaderT (..), asks)
 import Control.Monad.State (MonadState (..), StateT (..), modify, gets)
 
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
+
+import Data.Maybe (listToMaybe)
 
 import Data.Text (Text)
 
@@ -25,7 +27,8 @@ import Abstract -- everything
 import FileIO (buildPath, readScript)
 import SettingsTypes ( PPT, Settings (..), Game (..), L10nScheme (..)
                      , IsGame (..), IsGameData (..), IsGameState (..)
-                     , getGameL10nIfPresent)
+                     , getGameL10nIfPresent
+                     , safeIndex, safeLast)
 import EU4.Types -- everything
 --import Text.PrettyPrint.Leijen.Text (Doc)
 --import qualified Text.PrettyPrint.Leijen.Text as PP
@@ -71,11 +74,10 @@ instance IsGame EU4 where
     type Scope EU4 = EU4Scope
     scope s = local $ \(EU4S st) -> EU4S $
         st { eu4scopeStack = s : eu4scopeStack st }
-    getCurrentScope = do
-        EU4S st <- ask
-        return $ case eu4scopeStack st of
-            [] -> Nothing
-            (sc:_) -> Just sc
+    getCurrentScope = asks $ listToMaybe . eu4scopeStack . eu4s
+    getPrevScope = asks $ safeIndex 1 . eu4scopeStack . eu4s
+    getRootScope = asks $ safeLast . eu4scopeStack . eu4s
+    getScopeStack = asks $ eu4scopeStack . eu4s
 
 instance EU4Info EU4 where
     getEventTitle eid = do

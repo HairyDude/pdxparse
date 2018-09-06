@@ -122,9 +122,34 @@ data ScriptMessage
     | MsgHasModifier {scriptMessageModid :: Text, scriptMessageKind :: Text, scriptMessageName :: Text}
     | MsgRemoveModifier {scriptMessageModid :: Text, scriptMessageKind :: Text, scriptMessageName :: Text}
     | MsgAllOf
-    | MsgOurCountry
     | MsgFROM
+    | MsgROOT
+    | MsgROOTCountry
+    | MsgROOTCountryAsOther
+    | MsgROOTProvince
+    | MsgROOTProvinceOwner
+    | MsgROOTProvinceAsOther
+    | MsgROOTTradeNode
+    | MsgROOTGeographic
     | MsgPREV
+    | MsgPREVCountry
+    | MsgPREVCountryAsOther
+    | MsgPREVProvince
+    | MsgPREVProvinceOwner
+    | MsgPREVProvinceAsOther
+    | MsgPREVTradeNode
+    | MsgPREVGeographic
+    | MsgTHISCountry
+    | MsgTHISCountryAsOther
+    | MsgTHISProvince
+    | MsgTHISProvinceOwner
+    | MsgTHISProvinceAsOther
+    | MsgTHISTradeNode
+    | MsgTHISGeographic
+    | MsgController
+    | MsgEmperor
+    | MsgOriginalDynasty
+    | MsgHistoricDynasty
     | MsgNoneOf
     | MsgAllCoreProvince
     | MsgAllProvince
@@ -148,8 +173,6 @@ data ScriptMessage
     | MsgAnySubject
     | MsgAnyTradeNode
     | MsgCapital
-    | MsgController
-    | MsgEmperor
     | MsgAllCountries
     | MsgAllNeighborCountries
     | MsgAllSubjectCountries
@@ -198,9 +221,19 @@ data ScriptMessage
     | MsgRandom
     | MsgChangeGovernment {scriptMessageWhat :: Text}
     | MsgContinentIs {scriptMessageWhat :: Text}
+    | MsgContinentIsAs {scriptMessageWhat :: Text}
     | MsgCultureIs {scriptMessageWhat :: Text}
+    | MsgCultureIsAs {scriptMessageWho :: Text}
     | MsgCultureIsGroup {scriptMessageWhat :: Text}
+    | MsgCultureGroupAs {scriptMessageWhat :: Text}
     | MsgRulerIsDynasty {scriptMessageWhat :: Text}
+    | MsgRulerIsSameDynasty {scriptMessageWho :: Text}
+    | MsgHeirNationality {scriptMessageWhat :: Text}
+    | MsgHeirNationalityAs {scriptMessageWho :: Text}
+    | MsgHeirReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
+    | MsgHeirReligionAs {scriptMessageWho :: Text}
+    | MsgSetHeirReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
+    | MsgSetHeirReligionAs {scriptMessageWho :: Text}
     | MsgDisasterEnds {scriptMessageWhat :: Text}
     | MsgGovernmentIs {scriptMessageWhat :: Text}
     | MsgGovernmentIsIcon {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
@@ -213,6 +246,7 @@ data ScriptMessage
     | MsgInfantrySpawnsProvince {scriptMessageWhere :: Text}
     | MsgAdvisorDies {scriptMessageWho :: Text}
     | MsgPrimaryCultureIs {scriptMessageWhat :: Text}
+    | MsgPrimaryCultureIsAs {scriptMessageWhat :: Text}
     | MsgRegionIs {scriptMessageWhat :: Text}
     | MsgLoseAdvisor {scriptMessageWho :: Text}
     | MsgRemoveFromEstate {scriptMessageIcon :: Text, scriptMessageWhom :: Text}
@@ -289,12 +323,14 @@ data ScriptMessage
     | MsgYearlyRepTrad {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgInflation {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgLocalAutonomy {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgManpower {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgManpowerPercentage {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgMercantilism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgChangeGoods {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgCreateAdvisor {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgHasIdeaGroup {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgProducesGoods {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
+    | MsgProducesSameGoods {scriptMessageWhere :: Text}
     | MsgEstateExists {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgHasEstate {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgAssignToEstate {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
@@ -304,6 +340,7 @@ data ScriptMessage
     | MsgControlledBy {scriptMessageWhom :: Text}
     | MsgDefensiveWarAgainst {scriptMessageWhom :: Text}
     | MsgDiscoverCountry {scriptMessageWhom :: Text}
+    | MsgDiscoverProvince {scriptMessageWhat :: Text}
     | MsgGainClaim {scriptMessageWho :: Text}
     | MsgGainPermanentClaimCountry {scriptMessageWho :: Text}
     | MsgGainPermanentClaimProvince {scriptMessageWhere :: Text}
@@ -311,6 +348,7 @@ data ScriptMessage
     | MsgDiscoveredBy {scriptMessageWhom :: Text}
     | MsgInherit {scriptMessageWhom :: Text}
     | MsgNeighbors {scriptMessageWhom :: Text}
+    | MsgIsRival {scriptMessageWhom :: Text}
     | MsgIsSubjectOf {scriptMessageWhom :: Text}
     | MsgLoseCoreCountry {scriptMessageWho :: Text}
     | MsgLoseCoreProvince {scriptMessageWhere :: Text}
@@ -319,6 +357,7 @@ data ScriptMessage
     | MsgOwnedBy {scriptMessageWhom :: Text}
     | MsgReleaseVassal {scriptMessageWhom :: Text}
     | MsgUnderSiegeBy {scriptMessageWhom :: Text}
+    | MsgSupportIndependenceOf {scriptMessageWhom :: Text}
     | MsgCountryIs {scriptMessageWho :: Text}
     | MsgTruceWith {scriptMessageWhom :: Text}
     | MsgAtWarWith {scriptMessageWhom :: Text}
@@ -443,6 +482,9 @@ data ScriptMessage
     | MsgLeaderRuler {scriptMessageRegent :: Bool, scriptMessageName :: Text}
     | MsgNewRulerName {scriptMessageName :: Text}
     | MsgNewRulerDynasty {scriptMessageName :: Text}
+    | MsgNewRulerDynastyAs {scriptMessageName :: Text}
+    | MsgNewRulerOriginalDynasty
+    | MsgNewRulerHistoricDynasty
     | MsgNewRulerAge {scriptMessageAmt :: Double}
     | MsgNewRulerAdm {scriptMessageFixed :: Bool, scriptMessageAmt :: Double}
     | MsgNewRulerDip {scriptMessageFixed :: Bool, scriptMessageAmt :: Double}
@@ -466,7 +508,9 @@ data ScriptMessage
     | MsgNumOfReligion {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageAmt :: Double}
     | MsgIsStrongestTradePower {scriptMessageWho :: Text}
     | MsgAreaIs {scriptMessageWhat :: Text}
+    | MsgAreaIsAs {scriptMessageWhat :: Text}
     | MsgDominantReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
+    | MsgDominantReligionAs {scriptMessageWhom :: Text}
     | MsgEnableReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgHREReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgSetHREReligionLocked {scriptMessageYn :: Bool}
@@ -561,6 +605,7 @@ data ScriptMessage
     | MsgRandomNewWorld {scriptMessageYn :: Bool}
     | MsgIsColonialNation {scriptMessageYn :: Bool}
     | MsgIsFormerColonialNation {scriptMessageYn :: Bool}
+    | MsgIsFreeOrTributaryTrigger {scriptMessageYn :: Bool}
     | MsgIsNomad {scriptMessageYn :: Bool}
     | MsgReligionReformed {scriptMessageYn :: Bool}
     | MsgChangeTag {scriptMessageWho :: Text}
@@ -598,7 +643,9 @@ data ScriptMessage
     | MsgHeavyShip {scriptMessageWhom :: Text}
     | MsgLightShip {scriptMessageWhom :: Text}
     | MsgGalley {scriptMessageWhom :: Text}
+    | MsgHasMerchant {scriptMessageWho :: Text}
     | MsgNumColonies {scriptMessageAmt :: Double}
+    | MsgChangeSameCulture {scriptMessageWhom :: Text}
     | MsgChangeCulture {scriptMessageWhat :: Text}
     | MsgNavalForcelimit {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgBlockade {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -736,7 +783,6 @@ data ScriptMessage
     | MsgRandomSystem
     | MsgRandomTile
     | MsgGainTrait {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
-    | MsgIsFreeOrTributaryTrigger
     | MsgAbsolutism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainAbsolutism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgMaxAbsolutism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -886,6 +932,7 @@ data ScriptMessage
     | MsgADMTechAs {scriptMessageIcon :: Text, scriptMessageWho :: Text}
     | MsgAddGovernmentReform {scriptMessageWhat :: Text}
     | MsgAddCOTLevel {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgRulerAge {scriptMessageAmt :: Double}
 
 -- | Whether to default to English localization.
 useEnglish :: [Text] -> Bool
@@ -946,7 +993,7 @@ instance RenderMessage Script ScriptMessage where
                 ]
         MsgDrillGainMod {scriptMessageAmt = _amt}
             -> mconcat
-                [ toMessage (colourNum True _amt)
+                [ toMessage (reducedNum (colourPcSign True) _amt)
                 , " Army drill gain modifier"
                 ]
         MsgGainBT {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
@@ -1169,7 +1216,7 @@ instance RenderMessage Script ScriptMessage where
                 [ "Gain "
                 , _icon
                 , " '''"
-                , toMessage (reducedNum plainPc (negate _amt))
+                , toMessage (reducedNum plainNum (negate _amt))
                 , "''' Mysticism"
                 ]
         MsgGainLegalism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
@@ -1178,8 +1225,8 @@ instance RenderMessage Script ScriptMessage where
                 , " "
                 , _icon
                 , " "
-                , toMessage (reducedNum plainPc _amt)
-                , " Legalism"
+                , toMessage (reducedNum plainNum _amt)
+                , ifThenElseT (_amt < 0) " Mysticism" " Legalism"
                 ]
         MsgStrengthenStatists {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
@@ -1309,9 +1356,15 @@ instance RenderMessage Script ScriptMessage where
                 , " <!-- "
                 , _modid
                 , " --> for "
-                , toMessage (roundNumNoSpace _days)
-                , " "
-                , plural _days "day" "days"
+                , if (_days < 0)
+                    then if _type == "ruler"
+                        then "the duration of the current ruler's reign"
+                        else "the rest of the game"
+                    else mconcat
+                        [ toMessage (roundNumNoSpace _days)
+                        , " "
+                        , plural _days "day" "days"
+                        ]
                 , ", giving the following effects:"
                 ]
         MsgGainModPow {scriptMessageModid = _modid, scriptMessageType = _type, scriptMessageName = _name, scriptMessagePow = _pow}
@@ -1418,12 +1471,60 @@ instance RenderMessage Script ScriptMessage where
                 ]
         MsgAllOf
             -> "All of:"
-        MsgOurCountry
-            -> "Our country:"
         MsgFROM
             -> "FROM:"
+        MsgROOT
+            -> "ROOT"
+        MsgROOTCountry
+            -> "Our country"
+        MsgROOTCountryAsOther
+            -> "same as our country"
+        MsgROOTProvince
+            -> "The currently considered province"
+        MsgROOTProvinceOwner
+            -> "the owner of the currently considered province"
+        MsgROOTProvinceAsOther
+            -> "same as the currently considered province"
+        MsgROOTTradeNode
+            -> "The currently considered trade node"
+        MsgROOTGeographic
+            -> "The currently considered location"
         MsgPREV
-            -> "PREV:"
+            -> "PREV"
+        MsgPREVCountry
+            -> "Previously mentioned country"
+        MsgPREVCountryAsOther
+            -> "same as the previously mentioned country"
+        MsgPREVProvince
+            -> "The previously mentioned province"
+        MsgPREVProvinceOwner
+            -> "the owner of the previously mentioned province"
+        MsgPREVProvinceAsOther
+            -> "same as the previously mentioned province"
+        MsgPREVTradeNode
+            -> "The previously mentioned trade node"
+        MsgPREVGeographic
+            -> "The previously mentioned location"
+        MsgTHISCountry
+            -> "this country"
+        MsgTHISCountryAsOther
+            -> "same as this country"
+        MsgTHISProvince
+            -> "this province"
+        MsgTHISProvinceOwner
+            -> "the owner of this province"
+        MsgTHISProvinceAsOther
+            -> "same as this province"
+        MsgTHISTradeNode
+            -> "This trade node"
+        MsgTHISGeographic
+            -> "This location"
+        MsgEmperor
+            -> "The Holy Roman Emperor"
+        MsgOriginalDynasty
+            -> "the country's original dynasty"
+        MsgHistoricDynasty
+            -> "one of the country's historical dynasties"
         MsgNoneOf
             -> "None of:"
         MsgAllCoreProvince
@@ -1471,13 +1572,11 @@ instance RenderMessage Script ScriptMessage where
         MsgAnyTradeNode
             -> "Any trade node:"
         MsgCapital
-            -> "Capital:"
+            -> "Capital"
         MsgController
-            -> "Province controller:"
+            -> "Province controller"
         MsgElse
             -> "Else:"
-        MsgEmperor
-            -> "The Holy Roman Emperor:"
         MsgAllCountries
             -> "All countries in the world:"
         MsgAllNeighborCountries
@@ -1579,10 +1678,20 @@ instance RenderMessage Script ScriptMessage where
                 [ "Continent is "
                 , _what
                 ]
+        MsgContinentIsAs {scriptMessageWhat = _what}
+            -> mconcat
+                [ "Continent is the same as "
+                , _what
+                ]
         MsgCultureIs {scriptMessageWhat = _what}
             -> mconcat
                 [ "Culture is "
                 , _what
+                ]
+        MsgCultureIsAs {scriptMessageWho = _who}
+            -> mconcat
+                [ "Culture is the same as "
+                , _who
                 ]
         MsgCultureIsGroup {scriptMessageWhat = _what}
             -> mconcat
@@ -1590,11 +1699,55 @@ instance RenderMessage Script ScriptMessage where
                 , _what
                 , " group"
                 ]
+        MsgCultureGroupAs {scriptMessageWhat = _what}
+            -> mconcat
+                [ "Culture is in the same group as "
+                , _what
+                ]
         MsgRulerIsDynasty {scriptMessageWhat = _what}
             -> mconcat
                 [ "Ruler is of "
                 , _what
                 , " dynasty"
+                ]
+        MsgRulerIsSameDynasty {scriptMessageWho = _who}
+            -> mconcat
+                [ "Ruler is of the same dynasty as "
+                , _who
+                ]
+        MsgHeirNationality {scriptMessageWhat = _what}
+            -> mconcat
+                [ "Heir's culture is "
+                , _what
+                ]
+        MsgHeirNationalityAs {scriptMessageWho = _who}
+            -> mconcat
+                [ "Heir's culture is the same as "
+                , _who
+                ]
+        MsgHeirReligion {scriptMessageIcon = _icon, scriptMessageWhat = _what}
+            -> mconcat
+                [ "Heir's religion is "
+                , _icon
+                , " "
+                , _what
+                ]
+        MsgHeirReligionAs {scriptMessageWho = _who}
+            -> mconcat
+                [ "Heir's religion is the same as "
+                , _who
+                ]
+        MsgSetHeirReligion {scriptMessageIcon = _icon, scriptMessageWhat = _what}
+            -> mconcat
+                [ "Heir's religion becomes "
+                , _icon
+                , " "
+                , _what
+                ]
+        MsgSetHeirReligionAs {scriptMessageWho = _who}
+            -> mconcat
+                [ "Heir's religion becomes that of "
+                , _who
                 ]
         MsgDisasterEnds {scriptMessageWhat = _what}
             -> mconcat
@@ -1664,6 +1817,11 @@ instance RenderMessage Script ScriptMessage where
         MsgPrimaryCultureIs {scriptMessageWhat = _what}
             -> mconcat
                 [ "Primary culture is "
+                , _what
+                ]
+        MsgPrimaryCultureIsAs {scriptMessageWhat = _what}
+            -> mconcat
+                [ "Primary culture is the same as "
                 , _what
                 ]
         MsgRegionIs {scriptMessageWhat = _what}
@@ -2029,13 +2187,13 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ _icon
                 , " Legitimacy is at least "
-                , toMessage (roundPc _amt)
+                , toMessage (roundNum _amt)
                 ]
         MsgYearlyLegitimacy {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
                 [ _icon
                 , " "
-                , toMessage (colourPcSign True _amt)
+                , toMessage (colourNumSign True _amt)
                 , " Yearly legitimacy"
                 ]
         MsgRulerMIL {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
@@ -2187,6 +2345,13 @@ instance RenderMessage Script ScriptMessage where
                 , " Local autonomy is at least "
                 , toMessage (colourPc False _amt)
                 ]
+        MsgManpower {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ "Has at least "
+                , _icon
+                , toMessage (plainNum (_amt * 1000))
+                , " manpower"
+                ]
         MsgManpowerPercentage {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
                 [ _icon
@@ -2228,6 +2393,11 @@ instance RenderMessage Script ScriptMessage where
                 , _icon
                 , " "
                 , _what
+                ]
+        MsgProducesSameGoods {scriptMessageWhere = _where}
+            -> mconcat
+                [ "Produces the same goods as "
+                , _where
                 ]
         MsgEstateExists {scriptMessageIcon = _icon, scriptMessageWhat = _what}
             -> mconcat
@@ -2282,6 +2452,11 @@ instance RenderMessage Script ScriptMessage where
                 [ "Discover "
                 , _whom
                 ]
+        MsgDiscoverProvince {scriptMessageWhat = _what}
+            -> mconcat
+                [ "Discover "
+                , _what
+                ]
         MsgGainClaim {scriptMessageWho = _who}
             -> mconcat
                 [ _who
@@ -2316,6 +2491,11 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ "Has a border with "
                 , _whom
+                ]
+        MsgIsRival {scriptMessageWhom = _whom}
+            -> mconcat
+                [ _whom
+                , " is a rival"
                 ]
         MsgIsSubjectOf {scriptMessageWhom = _whom}
             -> mconcat
@@ -2356,6 +2536,11 @@ instance RenderMessage Script ScriptMessage where
         MsgUnderSiegeBy {scriptMessageWhom = _whom}
             -> mconcat
                 [ "Province is under siege by "
+                , _whom
+                ]
+        MsgSupportIndependenceOf {scriptMessageWhom = _whom}
+            -> mconcat
+                [ "Support the independence of "
                 , _whom
                 ]
         MsgCountryIs {scriptMessageWho = _who}
@@ -2522,7 +2707,7 @@ instance RenderMessage Script ScriptMessage where
                 ]
         MsgIsFemale {scriptMessageYn = _yn}
             -> mconcat
-                [ "Is "
+                [ "Ruler is "
                 , toMessage (ifThenElseT _yn "female" "male")
                 ]
         MsgIsLesserInUnion {scriptMessageYn = _yn}
@@ -3271,6 +3456,15 @@ instance RenderMessage Script ScriptMessage where
                 , _name
                 , " dynasty"
                 ]
+        MsgNewRulerDynastyAs {scriptMessageName = _name}
+            -> mconcat
+                [ "Of the same dynasty as "
+                , _name
+                ]
+        MsgNewRulerOriginalDynasty
+            -> "Of the country's original dynasty"
+        MsgNewRulerHistoricDynasty
+            -> "Of one of the country's historic dynasties"
         MsgNewRulerAge {scriptMessageAmt = _amt}
             -> mconcat
                 [ "Aged "
@@ -3424,12 +3618,22 @@ instance RenderMessage Script ScriptMessage where
                 , _what
                 , " area"
                 ]
+        MsgAreaIsAs {scriptMessageWhat = _what}
+            -> mconcat
+                [ "Is in the same area as "
+                , _what
+                ]
         MsgDominantReligion {scriptMessageIcon = _icon, scriptMessageWhat = _what}
             -> mconcat
                 [ "The country's dominant religion is "
                 , _icon
                 , " "
                 , _what
+                ]
+        MsgDominantReligionAs {scriptMessageWhom = _whom}
+            -> mconcat
+                [ "The country's dominant religion is that of "
+                , _whom
                 ]
         MsgEnableReligion {scriptMessageIcon = _icon, scriptMessageWhat = _what}
             -> mconcat
@@ -3723,7 +3927,7 @@ instance RenderMessage Script ScriptMessage where
                 [ _icon
                 , " "
                 , toMessage (reducedNum (colourPcSign True) _amt)
-                , " Global tax modifier"
+                , " National tax modifier"
                 ]
         MsgBuildCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
@@ -4026,6 +4230,14 @@ instance RenderMessage Script ScriptMessage where
                 , toMessage (ifThenElseT _yn "" " ''not''")
                 , " a former colonial nation"
                 ]
+        MsgIsFreeOrTributaryTrigger {scriptMessageYn = _yn}
+            -> mconcat
+                [ "Is"
+                , toMessage (ifThenElseT _yn "" " ''neither''")
+                , " independent "
+                , toMessage (ifThenElseT _yn "or" "''nor''")
+                , " a tributary"
+                ]
         MsgIsNomad {scriptMessageYn = _yn}
             -> mconcat
                 [ "Is"
@@ -4250,6 +4462,11 @@ instance RenderMessage Script ScriptMessage where
                 [ "Create a {{icon|galley}} galley belonging to "
                 , _whom
                 ]
+        MsgHasMerchant {scriptMessageWho = _who}
+            -> mconcat
+                [ _who
+                , " has a merchant present"
+                ]
         MsgNumColonies {scriptMessageAmt = _amt}
             -> mconcat
                 [ "Has at least "
@@ -4261,6 +4478,11 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ "Change culture to "
                 , _what
+                ]
+        MsgChangeSameCulture {scriptMessageWhom = _whom}
+            -> mconcat
+                [ "Change culture to that of "
+                , _whom
                 ]
         MsgNavalForcelimit {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
@@ -4439,10 +4661,10 @@ instance RenderMessage Script ScriptMessage where
         MsgNavyPercentage {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
                 [ "Navy is at least "
-                , toMessage (plainPc _amt)
-                , " of "
                 , _icon
-                , " force limit"
+                , " "
+                , toMessage (reducedNum plainPc _amt)
+                , " of force limit"
                 ]
         MsgWasForceConverted {scriptMessageYn = _yn}
             -> mconcat
@@ -4471,7 +4693,7 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ _icon
                 , " Piety is at least "
-                , toMessage (reducedNum (colourPcSign True) _amt)
+                , toMessage (reducedNum (colourNumSign True) _amt)
                 ]
         MsgIsInTutorial {scriptMessageYn = _yn}
             -> mconcat
@@ -5093,7 +5315,6 @@ instance RenderMessage Script ScriptMessage where
                 , " "
                 , _what
                 ]
-        MsgIsFreeOrTributaryTrigger -> "(THIS) {{is_free_or_tributary_trigger}}"
         MsgAbsolutism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
                 [ _icon
@@ -5992,6 +6213,12 @@ instance RenderMessage Script ScriptMessage where
                 ," level "
                 ,toMessage (plainNum _amt)
                 ," Center of Trade"
+                ]
+        MsgRulerAge {scriptMessageAmt = _amt}
+            -> mconcat
+                [ "Ruler is at least "
+                , toMessage (plainNum _amt)
+                , " years old"
                 ]
     renderMessage _ _ _ = error "Sorry, non-English localisation not yet supported."
 

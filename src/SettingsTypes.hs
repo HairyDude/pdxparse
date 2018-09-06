@@ -23,7 +23,7 @@ module SettingsTypes (
     ,   getLangs
     ,   unfoldM, concatMapM
     ,   fromReaderT, toReaderT
-    ,   unsnoc
+    ,   unsnoc, safeLast, safeIndex
     ) where
 
 import Control.Monad (liftM, join, void)
@@ -139,6 +139,13 @@ class IsGame g where
     scope :: Monad m => Scope g -> PPT g m a -> PPT g m a
     -- | Query the current scope.
     getCurrentScope :: Monad m => PPT g m (Maybe (Scope g))
+    -- | Query the previous scope (i.e. the type of PREV).
+    getPrevScope :: Monad m => PPT g m (Maybe (Scope g))
+    -- | Query the root scope (i.e. the type of ROOT).
+    getRootScope :: Monad m => PPT g m (Maybe (Scope g))
+    -- | Get the entire scope stack. Wanted only for debugging purposes.
+    getScopeStack :: Monad m => PPT g m [Scope g]
+    getScopeStack = undefined
 
 -- Example game. Define your game and its 'IsGame' instance in your game's
 -- 'Settings' module. Do NOT define it in Types. Instead, have game-specific
@@ -165,6 +172,9 @@ instance IsGame UnknownGame where
     scope s = local $ \(UGS st) ->
         UGS $ st { ugScopeStack = s : ugScopeStack st }
     getCurrentScope = asks $ listToMaybe . ugScopeStack . ugs
+    getPrevScope = asks $ safeIndex 1 . ugScopeStack . ugs
+    getRootScope = asks $ safeLast . ugScopeStack . ugs
+    getScopeStack = asks $ ugScopeStack . ugs
 
 -- | Example scope, data and state types. Define these in the 'Types' module,
 -- including instances.
@@ -381,3 +391,16 @@ unsnoc xs = Just (case unsnoc' [] xs of (xs', x) -> (reverse xs', x)) where
     unsnoc' _   [] = error "impossible: unsnoc' _ []"
     unsnoc' acc [x] = (acc, x)
     unsnoc' acc (x:xs) = unsnoc' (x:acc) xs
+
+-- | Find the last element of a list.
+safeLast :: [a] -> Maybe a
+safeLast [] = Nothing
+safeLast [x] = Just x
+safeLast (_:xs) = safeLast xs
+
+-- | Find the nth element of a list (zero-based).
+safeIndex :: Int -> [a] -> Maybe a
+safeIndex _ [] = Nothing
+safeIndex n _ | n < 0 = Nothing
+safeIndex 0 (x:_) = Just x
+safeIndex n (_:xs) = safeIndex (pred n) xs

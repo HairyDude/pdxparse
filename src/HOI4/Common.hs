@@ -156,7 +156,7 @@ ppHandlers = Tr.fromList
         -- Simple compound statements
         -- Note that "any" can mean "all" or "one or more" depending on context.
          ("and" , compoundMessage MsgAllOf)
-        ,("root", compoundMessage MsgOurCountry)
+        ,("root", compoundMessage MsgROOT) -- placeholder, should be more complex
         -- These two are ugly, but without further analysis we can't know
         -- what it means.
         ,("from", compoundMessage MsgFROM)

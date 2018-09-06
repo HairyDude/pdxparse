@@ -5,9 +5,10 @@ module Stellaris.Settings (
 
 import Control.Monad (join, when, forM, filterM, void)
 import Control.Monad.Trans (MonadIO (..))
-import Control.Monad.Reader (MonadReader (..), ReaderT (..))
+import Control.Monad.Reader (MonadReader (..), ReaderT (..), asks)
 import Control.Monad.State (MonadState (..), StateT (..), modify, gets)
 
+import Data.Maybe (listToMaybe)
 import Data.HashMap.Strict (HashMap)
 import qualified Data.HashMap.Strict as HM
 
@@ -20,7 +21,8 @@ import FileIO (buildPath, readScript)
 import SettingsTypes (PPT, Game (..), L10nScheme (..)
                      , IsGameData (..), IsGameState (..)
                      , Settings (..), GameState (..)
-                     , getGameL10nIfPresent)
+                     , getGameL10nIfPresent
+                     , safeIndex, safeLast)
 import Stellaris.Types -- everything
 
 -- Handlers
@@ -49,11 +51,9 @@ instance IsGame Stellaris where
     type Scope Stellaris = StellarisScope
     scope s = local $ \(StS st) -> StS $
         st { stScopeStack = s : stScopeStack st }
-    getCurrentScope = do
-        StS ss <- ask
-        case stScopeStack ss of
-            [] -> return Nothing
-            (sc:_) -> return (Just sc)
+    getCurrentScope = asks $ listToMaybe . stScopeStack . sts
+    getPrevScope = asks $ safeIndex 1 . stScopeStack . sts
+    getRootScope = asks $ safeLast . stScopeStack . sts
 
 instance StellarisInfo Stellaris where
     getEventTitle eid = do
