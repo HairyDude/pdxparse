@@ -90,6 +90,7 @@ ppHandlers = foldl' Tr.unionL Tr.empty
     , handlersLocRhs
     , handlersProvince
     , handlersFlagOrProvince
+    , handlersNumericOrFlag 
     , handlersAdvisorId
     , handlersTypewriter
     , handlersSimpleIcon
@@ -113,22 +114,41 @@ ppHandlers = foldl' Tr.unionL Tr.empty
 handlersRhsIrrelevant :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersRhsIrrelevant = Tr.fromList
         [("add_cardinal"           , const (msgToPP MsgAddCardinal))
-        ,("add_estate_burghers_loyalty_effect", const (msgToPP MsgAddBurghersLoyalty))
-        ,("add_estate_church_loyalty_effect", const (msgToPP MsgAddChurchLoyalty))
-        ,("add_estate_cossacks_loyalty_effect", const (msgToPP MsgAddCossacksLoyalty))
-        ,("add_estate_dhimmi_loyalty_effect", const (msgToPP MsgAddDhimmiLoyalty))
-        ,("add_estate_nobles_loyalty_effect", const (msgToPP MsgAddNoblesLoyalty))
+        ,("add_estate_burghers_loyalty_effect", const (msgToPP (MsgAddEstateLoyaltyEffect "burghers")))
+        ,("add_estate_church_loyalty_effect", const (msgToPP (MsgAddEstateLoyaltyEffect "clergy")))
+        ,("add_estate_cossacks_loyalty_effect", const (msgToPP (MsgAddEstateLoyaltyEffect "cossacks")))
+        ,("add_estate_dhimmi_loyalty_effect", const (msgToPP (MsgAddEstateLoyaltyEffect "dhimmi")))
+        ,("add_estate_jains_loyalty_effect", const (msgToPP (MsgAddEstateLoyaltyEffect "jains")))
+        ,("add_estate_nobles_loyalty_effect", const (msgToPP (MsgAddEstateLoyaltyEffect "nobility")))
+        ,("add_innovativeness_big_effect", const (msgToPP MsgAddInnovativenessBigEffect))
+        ,("add_innovativeness_small_effect", const (msgToPP MsgAddInnovativenessSmallEffect))
         ,("add_loot_from_province_effect", const (msgToPP MsgAddLootFromProvinceEffect))
         ,("add_mandate_effect"     , const (msgToPP MsgAddMandateEffect))
         ,("add_mandate_large_effect", const (msgToPP MsgAddMandateLargeEffect))
         ,("add_meritocracy_effect" , const (msgToPP MsgAddMeritocracyEffect))
         ,("add_meritocracy_large_effect", const (msgToPP MsgAddMeritocracyLargeEffect))
+        ,("add_reform_progress_medium_effect", const (msgToPP MsgAddReformProgressMediumEffect))
+        ,("add_reform_progress_small_effect", const (msgToPP MsgAddReformProgressSmallEffect))
         ,("add_stability_or_adm_power", const (msgToPP MsgAddStabilityOrAdm))
+        ,("boost_bureaucrats_effect", const (msgToPP MsgBoostBureaucratsEffect))
+        ,("boost_bureaucrats_large_effect", const (msgToPP MsgBoostBureaucratsLargeEffect))
+        ,("boost_eunuchs_effect", const (msgToPP MsgBoostEunuchsEffect))
+        ,("boost_eunuchs_large_effect", const (msgToPP MsgBoostEunuchsLargeEffect))
+        ,("boost_temples_effect", const (msgToPP MsgBoostTemplesEffect))
+        ,("boost_temples_large_effect", const (msgToPP MsgBoostTemplesLargeEffect))
         ,("cancel_construction"    , const (msgToPP MsgCancelConstruction)) -- Canals
         ,("cb_on_overseas"         , const (msgToPP MsgGainOverseasCB)) -- Full Expansion
         ,("cb_on_primitives"       , const (msgToPP MsgGainPrimitivesCB)) -- Full Exploration
         ,("cb_on_religious_enemies", const (msgToPP MsgGainReligiousCB)) -- Deus Vult
+        ,("check_if_non_state_advisor_effect", const (msgToPP MsgCheckIfNonStateAdvisorEffect))
+        ,("divorce_consort_effect", const (msgToPP MsgDivorceConsortEffect))
         ,("enable_hre_leagues"     , const (msgToPP MsgEnableHRELeagues))
+        ,("erase_advisor_flags_effect", const (msgToPP MsgEnableHRELeagues))
+        ,("increase_heir_adm_effect", const (msgToPP MsgIncreaseHeirAdmEffect))
+        ,("increase_heir_dip_effect", const (msgToPP MsgIncreaseHeirDipEffect))
+        ,("increase_heir_mil_effect", const (msgToPP MsgIncreaseHeirMilEffect))
+        ,("increase_legitimacy_medium_effect", const (msgToPP MsgIncreaseLegitimacyMediumEffect))
+        ,("increase_legitimacy_small_effect", const (msgToPP MsgIncreaseLegitimacySmallEffect))
         ,("is_janissary_modifier"  , const (msgToPP MsgIsJanissaryMod))
         ,("kill_heir"              , const (msgToPP MsgHeirDies))
         ,("kill_ruler"             , const (msgToPP MsgRulerDies))
@@ -138,13 +158,28 @@ handlersRhsIrrelevant = Tr.fromList
         ,("may_sabotage_reputation", const (msgToPP MsgMaySabotageReputation)) -- Espionage: Rumormongering
         ,("may_sow_discontent"     , const (msgToPP MsgMaySowDiscontent)) -- Espionage: Destabilizing Efforts
         ,("may_study_technology"   , const (msgToPP MsgMayStudyTech)) -- Espionage: Shady Recruitment
+        ,("move_capital_effect"    , const (msgToPP MsgMoveCapitalEffect))
         ,("set_hre_religion_treaty", const (msgToPP MsgSignWestphalia))
         ,("reduced_stab_impacts"   , const (msgToPP MsgReducedStabImpacts)) -- Full Diplomacy
-        ,("reduce_estate_burghers_loyalty_effect", const (msgToPP MsgReduceBurghersLoyalty))
-        ,("reduce_estate_church_loyalty_effect", const (msgToPP MsgReduceChurchLoyalty))
-        ,("reduce_estate_cossacks_loyalty_effect", const (msgToPP MsgReduceCossacksLoyalty))
-        ,("reduce_estate_dhimmi_loyalty_effect", const (msgToPP MsgReduceDhimmiLoyalty))
-        ,("reduce_estate_nobles_loyalty_effect", const (msgToPP MsgReduceNoblesLoyalty))
+        ,("reduce_estate_burghers_loyalty_effect", const (msgToPP (MsgReduceEstateLoyaltyEffect "burghers")))
+        ,("reduce_estate_church_loyalty_effect", const (msgToPP (MsgReduceEstateLoyaltyEffect "clergy")))
+        ,("reduce_estate_cossacks_loyalty_effect", const (msgToPP (MsgReduceEstateLoyaltyEffect "cossacks")))
+        ,("reduce_estate_dhimmi_loyalty_effect", const (msgToPP (MsgReduceEstateLoyaltyEffect "dhimmi")))
+        ,("reduce_estate_jains_loyalty_effect", const (msgToPP (MsgReduceEstateLoyaltyEffect "jains")))
+        ,("reduce_estate_nobles_loyalty_effect", const (msgToPP (MsgReduceEstateLoyaltyEffect "nobility")))
+        ,("reduce_bureaucrats_effect", const (msgToPP MsgReduceBureaucratsEffect))
+        ,("reduce_eunuchs_effect"  , const (msgToPP MsgReduceEunuchsEffect))
+        ,("reduce_innovativeness_small_effect", const (msgToPP MsgAddInnovativenessSmallEffect))
+        ,("reduce_temples_effect"  , const (msgToPP MsgReduceTemplesEffect))
+        ,("reduce_legitimacy_medium_effect", const (msgToPP MsgReduceLegitimacyEffect))
+        ,("reduce_legitimacy_small_effect", const (msgToPP MsgReduceLegitimacySmallEffect))
+        ,("reduce_mandate_effect", const (msgToPP MsgReduceMandateEffect))
+        ,("reduce_mandate_large_effect", const (msgToPP MsgReduceMandateLargeEffect))
+        ,("reduce_meritocracy_effect", const (msgToPP MsgReduceMeritocracyEffect))
+        ,("reduce_meritocracy_large_effect", const (msgToPP MsgReduceMeritocracyLargeEffect))
+        ,("reduce_reform_progress_small_effect", const (msgToPP MsgReduceReformProgressSmallEffect))
+        ,("reduce_reform_progress_big_effect", const (msgToPP MsgReduceReformProgressBigEffect))
+        ,("remove_advisor_adm_effect", const (msgToPP MsgRemoveAdvisorAdmEffect)) -- "The currently employed administrative advisor leaves the country's court."
         ,("remove_cardinal"        , const (msgToPP MsgLoseCardinal))
         ,("remove_non_electors_emperors_from_empire_effect", const (msgToPP MsgLeaveHRE))
         ,("sea_repair"             , const (msgToPP MsgGainSeaRepair)) -- Full Maritime
@@ -239,7 +274,6 @@ handlersNumericIcons = Tr.fromList
         ,("adm"                      , numericIcon "adm" MsgRulerADM)
         ,("administrative_efficiency", numericIconBonus "administrative efficiency" MsgAdminEfficiencyBonus MsgAdminEfficiency)
         ,("adm_power"                , numericIcon "adm" MsgHasADM)
-        ,("adm_tech"                 , numericIcon "adm tech" MsgADMTech)
         ,("army_organiser"           , numericIconLoc "army organizer" "army_organiser" MsgHasAdvisorLevel)
         ,("army_reformer"            , numericIconLoc "army reformer" "army_reformer" MsgHasAdvisorLevel)
         ,("army_tradition"           , numericIconBonus "army tradition" MsgArmyTradition MsgYearlyArmyTradition)
@@ -640,6 +674,12 @@ handlersFlagOrProvince = Tr.fromList
         ,("remove_core"        , withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince)
         -- RHS is a flag or province id, but the statement's meaning depends on the scope
         ,("has_discovered"     , withFlagOrProvinceEU4Scope MsgHasDiscovered MsgDiscoveredBy) -- scope sensitive
+        ]
+
+-- | Handlers for statements whose RHS is a number OR a tag/pronoun, with icon
+handlersNumericOrFlag :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersNumericOrFlag = Tr.fromList
+        [("adm_tech"                 , withTagOrNumber "adm tech" MsgADMTech MsgADMTechAs)
         ]
 
 -- TODO: parse advisor files

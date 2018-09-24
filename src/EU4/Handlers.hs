@@ -28,6 +28,7 @@ module EU4.Handlers (
     ,   withFlag 
     ,   withBool
     ,   withFlagOrBool
+    ,   withTagOrNumber 
     ,   numericIcon
     ,   numericIconLoc
     ,   numericIconBonus
@@ -526,6 +527,23 @@ iconOrFlag iconmsg flagmsg [pdx| %_ = $name |] = msgToPP =<< do
                      <*> getGameL10n name
 iconOrFlag _ _ stmt = plainMsg $ pre_statement' stmt
 
+-- | Message with icon and tag.
+withFlagAndIcon :: (IsGameData (GameData g),
+                    IsGameState (GameState g),
+                    Monad m) =>
+    Text
+        -> (Text -> Text -> ScriptMessage)
+        -> StatementHandler g m
+withFlagAndIcon iconkey flagmsg stmt@[pdx| %_ = $vartag:$var |] = do
+    mwhoflag <- eflag (Right (vartag, var))
+    case mwhoflag of
+        Just whoflag -> msgToPP . flagmsg (iconText iconkey) $ whoflag
+        Nothing -> preStatement stmt
+withFlagAndIcon iconkey flagmsg [pdx| %_ = $name |] = msgToPP =<< do
+    nflag <- flag name
+    return . flagmsg (iconText iconkey) . Doc.doc2text $ nflag
+withFlagAndIcon _ _ stmt = plainMsg $ pre_statement' stmt
+
 -- | Handler for statements where RHS is a tag or province id.
 tagOrProvince :: (IsGameData (GameData g),
                   IsGameState (GameState g),
@@ -635,6 +653,20 @@ withFlagOrBool :: (IsGameData (GameData g),
 withFlagOrBool bmsg _ [pdx| %_ = yes |] = msgToPP (bmsg True)
 withFlagOrBool bmsg _ [pdx| %_ = no  |]  = msgToPP (bmsg False)
 withFlagOrBool _ tmsg stmt = withFlag tmsg stmt
+
+-- | Handler for statements whose RHS is a number OR a tag/prounoun, with icon
+withTagOrNumber :: (IsGameData (GameData g),
+                    IsGameState (GameState g),
+                    Monad m) =>
+    Text
+        -> (Text -> Double -> ScriptMessage)
+        -> (Text -> Text -> ScriptMessage)
+        -> StatementHandler g m
+withTagOrNumber iconkey numMsg _ scr@[pdx| %_ = %num |]
+    | FloatRhs _ <- num = numericIcon iconkey numMsg scr
+withTagOrNumber iconkey _ tagMsg scr@[pdx| %_ = $_ |]
+    = withFlagAndIcon iconkey tagMsg scr
+withTagOrNumber  _ _ _ stmt = plainMsg $ pre_statement' stmt
 
 -- | Handler for statements that have a number and an icon.
 numericIcon :: (IsGameState (GameState g), Monad m) =>

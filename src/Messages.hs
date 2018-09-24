@@ -795,16 +795,8 @@ data ScriptMessage
     | MsgOprichninaProgress {scriptMessageAmt :: Double}
     | MsgStreltsyProgress {scriptMessageAmt :: Double}
     | MsgAddLootFromProvinceEffect
-    | MsgAddBurghersLoyalty
-    | MsgAddChurchLoyalty
-    | MsgAddCossacksLoyalty
-    | MsgAddDhimmiLoyalty
-    | MsgAddNoblesLoyalty
-    | MsgReduceBurghersLoyalty
-    | MsgReduceChurchLoyalty
-    | MsgReduceCossacksLoyalty
-    | MsgReduceDhimmiLoyalty
-    | MsgReduceNoblesLoyalty
+    | MsgAddEstateLoyaltyEffect {scriptMessageWhom :: Text}
+    | MsgReduceEstateLoyaltyEffect {scriptMessageWhom :: Text}
     | MsgAddStabilityOrAdm
     | MsgAddTrust {scriptMessageWhom :: Text, scriptMessageAmt :: Double}
     | MsgAddTrustMutual {scriptMessageWhom :: Text, scriptMessageAmt :: Double}
@@ -858,6 +850,38 @@ data ScriptMessage
     | MsgYearlyArmyProfessionalism {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgYearlyCorruption {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgYearlyMeritocracy {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgAddInnovativenessSmallEffect
+    | MsgAddInnovativenessBigEffect
+    | MsgAddReformProgressMediumEffect
+    | MsgAddReformProgressSmallEffect
+    | MsgBoostBureaucratsEffect
+    | MsgBoostBureaucratsLargeEffect
+    | MsgBoostEunuchsEffect
+    | MsgBoostEunuchsLargeEffect
+    | MsgBoostTemplesEffect
+    | MsgBoostTemplesLargeEffect
+    | MsgCheckIfNonStateAdvisorEffect
+    | MsgEraseAdvisorFlagsEffect
+    | MsgIncreaseHeirAdmEffect
+    | MsgIncreaseHeirDipEffect
+    | MsgIncreaseHeirMilEffect
+    | MsgIncreaseLegitimacyMediumEffect
+    | MsgIncreaseLegitimacySmallEffect
+    | MsgMoveCapitalEffect
+    | MsgReduceBureaucratsEffect
+    | MsgReduceTemplesEffect
+    | MsgReduceEunuchsEffect
+    | MsgReduceLegitimacyEffect
+    | MsgReduceLegitimacySmallEffect
+    | MsgReduceMandateEffect
+    | MsgReduceMandateLargeEffect
+    | MsgReduceMeritocracyEffect
+    | MsgReduceMeritocracyLargeEffect
+    | MsgReduceReformProgressSmallEffect
+    | MsgReduceReformProgressBigEffect
+    | MsgRemoveAdvisorAdmEffect
+    | MsgDivorceConsortEffect
+    | MsgADMTechAs {scriptMessageIcon :: Text, scriptMessageWho :: Text}
 
 -- | Whether to default to English localization.
 useEnglish :: [Text] -> Bool
@@ -1882,6 +1906,12 @@ instance RenderMessage Script ScriptMessage where
                 [ _icon
                 , " Administrative technology is at least "
                 , toMessage (roundNum _amt)
+                ]
+        MsgADMTechAs {scriptMessageIcon = _icon, scriptMessageWho = _who}
+            -> mconcat
+                [ _icon
+                , " Administrative technology is at least that of "
+                , _who
                 ]
         MsgArmyTradition {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
@@ -4655,7 +4685,7 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ _icon
                 , " "
-                , toMessage (reducedNum (colourNumSign True) _amt)
+                , toMessage (colourNumSign True _amt)
                 , " Leader(s)<!-- sic --> without upkeep"
                 ]
         MsgAdvisorCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
@@ -4961,7 +4991,7 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ _icon
                 , " "
-                , toMessage (colourPcSign True _amt)
+                , toMessage (reducedNum (colourPcSign True) _amt)
                 , " Fort defense"
                 ]
         MsgFortMaintenance {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
@@ -5475,26 +5505,18 @@ instance RenderMessage Script ScriptMessage where
                 ]
         MsgAddLootFromProvinceEffect
             -> "Gain {{icon|ducats}} ducats and {{icon|mil}} military power scaling with province development"
-        MsgAddBurghersLoyalty
-            -> "{{add estate loyalty effect|burghers}}"
-        MsgAddChurchLoyalty
-            -> "{{add estate loyalty effect|clergy}}"
-        MsgAddCossacksLoyalty
-            -> "{{add estate loyalty effect|cossacks}}"
-        MsgAddDhimmiLoyalty
-            -> "{{add estate loyalty effect|dhimmi}}"
-        MsgAddNoblesLoyalty
-            -> "{{add estate loyalty effect|nobility}}"
-        MsgReduceBurghersLoyalty
-            -> "{{add estate loyalty effect|burghers|reduce}}"
-        MsgReduceChurchLoyalty
-            -> "{{add estate loyalty effect|clergy|reduce}}"
-        MsgReduceCossacksLoyalty
-            -> "{{add estate loyalty effect|cossacks|reduce}}"
-        MsgReduceDhimmiLoyalty
-            -> "{{add estate loyalty effect|dhimmi|reduce}}"
-        MsgReduceNoblesLoyalty
-            -> "{{add estate loyalty effect|nobility|reduce}}"
+        MsgAddEstateLoyaltyEffect {scriptMessageWhom = _whom}
+            -> mconcat
+                [ "{{add estate loyalty effect|"
+                , _whom
+                , "}}"
+                ]
+        MsgReduceEstateLoyaltyEffect {scriptMessageWhom = _whom}
+            -> mconcat
+                [ "{{add estate loyalty effect|"
+                , _whom
+                , "|reduce}}"
+                ]
         MsgAddStabilityOrAdm
             -> "{{add stability or adm power}}"
         MsgAddTrust {scriptMessageWhom = _whom, scriptMessageAmt = _amt}
@@ -5877,6 +5899,68 @@ instance RenderMessage Script ScriptMessage where
                 , toMessage (colourNumSign True _amt)
                 , " Yearly meritocracy"
                 ]
+        MsgAddInnovativenessBigEffect
+            -> "If DLC {{icon|rb}} Rule Britannia is active, gain {{icon|innovativeness}} {{green|3}} innovativeness"
+        MsgAddInnovativenessSmallEffect
+            -> "If DLC {{icon|rb}} Rule Britannia is active, gain {{icon|innovativeness}} {{green|1}} innovativeness"
+        MsgAddReformProgressMediumEffect
+            -> "If DLC {{icon|dhr}} Dharma is active, gain {{icon|reform progress}} {{green|25}} reform progress"
+        MsgAddReformProgressSmallEffect
+            -> "If DLC {{icon|dhr}} Dharma is active, gain {{icon|reform progress}} {{green|15}} reform progress"
+        MsgBoostBureaucratsEffect
+            -> "If DLC {{icon|moh}} Mandate of Heaven is ''not'' active, the {{icon|bureaucrats}} Grand Secretariat faction gains '''10''' influence"
+        MsgBoostBureaucratsLargeEffect
+            -> "If DLC {{icon|moh}} Mandate of Heaven is ''not'' active, the {{icon|bureaucrats}} Grand Secretariat faction gains '''15''' influence"
+        MsgBoostEunuchsEffect
+            -> "If DLC {{icon|moh}} Mandate of Heaven is ''not'' active, the {{icon|eunuchs}} Offices of Maritime Trade faction gains '''10''' influence"
+        MsgBoostEunuchsLargeEffect
+            -> "If DLC {{icon|moh}} Mandate of Heaven is ''not'' active, the {{icon|eunuchs}} Offices of Maritime Trade faction gains '''15''' influence"
+        MsgBoostTemplesEffect
+            -> "If DLC {{icon|moh}} Mandate of Heaven is ''not'' active, the {{icon|temples}} Commanderies of the Five Armies faction gains '''10''' influence"
+        MsgBoostTemplesLargeEffect
+            -> "If DLC {{icon|moh}} Mandate of Heaven is ''not'' active, the {{icon|temples}} Commanderies of the Five Armies faction gains '''15''' influence"
+        MsgCheckIfNonStateAdvisorEffect
+            -> "Randomly set a country flag to determine the religion (state, secondary, tertiary, or Jewish) of an advisor based on location of the capital and state religion group"
+        MsgEraseAdvisorFlagsEffect
+            -> "Forget the choice of religion for an advisor"
+        MsgIncreaseHeirAdmEffect
+            -> "Heir gains {{icon|adm}} {{green|1}} administrative skill, or gain {{green|50}} administrative power if skill is already 6"
+        MsgIncreaseHeirDipEffect
+            -> "Heir gains {{icon|dip}} {{green|1}} diplomatic skill, or gain {{green|50}} diplomatic power if skill is already 6"
+        MsgIncreaseHeirMilEffect
+            -> "Heir gains {{icon|mil}} {{green|1}} military skill, or gain {{green|50}} military power if skill is already 6"
+        MsgIncreaseLegitimacyMediumEffect
+            -> "Gain {{icon|legitimacy}} {{green|10}} legitimacy, {{icon|horde unity}} {{green|10}} horde unity, {{icon|devotion}} {{green|10}} devotion, or {{icon|republican tradition}} {{green|5}} republican tradition as appropriate"
+        MsgIncreaseLegitimacySmallEffect
+            -> "Gain {{icon|legitimacy}} {{green|5}} legitimacy, {{icon|horde unity}} {{green|5}} horde unity, {{icon|devotion}} {{green|5}} devotion, or {{icon|republican tradition}} {{green|2.5}} republican tradition as appropriate"
+        MsgMoveCapitalEffect
+            -> "Province becomes the new {{icon|capital}} capital. If it was in the empire and the country isn't, it is removed from the empire."
+        MsgReduceBureaucratsEffect
+            -> "If DLC Mandate of Heaven is ''not'' active, the Grand Secretariat faction loses 10 influence"
+        MsgReduceEunuchsEffect
+            -> "If DLC Mandate of Heaven is ''not'' active, the Offices of Maritime Trade faction loses 10 influence"
+        MsgReduceTemplesEffect
+            -> "If DLC Mandate of Heaven is ''not'' active, the Commanderies of the Five Armies faction loses 10 influence"
+        MsgReduceLegitimacyEffect
+            -> "Lose {{icon|legitimacy}} {{red|10}} legitimacy, {{icon|horde unity}} {{red|10}} horde unity, {{icon|devotion}} {{red|10}} devotion, or {{icon|republican tradition}} {{red|5}} republican tradition as appropriate"
+        MsgReduceLegitimacySmallEffect
+            -> "Lose {{icon|legitimacy}} {{red|5}} legitimacy, {{icon|horde unity}} {{red|5}} horde unity, {{icon|devotion}} {{red|5}} devotion, or {{icon|republican tradition}} {{red|2.5}} republican tradition as appropriate"
+        MsgReduceMandateEffect
+            -> "If the country is the Emperor of China and DLC {{icon|moh}} Mandate of Heaven is active, lose {{icon|mandate}} {{red|5}} mandate"
+        MsgReduceMandateLargeEffect
+            -> "If the country is the Emperor of China and DLC {{icon|moh}} Mandate of Heaven is active, lose {{icon|mandate}} {{red|10}} mandate"
+        MsgReduceMeritocracyEffect
+            -> "If the country is the Emperor of China and DLC {{icon|moh}} Mandate of Heaven is active, lose {{icon|meritocracy}} {{red|5}} meritocracy"
+        MsgReduceMeritocracyLargeEffect
+            -> "If the country is the Emperor of China and DLC {{icon|moh}} Mandate of Heaven is active, lose {{icon|meritocracy}} {{red|10}} meritocracy"
+        MsgReduceReformProgressSmallEffect
+            -> "If DLC {{icon|dhr}} Dharma is active, lose {{icon|reform progress}} {{red|25}} reform progress"
+        MsgReduceReformProgressBigEffect
+            -> "If DLC {{icon|dhr}} Dharma is active, lose {{icon|reform progress}} {{red|75}} reform progress"
+        MsgRemoveAdvisorAdmEffect
+            -> "The currently employed administrative advisor leaves the country's court."
+        MsgDivorceConsortEffect
+            -> "Attempt to divorce the consort. The consort's family may be offended by this, spoiling relations, giving them a casus belli, or angering local nobles."
     renderMessage _ _ _ = error "Sorry, non-English localisation not yet supported."
 
 -- | Message paired with an indentation level.
