@@ -38,22 +38,20 @@ module Abstract (
     ,   GenericStatement
     ,   GenericScript
     ,   Lhs (..)
-    ,   GenericLhs
+--    ,   GenericLhs
     ,   Operator (..)
     ,   Rhs (..)
     ,   GenericRhs
     ,   Date (..)
-    -- Constructors
-    ,   s_yes
     -- Views
     ,   textRhs, floatRhs, floatOrTextRhs
     -- Presentation
     ,   genericStatement2doc
-    ,   genericScript2doc
-    ,   displayGenericScript
+--    ,   genericScript2doc
+--    ,   displayGenericScript
     -- Parsing
     ,   skipSpace
-    ,   genericStatement
+--    ,   genericStatement
     ,   genericScript
     ,   statement
     ,   ident
@@ -65,7 +63,7 @@ import Control.Monad (void)
 import qualified Data.Foldable as F
 import Data.Monoid (Monoid (..), (<>))
 
-import Data.Char (isAlpha, isAlphaNum)
+import Data.Char (isAlpha, isAlphaNum, isSpace)
 import Data.List (intersperse)
 
 import Data.Text (Text)
@@ -122,7 +120,7 @@ showOpD = Doc.strictText . showOp
 -- @
 data Lhs lhs
     = CustomLhs lhs
-    | GenericLhs Text (Maybe Text)  -- ^ foo = ... or foo:bar = ...
+    | GenericLhs Text [Text]  -- ^ foo = ..., foo:bar = ... etc.
     | AtLhs Text                    -- ^ @foo = ...
     | IntLhs Int                    -- ^ 1234 = ...
     deriving (Eq, Ord, Show, Read)
@@ -139,7 +137,7 @@ type GenericLhs = Lhs ()
 -- @
 data Rhs lhs rhs
     = CustomRhs rhs
-    | GenericRhs Text (Maybe Text)  -- ^ ... = foo or ... = foo:bar
+    | GenericRhs Text [Text]        -- ^ ... = foo or ... = foo:bar or ... = foo:bar:baz etc.
     | StringRhs Text                -- ^ ... = "foo"
     | IntRhs Int                    -- ^ ... = 1234
     | FloatRhs Double               -- ^ ... = 1.234
@@ -160,10 +158,6 @@ type GenericScript = [GenericStatement]
 -- (YYYY.MM.DD).
 data Date = Date { year :: Int, month :: Int, day :: Int }
     deriving (Show, Eq, Ord, Read) -- Ord works with fields in this order only
-
--- | A very common type of statement: @s_yes "foo"@ produces @foo = yes@.
-s_yes :: Text -> Statement lhs rhs
-s_yes tok = Statement (GenericLhs tok Nothing) OpEq (GenericRhs "yes" Nothing)
 
 -- | Class for painlessly getting the type of number we want out of a value
 -- that might have parsed as something else.
@@ -188,7 +182,7 @@ floatRhs _ = Nothing
 
 -- | Get a Text from a RHS.
 textRhs :: GenericRhs -> Maybe Text
-textRhs (GenericRhs s mt) = Just (s <> maybe "" (":" <>) mt)
+textRhs (GenericRhs s mt) = Just (s <> mconcat (map (":" <>) mt))
 textRhs (StringRhs s) = Just s
 textRhs _ = Nothing
 
@@ -220,10 +214,10 @@ restOfLine :: Parser Text
 restOfLine = (Ap.many1' Ap.endOfLine >> return "")
          <|> (T.cons <$> Ap.anyChar <*> restOfLine)
 
--- | An identifier, or atom. An atom can start with a letter or an underscore
--- and continue with letters, numbers, underscores, and full stops.
+-- | An identifier, or atom. An atom can start with a letter, an underscore or
+-- a number and continue with letters, numbers, underscores, and full stops.
 ident :: Parser Text
-ident = (<>) <$> (T.singleton <$> (Ap.satisfy (\c -> c  == '_' || isAlpha c)))
+ident = (<>) <$> (T.singleton <$> (Ap.satisfy (\c -> c  == '_' || isAlphaNum c)))
              <*> Ap.takeWhile (\c -> c `elem` ['_','.'] || isAlphaNum c)
     <?> "identifier"
 
@@ -236,13 +230,31 @@ stringLit = "\""
          <* "\""
     <?> "string literal"
 
--- | An integer literal, possibly prefixed with a sign.
+-- | An integer literal, possibly prefixed with a sign. Must be followed by
+-- whitespace or eof to prevent confusion with identifiers that begin with
+-- digits.
 intLit :: Parser Int
 intLit = Ap.signed Ap.decimal
+    <* (do
+        mnext <- Ap.peekChar
+        case mnext of
+            Nothing -> return () -- EOF, all good
+            Just c -> if (c == '}' || c == '#' || isSpace c)
+                        then return () -- space or comment follows
+                        else fail "intLit")
+    <?> "integer literal"
 
--- | A floating-point literal.
+-- | A floating-point literal. Must be followed by whitespace or eof to prevent
+-- confusion with identifiers that begin with digits.
 floatLit :: Parser Double
 floatLit = Ap.signed Ap.double
+    <* (do
+        mnext <- Ap.peekChar
+        case mnext of
+            Nothing -> return () -- EOF, all good
+            Just c -> if (c == '}' || c == '#' || isSpace c)
+                        then return () -- space or comment follows
+                        else fail "intLit")
 
 -- | A date literal.
 --
@@ -253,6 +265,7 @@ dateLit :: Parser Date
 dateLit = Date <$> Ap.decimal
                <*> (Ap.char '.' *> Ap.decimal)
                <*> (Ap.char '.' *> Ap.decimal)
+    <?> "date literal"
 
 -- | A character within a string, possibly escaped. C escape sequences are
 -- supported, other than character references.
@@ -308,7 +321,7 @@ script customLhs customRhs = statement customLhs customRhs `Ap.sepBy` skipSpace
 lhs :: Parser lhs -> Parser (Lhs lhs)
 lhs custom = CustomLhs <$> custom
          <|> AtLhs <$> ("@" *> ident) -- guessing at the syntax here...
-         <|> GenericLhs <$> ident <*> Ap.option Nothing (Just <$> (":" *> ident))
+         <|> GenericLhs <$> ident <*> ident `Ap.sepBy'` ":"
          <|> IntLhs <$> Ap.decimal
     <?> "statement LHS"
 
@@ -333,11 +346,11 @@ operator = "=" *> pure OpEq
 rhs :: Parser lhs -> Parser rhs -> Parser (Rhs lhs rhs)
 rhs customLhs customRhs
           = (CustomRhs  <$> customRhs
-        <|> GenericRhs <$> ident <*> Ap.option Nothing (Just <$> (":" *> ident))
         <|> StringRhs   <$> stringLit
         <|> DateRhs     <$> dateLit
-        <|> FloatRhs    <$> floatLit
         <|> IntRhs      <$> intLit
+        <|> FloatRhs    <$> floatLit
+        <|> GenericRhs  <$> ident <*> Ap.many' (":" *> ident)
         <|> CompoundRhs <$> compoundRhs customLhs customRhs)
     <?> "statement RHS"
 
@@ -395,13 +408,13 @@ statement2doc customLhs customRhs (Statement lhs op rhs)
 lhs2doc :: (lhs -> Doc) -> Lhs lhs -> Doc
 lhs2doc customLhs (CustomLhs lhs) = customLhs lhs
 lhs2doc _         (AtLhs lhs) = Doc.strictText ("@" <> lhs)
-lhs2doc _         (GenericLhs s t) = Doc.strictText s <> maybe "" ((":" <>) . Doc.strictText) t
+lhs2doc _         (GenericLhs s ts) = Doc.strictText s <> mconcat (intersperse ":" (map Doc.strictText ts))
 lhs2doc _         (IntLhs lhs) = PP.text (TL.pack (show lhs))
 
 -- | Pretty-printer for a RHS, possibly with custom elements.
 rhs2doc :: (lhs -> Doc) -> (rhs -> Doc) -> Rhs lhs rhs -> Doc
 rhs2doc _ customRhs (CustomRhs rhs) = customRhs rhs
-rhs2doc _ _ (GenericRhs s t) = Doc.strictText s <> maybe "" ((":" <>) . Doc.strictText) t
+rhs2doc _ _ (GenericRhs s ts) = Doc.strictText s <> mconcat (map ((":" <>) . Doc.strictText) ts)
 rhs2doc _ _ (StringRhs rhs) = PP.text (TL.pack (show rhs))
 rhs2doc _ _ (IntRhs rhs) = PP.text (TL.pack (show rhs))
 rhs2doc _ _ (FloatRhs rhs) = Doc.pp_float rhs

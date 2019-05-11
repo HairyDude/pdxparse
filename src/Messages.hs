@@ -882,6 +882,8 @@ data ScriptMessage
     | MsgRemoveAdvisorAdmEffect
     | MsgDivorceConsortEffect
     | MsgADMTechAs {scriptMessageIcon :: Text, scriptMessageWho :: Text}
+    | MsgAddGovernmentReform {scriptMessageWhat :: Text}
+    | MsgAddCOTLevel {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
 
 -- | Whether to default to English localization.
 useEnglish :: [Text] -> Bool
@@ -5088,13 +5090,13 @@ instance RenderMessage Script ScriptMessage where
                 , _icon
                 , " "
                 , toMessage (colourNum True _amt)
-                , " Absolutism"
+                , " absolutism"
                 ]
         MsgMaxAbsolutism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
                 [ _icon
                 , " "
-                , toMessage (reducedNum (colourNumSign True) _amt)
+                , toMessage (colourNumSign True _amt)
                 , " Maximum absolutism"
                 ]
         MsgYearlyAbsolutism {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
@@ -5961,6 +5963,19 @@ instance RenderMessage Script ScriptMessage where
             -> "The currently employed administrative advisor leaves the country's court."
         MsgDivorceConsortEffect
             -> "Attempt to divorce the consort. The consort's family may be offended by this, spoiling relations, giving them a casus belli, or angering local nobles."
+        MsgAddGovernmentReform { scriptMessageWhat = _what }
+            -> mconcat
+                ["Enact government reform "
+                ,_what
+                ]
+        MsgAddCOTLevel { scriptMessageIcon = _icon, scriptMessageAmt = _amt }
+            -> mconcat
+                ["Gain a "
+                ,_icon
+                ," level "
+                ,toMessage (plainNum _amt)
+                ," Center of Trade"
+                ]
     renderMessage _ _ _ = error "Sorry, non-English localisation not yet supported."
 
 -- | Message paired with an indentation level.

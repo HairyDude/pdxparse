@@ -125,7 +125,7 @@ foldCompound funname s_tyname prefix extraArgs fieldspecs eval = do
                     ,maybe [| Nothing |] id def
                     -- Clause for addLine
                     ,clause [varP name_acc
-                            ,[p| Statement (GenericLhs $(litP (stringL (fieldName fieldspec))) Nothing)
+                            ,[p| Statement (GenericLhs $(litP (stringL (fieldName fieldspec))) [])
                                           OpEq
                                           $(viewP (varE 'toParam) (conP 'Just [varP name_x])) |]]
                             (normalB $ recUpdE (varE name_acc) [fieldExp rfname

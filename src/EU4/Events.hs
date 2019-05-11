@@ -62,7 +62,7 @@ parseEU4Events scripts = HM.unions . HM.elems <$> do
             traceM $ "Completely failed parsing events: " ++ T.unpack err
             return HM.empty
         Right eventsFilesOrErrors ->
-            flip HM.traverseWithKey eventsFilesOrErrors $ \sourceFile eevts ->
+            flip HM.traverseWithKey eventsFilesOrErrors $ \sourceFile eevts -> do
                 fmap (mkEvtMap . catMaybes) . forM eevts $ \case
                     Left err -> do
                         traceM $ "Error parsing events in " ++ sourceFile
@@ -93,7 +93,7 @@ writeEU4Events = do
 parseEU4Event :: (IsGameState (GameState g), MonadError Text m) =>
     GenericStatement -> PPT g m (Either Text (Maybe EU4Event))
 parseEU4Event (StatementBare _) = throwError "bare statement at top level"
-parseEU4Event [pdx| %left = %right |] = case right of
+parseEU4Event stmt@[pdx| %left = %right |] = case right of
     CompoundRhs parts -> case left of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
@@ -191,9 +191,9 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
             _ -> return evt { eu4evt_trigger = Just trigger_script }
         _ -> throwError "bad event trigger"
     eventAddSection' evt stmt@[pdx| is_triggered_only = %rhs |] = case rhs of
-        GenericRhs "yes" Nothing -> return evt { eu4evt_is_triggered_only = Just True }
+        GenericRhs "yes" [] -> return evt { eu4evt_is_triggered_only = Just True }
         -- no is the default, so I don't think this is ever used
-        GenericRhs "no" Nothing -> return evt { eu4evt_is_triggered_only = Just False }
+        GenericRhs "no" [] -> return evt { eu4evt_is_triggered_only = Just False }
         _ -> throwError "bad trigger"
     eventAddSection' evt stmt@[pdx| mean_time_to_happen = %rhs |] = case rhs of
         CompoundRhs mtth -> return evt { eu4evt_mean_time_to_happen = Just mtth }
@@ -209,8 +209,8 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
     eventAddSection' evt stmt@[pdx| fire_only_once = %_ |] = return evt -- do nothing
     eventAddSection' evt stmt@[pdx| major = %_ |] = return evt -- do nothing
     eventAddSection' evt stmt@[pdx| hidden = %rhs |]
-        | GenericRhs "yes" Nothing <- rhs = return evt { eu4evt_hide_window = True }
-        | GenericRhs "no"  Nothing <- rhs = return evt { eu4evt_hide_window = False }
+        | GenericRhs "yes" [] <- rhs = return evt { eu4evt_hide_window = True }
+        | GenericRhs "no"  [] <- rhs = return evt { eu4evt_hide_window = False }
     eventAddSection' evt stmt@[pdx| is_mtth_scaled_to_size = %_ |] = return evt -- do nothing (XXX)
     eventAddSection' evt stmt@[pdx| after = @scr |] = return evt { eu4evt_after = Just scr }
     eventAddSection' evt stmt@[pdx| $label = %_ |] =

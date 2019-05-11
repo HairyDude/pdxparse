@@ -192,9 +192,9 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
             _ -> throwError "bad event trigger"
     eventAddSection' evt stmt@[pdx| is_triggered_only = %rhs |] =
         case rhs of
-            GenericRhs "yes" Nothing -> return evt { hoi4evt_is_triggered_only = Just True }
+            GenericRhs "yes" [] -> return evt { hoi4evt_is_triggered_only = Just True }
             -- no is the default, so I don't think this is ever used
-            GenericRhs "no" Nothing -> return evt { hoi4evt_is_triggered_only = Just False }
+            GenericRhs "no" [] -> return evt { hoi4evt_is_triggered_only = Just False }
             _ -> throwError "bad trigger"
     eventAddSection' evt stmt@[pdx| mean_time_to_happen = %rhs |] =
         case rhs of
@@ -219,11 +219,11 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
     eventAddSection' evt stmt@[pdx| is_mtth_scaled_to_size = %_ |] =
         return evt -- do nothing (XXX)
     eventAddSection' evt stmt@[pdx| hidden = %rhs |]
-        | GenericRhs "yes" Nothing <- rhs = return evt { hoi4evt_hide_window = True }
-        | GenericRhs "no"  Nothing <- rhs = return evt { hoi4evt_hide_window = False }
+        | GenericRhs "yes" [] <- rhs = return evt { hoi4evt_hide_window = True }
+        | GenericRhs "no"  [] <- rhs = return evt { hoi4evt_hide_window = False }
     eventAddSection' evt stmt@[pdx| hide_window = %rhs |]
-        | GenericRhs "yes" Nothing <- rhs = return evt { hoi4evt_hide_window = True }
-        | GenericRhs "no"  Nothing <- rhs = return evt { hoi4evt_hide_window = False }
+        | GenericRhs "yes" [] <- rhs = return evt { hoi4evt_hide_window = True }
+        | GenericRhs "no"  [] <- rhs = return evt { hoi4evt_hide_window = False }
     eventAddSection' evt stmt@[pdx| show_sound = %_ |] =
         return evt -- do nothing
     eventAddSection' evt stmt@[pdx| location = %rhs |] =

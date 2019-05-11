@@ -109,7 +109,7 @@ parseEU4OpinionModifier [pdx| %left = %right |] = case right of
         CustomLhs _ -> throwError "internal error: custom lhs"
         IntLhs _ -> throwError "int lhs at top level"
         AtLhs _ -> return (Right Nothing)
-        GenericLhs id Nothing -> withCurrentFile $ \file -> do
+        GenericLhs id [] -> withCurrentFile $ \file -> do
             locid <- getGameL10nIfPresent id
             mmod <- hoistErrors $ foldM opinionModifierAddSection
                                         (Just (newEU4OpinionModifier id locid file))

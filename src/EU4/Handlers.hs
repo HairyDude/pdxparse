@@ -1101,7 +1101,7 @@ hasOpinion stmt = preStatement stmt
 rebel_loc :: HashMap Text (Text,Text)
 rebel_loc = HM.fromList
         [("polish_noble_rebels",    ("Magnates", "magnates"))
-        ,("lollard_rebels",         ("Lollard zealots", "lollards"))
+        ,("lollard_rebels",         ("Lollard heretics", "lollards"))
         ,("catholic_rebels",        ("Catholic zealots", "catholic zealots"))
         ,("protestant_rebels",      ("Protestant zealots", "protestant zealots"))
         ,("reformed_rebels",        ("Reformed zealots", "reformed zealots"))
@@ -1130,7 +1130,7 @@ rebel_loc = HM.fromList
         ,("ikko_ikki_rebels",       ("Ikko-Ikkis", "ikko-ikkis"))
         ,("ronin_rebels",           ("Ronin rebels", "ronin"))
         ,("reactionary_rebels",     ("Reactionaries", "reactionaries"))
-        ,("anti_tax_rebels",        ("Peasant rabble", "peasants"))
+        ,("anti_tax_rebels",        ("Peasants", "peasants"))
         ,("revolutionary_rebels",   ("Revolutionaries", "revolutionaries"))
         ,("heretic_rebels",         ("Heretics", "heretics"))
         ,("religious_rebels",       ("Religious zealots", "religious zealots"))
@@ -1141,7 +1141,7 @@ rebel_loc = HM.fromList
         ,("pretender_rebels",       ("Pretender rebels", "pretender"))
         ,("colonial_patriot_rebels", ("Colonial patriot", "colonial patriot")) -- ??
         ,("particularist_rebels",   ("Particularist rebels", "particularist"))
-        ,("nationalist_rebels",   ("Nationalist rebels", "separatists"))
+        ,("nationalist_rebels",     ("Separatist rebels", "separatists"))
         ]
 
 -- Spawn a rebel stack.
@@ -1358,7 +1358,7 @@ defineAdvisor stmt@[pdx| %_ = @scr |]
         addLine da [pdx| $lhs = %rhs |] = case T.map toLower lhs of
             "type" ->
                 let mthe_type = case rhs of
-                        GenericRhs a_type Nothing -> Just a_type
+                        GenericRhs a_type [] -> Just a_type
                         StringRhs a_type -> Just a_type
                         _ -> Nothing
                 in (\mtype_loc -> da
@@ -1367,13 +1367,13 @@ defineAdvisor stmt@[pdx| %_ = @scr |]
                    <$> maybe (return Nothing) getGameL10nIfPresent mthe_type
             "name" -> return $
                 let mthe_name = case rhs of
-                        GenericRhs a_name Nothing -> Just a_name
+                        GenericRhs a_name [] -> Just a_name
                         StringRhs a_name -> Just a_name
                         _ -> Nothing
                 in da { da_name = mthe_name }
             "discount" -> return $
                 let yn = case rhs of
-                        GenericRhs yn' Nothing -> Just yn'
+                        GenericRhs yn' [] -> Just yn'
                         StringRhs yn' -> Just yn'
                         _ -> Nothing
                 in if yn == Just "yes" then da { da_discount = Just True }
@@ -1387,7 +1387,7 @@ defineAdvisor stmt@[pdx| %_ = @scr |]
             "skill" -> return $ da { da_skill = floatRhs rhs }
             "female" -> return $
                 let yn = case rhs of
-                        GenericRhs yn' Nothing -> Just yn'
+                        GenericRhs yn' [] -> Just yn'
                         StringRhs yn' -> Just yn'
                         _ -> Nothing
                 in if yn == Just "yes" then da { da_female = Just True }
