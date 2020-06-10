@@ -321,7 +321,7 @@ script customLhs customRhs = statement customLhs customRhs `Ap.sepBy` skipSpace
 lhs :: Parser lhs -> Parser (Lhs lhs)
 lhs custom = CustomLhs <$> custom
          <|> AtLhs <$> ("@" *> ident) -- guessing at the syntax here...
-         <|> GenericLhs <$> ident <*> ident `Ap.sepBy'` ":"
+         <|> GenericLhs <$> ident <*> Ap.option [] (":" *> ident `Ap.sepBy'` ":")
          <|> IntLhs <$> Ap.decimal
     <?> "statement LHS"
 
