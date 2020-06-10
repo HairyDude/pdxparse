@@ -185,6 +185,7 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
 --    eventAddSection' evt stmt@[pdx| picture = %rhs |] = case textRhs rhs of
 --        Just pic -> return evt { eu4evt_picture = Just pic }
 --        _ -> throwError "bad picture"
+    eventAddSection' evt stmt@[pdx| goto = %rhs |] = return evt
     eventAddSection' evt stmt@[pdx| trigger = %rhs |] = case rhs of
         CompoundRhs trigger_script -> case trigger_script of
             [] -> return evt -- empty, treat as if it wasn't there
@@ -208,6 +209,7 @@ eventAddSection mevt stmt = sequence (eventAddSection' <$> mevt <*> pure stmt) w
         _ -> throwError "bad option"
     eventAddSection' evt stmt@[pdx| fire_only_once = %_ |] = return evt -- do nothing
     eventAddSection' evt stmt@[pdx| major = %_ |] = return evt -- do nothing
+    eventAddSection' evt stmt@[pdx| major_trigger = %_ |] = return evt -- do nothing
     eventAddSection' evt stmt@[pdx| hidden = %rhs |]
         | GenericRhs "yes" [] <- rhs = return evt { eu4evt_hide_window = True }
         | GenericRhs "no"  [] <- rhs = return evt { eu4evt_hide_window = False }

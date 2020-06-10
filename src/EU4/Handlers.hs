@@ -113,7 +113,7 @@ import MessageTools (plural)
 import QQ -- everything
 import SettingsTypes ( PPT, IsGameData (..), GameData (..), IsGameState (..), GameState (..)
                      , indentUp, indentDown, withCurrentIndent, withCurrentIndentZero, alsoIndent, alsoIndent'
-                     , getGameL10n, getGameL10nIfPresent, getGameL10nDefault
+                     , getGameL10n, getGameL10nIfPresent, getGameL10nDefault, withCurrentFile
                      , unfoldM, unsnoc )
 import Templates
 import {-# SOURCE #-} EU4.Common (pp_script, ppMany, ppOne)
