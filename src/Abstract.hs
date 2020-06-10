@@ -63,7 +63,7 @@ import Control.Monad (void)
 import qualified Data.Foldable as F
 import Data.Monoid (Monoid (..), (<>))
 
-import Data.Char (isAlpha, isAlphaNum, isSpace)
+import Data.Char (isAlpha, isAlphaNum, isDigit, isSpace)
 import Data.List (intersperse)
 
 import Data.Text (Text)
@@ -217,8 +217,12 @@ restOfLine = (Ap.many1' Ap.endOfLine >> return "")
 -- | An identifier, or atom. An atom can start with a letter, an underscore or
 -- a number and continue with letters, numbers, underscores, and full stops.
 ident :: Parser Text
-ident = (<>) <$> (T.singleton <$> (Ap.satisfy (\c -> c  == '_' || isAlphaNum c)))
-             <*> Ap.takeWhile (\c -> c `elem` ['_','.'] || isAlphaNum c)
+ident = do
+        res <- (<>) <$> (T.singleton <$> (Ap.satisfy (\c -> c  == '_' || isAlphaNum c)))
+                    <*> Ap.takeWhile (\c -> c `elem` ['_','.'] || isAlphaNum c)
+        if T.all isDigit res
+            then fail "ident: numeric identifier"
+            else return res
     <?> "identifier"
 
 -- | A string literal: any number of characters other than a double quotation
