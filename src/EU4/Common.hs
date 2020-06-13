@@ -1043,6 +1043,7 @@ handlersMisc = Tr.fromList
 handlersIgnored :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersIgnored = Tr.fromList
         [("custom_tooltip", const (plainMsg "(custom tooltip - delete this line)"))
+        ,("goto"          , const (plainMsg "(goto button - delete this line)"))
         ,("tooltip"       , const (plainMsg "(explanatory tooltip - delete this line)"))
         ]
 
