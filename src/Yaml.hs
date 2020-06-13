@@ -201,7 +201,7 @@ messages = HM.fromList <$> message `Ap.sepBy` Ap.many1 newline
 -- single space at the start.
 message :: Parser (Text, LocEntry)
 message = (,) <$> (Ap.string " "
-               *> liftA2 T.cons (Ap.satisfy (Ap.inClass "a-zA-Z-"))
+               *> liftA2 T.cons (Ap.satisfy (Ap.inClass "a-zA-Z._0-9-"))
                                 (Ap.takeWhile (Ap.inClass "a-zA-Z._0-9-")))
               <*> (LocEntry <$> (Ap.char ':' *> Ap.decimal) -- version
                             <*> (hspace *> stringLit))
