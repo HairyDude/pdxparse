@@ -642,6 +642,7 @@ handlersLocRhs = Tr.fromList
         ,("region"                , withLocAtom MsgRegionIs)
         ,("remove_advisor"        , withLocAtom MsgLoseAdvisor)
         ,("rename_capital"        , withLocAtom MsgRenameCapital) -- will usually fail localization
+        ,("superregion"           , withLocAtom MsgSuperRegionIs)
         ]
 
 -- | Handlers for statements whose RHS is a province ID
@@ -851,6 +852,7 @@ handlersYesNo = Tr.fromList
         ,("is_elector"                  , withBool MsgIsElector)
         ,("is_emperor"                  , withBool MsgIsEmperor)
         ,("is_female"                   , withBool MsgIsFemale)
+        ,("is_in_capital_area"          , withBool MsgIsInCapitalArea)
         ,("is_in_league_war"            , withBool MsgIsInLeagueWar)
         ,("is_lesser_in_union"          , withBool MsgIsLesserInUnion)
         ,("is_looted"                   , withBool MsgIsLooted)
@@ -863,6 +865,7 @@ handlersYesNo = Tr.fromList
         ,("is_reformation_center"       , withBool MsgIsCenterOfReformation)
         ,("is_religion_reformed"        , withBool MsgReligionReformed)
         ,("is_sea"                      , withBool MsgIsSea) -- province or trade node
+        ,("is_state"                    , withBool MsgIsState)
         ,("is_statists_in_power"        , withBool MsgIsStatistsInPower)
         ,("is_subject"                  , withBool MsgIsSubject)
         ,("is_tribal"                   , withBool MsgIsTribal)

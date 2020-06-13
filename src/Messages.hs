@@ -248,6 +248,7 @@ data ScriptMessage
     | MsgPrimaryCultureIs {scriptMessageWhat :: Text}
     | MsgPrimaryCultureIsAs {scriptMessageWhat :: Text}
     | MsgRegionIs {scriptMessageWhat :: Text}
+    | MsgSuperRegionIs {scriptMessageWhat :: Text}
     | MsgLoseAdvisor {scriptMessageWho :: Text}
     | MsgRemoveFromEstate {scriptMessageIcon :: Text, scriptMessageWhom :: Text}
     | MsgDisasterOngoing {scriptMessageWhat :: Text}
@@ -390,6 +391,7 @@ data ScriptMessage
     | MsgIsColony {scriptMessageYn :: Bool}
     | MsgIsEmperor {scriptMessageYn :: Bool}
     | MsgIsFemale {scriptMessageYn :: Bool}
+    | MsgIsInCapitalArea {scriptMessageYn :: Bool}
     | MsgIsLesserInUnion {scriptMessageYn :: Bool}
     | MsgIsLooted {scriptMessageYn :: Bool}
     | MsgIsOverseas {scriptMessageYn :: Bool}
@@ -398,6 +400,7 @@ data ScriptMessage
     | MsgIsSubject {scriptMessageYn :: Bool}
     | MsgPapacyIsActive {scriptMessageYn :: Bool}
     | MsgHasBeenPlayer {scriptMessageYn :: Bool}
+    | MsgIsState {scriptMessageYn :: Bool}
     | MsgIsStatistsInPower {scriptMessageYn :: Bool}
     | MsgIsOrangistsInPower {scriptMessageYn :: Bool}
     | MsgGainCB {scriptMessageCbtype :: Text, scriptMessageWhom :: Text}
@@ -1834,6 +1837,12 @@ instance RenderMessage Script ScriptMessage where
                 , _what
                 , " region"
                 ]
+        MsgSuperRegionIs {scriptMessageWhat = _what}
+            -> mconcat
+                [ "Province is in "
+                , _what
+                , " [[super-region]]"
+                ]
         MsgLoseAdvisor {scriptMessageWho = _who}
             -> mconcat
                 [ "Advisor "
@@ -2721,6 +2730,12 @@ instance RenderMessage Script ScriptMessage where
                 [ "Ruler is "
                 , toMessage (ifThenElseT _yn "female" "male")
                 ]
+        MsgIsInCapitalArea {scriptMessageYn = _yn}
+            -> mconcat
+                [ "Is"
+                , toMessage (ifThenElseT _yn "" " ''not''")
+                , " in the [[Capital area]] of its owner"
+                ]
         MsgIsLesserInUnion {scriptMessageYn = _yn}
             -> mconcat
                 [ "Is"
@@ -2768,6 +2783,12 @@ instance RenderMessage Script ScriptMessage where
                 [ "Has"
                 , toMessage (ifThenElseT _yn "" " ''never''")
                 , " been player-controlled"
+                ]
+        MsgIsState {scriptMessageYn = _yn}
+            -> mconcat
+                [ "Is"
+                , toMessage (ifThenElseT _yn "" " ''not''")
+                , " in a state"
                 ]
         MsgIsStatistsInPower {scriptMessageYn = _yn}
             -> mconcat
