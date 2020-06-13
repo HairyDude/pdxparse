@@ -330,7 +330,7 @@ handlersNumericIcons = Tr.fromList
         ,("local_missionary_strength", numericIcon "local missionary strength" MsgLocalMissionaryStrength)
         ,("local_monthly_devastation", numericIcon "local monthly devastation" MsgLocalMonthlyDevastation)
         ,("local_production_efficiency", numericIcon "local production efficiency" MsgLocalProdEff)
-        ,("local_state_maintanance_modifier", numericIcon "local state maintanance modifier" MsgLocalStateMaintMod)
+        ,("local_state_maintenance_modifier", numericIcon "local state maintenance modifier" MsgLocalStateMaintMod)
         ,("local_tax_modifier"       , numericIcon "local tax modifier" MsgLocalTaxMod)
         ,("local_unrest"             , numericIcon "local unrest" MsgLocalUnrest)
         ,("manpower"                 , numericIcon "manpower" MsgManpower)
