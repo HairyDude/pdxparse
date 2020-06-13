@@ -177,6 +177,7 @@ data ScriptMessage
     | MsgAllNeighborCountries
     | MsgAllSubjectCountries
     | MsgElse
+    | MsgElseIf
     | MsgEveryActiveTradeNode
     | MsgEveryAlly
     | MsgEveryCoreCountry
@@ -1584,6 +1585,8 @@ instance RenderMessage Script ScriptMessage where
             -> "Province controller"
         MsgElse
             -> "Else:"
+        MsgElseIf
+            -> "Else, if:"
         MsgAllCountries
             -> "All countries in the world:"
         MsgAllNeighborCountries

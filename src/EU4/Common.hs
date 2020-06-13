@@ -578,6 +578,7 @@ handlersCompound = Tr.fromList
         ,("colonial_parent"         , scope EU4Country   . compoundMessage MsgColonialParent)
         ,("controller"              , scope EU4Country   . compoundMessage MsgController)
         ,("else"                    ,                      compoundMessage MsgElse)
+        ,("else_if"                 ,                      compoundMessage MsgElseIf)
         ,("emperor"                 , scope EU4Country   . compoundMessage MsgEmperor)
         ,("every_active_trade_node" , scope EU4TradeNode . compoundMessage MsgEveryActiveTradeNode)
         ,("every_ally"              , scope EU4TradeNode . compoundMessage MsgEveryAlly)
