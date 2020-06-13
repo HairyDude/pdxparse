@@ -728,6 +728,7 @@ handlersSimpleIcon = Tr.fromList
         ,("create_advisor"          , withLocAtomIcon MsgCreateAdvisor)
         ,("current_age"             , withLocAtomIcon MsgCurrentAge)
         ,("dominant_religion"       , withLocAtomIcon MsgDominantReligion)
+        ,("enable_religion"         , withLocAtomIcon MsgEnableReligion)
         ,("has_building"            , withLocAtomIcon MsgHasBuilding)
         ,("has_idea_group"          , withLocAtomIcon MsgHasIdeaGroup) -- FIXME: icon fails
         ,("full_idea_group"         , withLocAtomIcon MsgFullIdeaGroup)
