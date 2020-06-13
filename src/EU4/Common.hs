@@ -608,7 +608,6 @@ handlersCompound = Tr.fromList
         ,("random_empty_neighbor_province", scope EU4Province . compoundMessage MsgRandomEmptyNeighborProvince)
         ,("random_heretic_province"    , scope EU4Province  . compoundMessage MsgRandomHereticProvince)
         ,("random_known_country"    , scope EU4Country   . compoundMessage MsgRandomKnownCountry)
-        ,("random_list"             ,                      compoundMessage MsgRandom)
         ,("random_neighbor_country" , scope EU4Country   . compoundMessage MsgRandomNeighborCountry)
         ,("random_neighbor_province", scope EU4Province  . compoundMessage MsgRandomNeighborProvince)
         ,("random_owned_province"   , scope EU4Province  . compoundMessage MsgRandomOwnedProvince)
@@ -1016,6 +1015,7 @@ handlersIdeaGroups = Tr.fromList
 handlersMisc :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersMisc = Tr.fromList
         [("random", random)
+        ,("random_list", randomList)
         -- Special
         ,("add_core"            , addCore)
         ,("add_manpower"        , gainMen)
