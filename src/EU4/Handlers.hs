@@ -2127,17 +2127,16 @@ withFlagOrProvince _ _ stmt = preStatement stmt
 withFlagOrProvinceEU4Scope :: (EU4Info g, Monad m) =>
     (Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
+        -> (Text -> ScriptMessage)
+        -> (Text -> ScriptMessage)
         -> StatementHandler g m
-withFlagOrProvinceEU4Scope countryMsg geogMsg stmt = do
+withFlagOrProvinceEU4Scope bothCountryMsg scopeCountryParamGeogMsg scopeGeogParamCountryMsg bothGeogMsg stmt = do
     mscope <- getCurrentScope
     -- If no scope, assume country.
     if fromMaybe False (isGeographic <$> mscope) then
-        -- RHS is tag or pronoun - "Has been discovered by <whom>"
-        withFlag geogMsg stmt
+        withFlagOrProvince scopeGeogParamCountryMsg bothGeogMsg stmt
     else
-        -- RHS is tag, pronoun or province ID
-        -- Current usages (i.e. has_discovered) treat them all the same.
-        withFlagOrProvince countryMsg countryMsg stmt
+        withFlagOrProvince bothCountryMsg scopeCountryParamGeogMsg stmt
 
 tradeMod :: (EU4Info g, Monad m) => StatementHandler g m
 tradeMod stmt@[pdx| %_ = ?_ |]

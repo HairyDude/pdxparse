@@ -346,6 +346,7 @@ data ScriptMessage
     | MsgGainPermanentClaimProvince {scriptMessageWhere :: Text}
     | MsgHasDiscovered {scriptMessageWhomOrWhere :: Text}
     | MsgDiscoveredBy {scriptMessageWhom :: Text}
+    | MsgSameContinent {scopeIsCountry :: Bool, paramIsCountry :: Bool, scriptMessageWhomOrWhere :: Text}
     | MsgInherit {scriptMessageWhom :: Text}
     | MsgNeighbors {scriptMessageWhom :: Text}
     | MsgIsRival {scriptMessageWhom :: Text}
@@ -2484,6 +2485,13 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ "Has been discovered by "
                 , _whom
+                ]
+        MsgSameContinent {scopeIsCountry = _scope, paramIsCountry = _param, scriptMessageWhomOrWhere = _whomOrWhere}
+            -> mconcat
+                [ ifThenElseT _scope "The capital is" "Is"
+                , " on the same continent as "
+                , ifThenElseT _param "the capital of " ""
+                , _whomOrWhere
                 ]
         MsgInherit {scriptMessageWhom = _whom}
             -> mconcat
