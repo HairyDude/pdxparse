@@ -524,6 +524,7 @@ data ScriptMessage
     | MsgProdEffBonus {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainReligiousCB
     | MsgMissionaries {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
+    | MsgMissionaryMaintenanceCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgStabilityCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgMissionaryStrength {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgToleranceHeathen {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -3802,6 +3803,13 @@ instance RenderMessage Script ScriptMessage where
                 , " "
                 , toMessage (colourNumSign True _amt)
                 , " Missionaries"
+                ]
+        MsgMissionaryMaintenanceCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
+            -> mconcat
+                [ _icon
+                , " "
+                , toMessage (colourNumSign True _amt)
+                , " Missionary Maintenance Cost"
                 ]
         MsgStabilityCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat

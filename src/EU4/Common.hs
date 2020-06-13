@@ -483,6 +483,7 @@ handlersNumericIcons = Tr.fromList
         ,("merchants"                         , numericIcon "merchants" MsgMerchants)
         ,("mil_tech_cost_modifier"            , numericIcon "adm tech cost modifier" MsgMILTechCost)
         ,("missionaries"                      , numericIcon "missionaries" MsgMissionaries)
+        ,("missionary_maintenance_cost"       , numericIcon "missionary maintenance cost" MsgMissionaryMaintenanceCost)
         ,("monthly_fervor_increase"           , numericIcon "monthly fervor" MsgMonthlyFervor)
         ,("naval_attrition"                   , numericIcon "naval attrition" MsgNavalAttrition)
         ,("naval_forcelimit_modifier"         , numericIcon "naval forcelimit" MsgNavalForcelimitMod)
