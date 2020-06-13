@@ -636,6 +636,7 @@ handlersLocRhs = Tr.fromList
         ,("has_disaster"          , withLocAtom MsgDisasterOngoing)
         ,("has_great_project"     , withLocAtom MsgConstructingGreatProject)
         ,("has_idea"              , withLocAtom MsgHasIdea)
+        ,("has_reform"            , withLocAtom MsgHasReform)
         ,("has_terrain"           , withLocAtom MsgHasTerrain)
         ,("kill_advisor"          , withLocAtom MsgAdvisorDies)
         ,("region"                , withLocAtom MsgRegionIs)

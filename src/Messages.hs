@@ -528,6 +528,7 @@ data ScriptMessage
     | MsgIsLeagueEnemy {scriptMessageWhom :: Text}
     | MsgReligionYears {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageYears :: Double}
     | MsgHasIdea {scriptMessageWhat :: Text}
+    | MsgHasReform {scriptMessageWhat :: Text}
     | MsgReligionProvinces {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageAmt :: Double}
     | MsgGoodsProvinces {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageAmt :: Double}
     | MsgHasAristocraticIdea {scriptMessageName :: Text, scriptMessageNum :: Int}
@@ -3731,6 +3732,12 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ "Has idea "
                 , toMessage (iquotes _what)
+                ]
+        MsgHasReform {scriptMessageWhat = _what}
+            -> mconcat
+                [ "Has enacted the "
+                , toMessage (iquotes _what)
+                , " government reform"
                 ]
         MsgReligionProvinces {scriptMessageIcon = _icon, scriptMessageName = _name, scriptMessageAmt = _amt}
             -> mconcat
