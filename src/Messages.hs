@@ -467,6 +467,7 @@ data ScriptMessage
     | MsgIsStrongestTradePower {scriptMessageWho :: Text}
     | MsgAreaIs {scriptMessageWhat :: Text}
     | MsgDominantReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
+    | MsgEnableReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgHREReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgSetHREReligionLocked {scriptMessageYn :: Bool}
     | MsgSetHREReligion {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
@@ -3428,6 +3429,14 @@ instance RenderMessage Script ScriptMessage where
                 , _icon
                 , " "
                 , _what
+                ]
+        MsgEnableReligion {scriptMessageIcon = _icon, scriptMessageWhat = _what}
+            -> mconcat
+                [ "Enable the "
+                , _icon
+                , " "
+                , _what
+                , " religion"
                 ]
         MsgHREReligion {scriptMessageIcon = _icon, scriptMessageWhat = _what}
             -> mconcat
