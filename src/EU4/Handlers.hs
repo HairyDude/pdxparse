@@ -36,6 +36,7 @@ module EU4.Handlers (
     ,   numericIcon
     ,   numericIconLoc
     ,   numericIconBonus
+    ,   tryLoc
     ,   tryLocAndIcon
     ,   textValue
     ,   textAtom
@@ -625,6 +626,14 @@ scriptIconTable = HM.fromList
     ,("spy_ideas", "espionage")
     ,("tengri_pagan_reformed", "tengri")
     ,("trade_ideas", "trade")
+    -- religious schools
+    ,("hanafi_school", "hanafi")
+    ,("hanbali_school", "hanbali")
+    ,("maliki_school", "maliki")
+    ,("shafii_school", "shafii")
+    ,("ismaili_school", "ismaili")
+    ,("jafari_school", "jafari")
+    ,("zaidi_school", "zaidi")
     ]
 
 -- Given a script atom, return the corresponding icon key, if any.

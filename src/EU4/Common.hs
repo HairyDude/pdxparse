@@ -100,6 +100,7 @@ ppHandlers = foldl' Tr.unionL Tr.empty
     , handlersSignedNumeric
     , handlersNumProvinces
     , handlersTextValue
+    , handlersTextAtom
     , handlersSpecialComplex
     , handlersRebels
     , handlersIdeaGroups
@@ -833,6 +834,7 @@ handlersYesNo = Tr.fromList
         ,("has_port"                    , withBool MsgHasPort)
         ,("has_seat_in_parliament"      , withBool MsgHasSeatInParliament)
         ,("has_regency"                 , withBool MsgIsInRegency)
+        ,("has_religious_school"        , withBool MsgHasReligiousSchool)
         ,("has_siege"                   , withBool MsgUnderSiege)
         ,("has_secondary_religion"      , withBool MsgHasSecondaryReligion)
         ,("has_truce"                   , withBool MsgHasTruce)
@@ -962,6 +964,13 @@ handlersTextValue = Tr.fromList
         ,("had_ruler_flag"              , textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLocAndIcon)
         ,("had_ruler_flag"              , textValue "flag" "days" MsgHadRulerFlag MsgHadRulerFlag tryLocAndIcon)
         ,("num_of_religion"             , textValue "religion" "value" MsgNumOfReligion MsgNumOfReligion tryLocAndIcon)
+        ]
+
+-- | Handlers for text/atom pairs
+handlersTextAtom :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersTextAtom = Tr.fromList
+        [("religious_school", textAtom "school" "group" MsgReligiousSchool tryLoc)
+        ,("set_religious_school", textAtom "school" "group" MsgSetReligiousSchool tryLoc)
         ]
 
 -- | Handlers for special complex statements

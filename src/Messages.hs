@@ -511,6 +511,8 @@ data ScriptMessage
     | MsgProvince {scriptMessageWhere :: Text}
     | MsgTechGroup {scriptMessageIcon :: Text, scriptMessageName :: Text}
     | MsgNumOfReligion {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageAmt :: Double}
+    | MsgReligiousSchool {scriptSchoolIcon :: Text, scriptSchoolName :: Text, scriptGroupName :: Text}
+    | MsgSetReligiousSchool {scriptSchoolIcon :: Text, scriptSchoolName :: Text, scriptGroupName :: Text}
     | MsgIsStrongestTradePower {scriptMessageWho :: Text}
     | MsgAreaIs {scriptMessageWhat :: Text}
     | MsgAreaIsAs {scriptMessageWhat :: Text}
@@ -641,6 +643,7 @@ data ScriptMessage
     | MsgHasActivePolicy {scriptMessageWhat :: Text}
     | MsgHasDucats {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgHasParliament {scriptMessageYn :: Bool}
+    | MsgHasReligiousSchool {scriptMessageYn :: Bool}
     | MsgHasTruce {scriptMessageYn :: Bool}
     | MsgNumRebelControlledProvinces {scriptMessageAmt :: Double}
     | MsgFortLevel {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -3642,6 +3645,26 @@ instance RenderMessage Script ScriptMessage where
                 , _name
                 , " religion"
                 ]
+        MsgSetReligiousSchool {scriptSchoolIcon = _icon, scriptSchoolName = _name, scriptGroupName = _group}
+            -> mconcat
+                [ "The country begins following the "
+                , toMessage _group
+                , " "
+                , toMessage _icon
+                , " "
+                , toMessage _name
+                , " religious school"
+                ]
+        MsgReligiousSchool {scriptSchoolIcon = _icon, scriptSchoolName = _name, scriptGroupName = _group}
+            -> mconcat
+                [ "Has the "
+                , toMessage _group
+                , " "
+                , toMessage _icon
+                , " "
+                , toMessage _name
+                , " religious school"
+                ]
         MsgIsStrongestTradePower {scriptMessageWho = _who}
             -> mconcat
                 [ _who
@@ -4456,6 +4479,12 @@ instance RenderMessage Script ScriptMessage where
                 [ "The country "
                 , toMessage (ifThenElseT _yn "has" "does ''not'' have")
                 , " a parliament"
+                ]
+        MsgHasReligiousSchool {scriptMessageYn = _yn}
+            -> mconcat
+                [ "The country "
+                , toMessage (ifThenElseT _yn "has" "does ''not'' have")
+                , " a Religious School"
                 ]
         MsgHasTruce {scriptMessageYn = _yn}
             -> mconcat
