@@ -558,6 +558,7 @@ data ScriptMessage
     | MsgBlockadeEfficiency {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainSeaRepair
     | MsgPrimitives {scriptMessageYn :: Bool}
+    | MsgRulerIsForeigner {scriptMessageYn :: Bool}
     | MsgGlobalTaxModifier {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgBuildCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgYearlyInflationReduction {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -684,6 +685,7 @@ data ScriptMessage
     | MsgFemaleEmperorAllowed {scriptMessageYn :: Bool}
     | MsgImperialAuthority {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgHasFemaleHeir {scriptMessageYn :: Bool}
+    | MsgHasForeignHeir {scriptMessageYn :: Bool}
     | MsgPiety {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgIsInTutorial {scriptMessageYn :: Bool}
     | MsgGainFervor {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -3929,6 +3931,12 @@ instance RenderMessage Script ScriptMessage where
                 , toMessage (ifThenElseT _yn "" " ''not''")
                 , " primitive"
                 ]
+        MsgRulerIsForeigner {scriptMessageYn = _yn}
+            -> mconcat
+                [ "Ruler is"
+                , toMessage (ifThenElseT _yn "" " ''not''")
+                , " foreign"
+                ]
         MsgGlobalTaxModifier {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
                 [ _icon
@@ -4695,6 +4703,11 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
                 , " a female heir"
+                ]
+        MsgHasForeignHeir {scriptMessageYn = _yn}
+            -> mconcat
+                [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
+                , " a foreign heir"
                 ]
         MsgPiety {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat

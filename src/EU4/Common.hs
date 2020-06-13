@@ -821,6 +821,7 @@ handlersYesNo = Tr.fromList
         ,("has_cardinal"                , withBool MsgHasCardinal)
         ,("has_factions"                , withBool MsgHasFactions)
         ,("has_female_heir"             , withBool MsgHasFemaleHeir)
+        ,("has_foreign_heir"            , withBool MsgHasForeignHeir)
         ,("has_heir"                    , withBool MsgHasHeir)
         ,("has_missionary"              , withBool MsgHasMissionary)
         ,("has_owner_culture"           , withBool MsgHasOwnerCulture)
@@ -869,6 +870,7 @@ handlersYesNo = Tr.fromList
         ,("normal_or_historical_nations", withBool MsgNormalOrHistoricalNations)
         ,("papacy_active"               , withBool MsgPapacyIsActive)
         ,("primitives"                  , withBool MsgPrimitives)
+        ,("ruler_is_foreigner"          , withBool MsgRulerIsForeigner)
         ,("set_hre_religion_locked"     , withBool MsgSetHREReligionLocked)
         ,("set_in_empire"               , withBool MsgSetInEmpire)
         ,("unit_in_siege"               , withBool MsgUnderSiege) -- duplicate?
