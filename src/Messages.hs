@@ -495,7 +495,10 @@ data ScriptMessage
     | MsgNewRulerDip {scriptMessageFixed :: Bool, scriptMessageAmt :: Double}
     | MsgNewRulerMil {scriptMessageFixed :: Bool, scriptMessageAmt :: Double}
     | MsgNewRulerClaim {scriptMessageAmt :: Double}
-    | MsgNewRulerFixed {scriptMessageAdm :: Double, scriptMessageDip :: Double, scriptMessageMil :: Double}
+    | MsgNewRulerCulture {scriptMessageText :: Text}
+    | MsgNewRulerCultureAs {scriptMessageText :: Text}
+    | MsgNewRulerReligion {scriptMessageIcon :: Text, scriptMessageText :: Text}
+    | MsgNewRulerReligionAs {scriptMessageText :: Text}
     | MsgEstateHasInfluenceModifier {scriptMessageIcon :: Text, scriptMessageEstate :: Text, scriptMessageModifier :: Text}
     | MsgTriggerSwitch
     | MsgTriggerSwitchClause {scriptMessageCond :: Text}
@@ -3532,17 +3535,32 @@ instance RenderMessage Script ScriptMessage where
                 ]
         MsgNewRulerClaim {scriptMessageAmt = _amt}
             -> mconcat
-                [ "Claim strength "
+                [ "{{icon|small legitimacy|28px}} Claim strength "
                 , toMessage (roundNum _amt)
                 ]
-        MsgNewRulerFixed {scriptMessageAdm = _adm, scriptMessageDip = _dip, scriptMessageMil = _mil}
+        MsgNewRulerCulture {scriptMessageText = _text}
             -> mconcat
-                [ "A new ruler comes to power with fixed skills {{icon|adm}} "
-                , toMessage (roundNum _adm)
-                , ", {{icon|dip}} "
-                , toMessage (roundNum _dip)
-                , ", {{icon|mil}} "
-                , toMessage (roundNum _mil)
+                [ "Of {{icon|culture|28px}} "
+                , toMessage _text
+                , " culture"
+                ]
+        MsgNewRulerCultureAs {scriptMessageText = _text}
+            -> mconcat
+                [ "Of the same {{icon|culture|28px}} culture as "
+                , toMessage _text
+                ]
+        MsgNewRulerReligion {scriptMessageIcon = _icon, scriptMessageText = _text}
+            -> mconcat
+                [ "Following the "
+                , toMessage _icon
+                , " "
+                , toMessage _text
+                , " religion"
+                ]
+        MsgNewRulerReligionAs {scriptMessageText = _text}
+            -> mconcat
+                [ "Following the same religion as "
+                , toMessage _text
                 ]
         MsgEstateHasInfluenceModifier {scriptMessageIcon = _icon, scriptMessageEstate = _estate, scriptMessageModifier = _modifier}
             -> mconcat

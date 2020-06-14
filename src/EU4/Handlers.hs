@@ -1658,10 +1658,12 @@ data DefineRuler = DefineRuler
     ,   dr_dip :: Maybe Int
     ,   dr_mil :: Maybe Int
     ,   dr_fixed :: Bool
+    ,   dr_culture :: Maybe (Either Text Text)
+    ,   dr_religion :: Maybe (Either Text Text)
     ,   dr_attach_leader :: Maybe Text
     }
 newDefineRuler :: DefineRuler
-newDefineRuler = DefineRuler False Nothing Nothing Nothing Nothing Nothing False Nothing Nothing Nothing False Nothing
+newDefineRuler = DefineRuler False Nothing Nothing Nothing Nothing Nothing False Nothing Nothing Nothing False Nothing Nothing Nothing
 
 defineRuler :: forall g m. (EU4Info g, Monad m) => StatementHandler g m
 defineRuler [pdx| %_ = @scr |] = do
@@ -1671,20 +1673,25 @@ defineRuler [pdx| %_ = @scr |] = do
     rootPronoun <- Doc.doc2text <$> pronoun Nothing "ROOT"
     thisPronoun <- Doc.doc2text <$> pronoun Nothing "THIS"
     hrePronoun  <- Doc.doc2text <$> pronoun Nothing "emperor" -- needs l10n
-    let addLine :: DefineRuler -> GenericStatement -> DefineRuler
+    let testPronoun :: Maybe Text -> Maybe (Either Text Text)
+        testPronoun (Just "PREV") = Just (Right prevPronoun)
+        testPronoun (Just "ROOT") = Just (Right rootPronoun)
+        testPronoun (Just "THIS") = Just (Right thisPronoun)
+        testPronoun (Just "emperor") = Just (Right hrePronoun)
+        testPronoun (Just other) = Just (Left other)
+        testPronoun _ = Nothing
+
+        addLine :: DefineRuler -> GenericStatement -> DefineRuler
         addLine dr [pdx| $lhs = %rhs |] = case T.map toLower lhs of
             "rebel" -> case textRhs rhs of
                 Just "yes" -> dr { dr_rebel = True }
                 _ -> dr
             "name" -> dr { dr_name = textRhs rhs }
-            "dynasty" -> dr { dr_dynasty = case textRhs rhs of
-                Just "PREV" -> Just (DynPron prevPronoun)
-                Just "ROOT" -> Just (DynPron rootPronoun)
-                Just "THIS" -> Just (DynPron thisPronoun)
-                Just "emperor" -> Just (DynPron hrePronoun)
-                Just "original_dynasty" -> Just DynOriginal
-                Just "historic_dynasty" -> Just DynHistoric
-                Just other -> Just (DynText other)
+            "dynasty" -> dr { dr_dynasty = case testPronoun $ textRhs rhs of
+                Just (Right pronoun) -> Just (DynPron pronoun)
+                Just (Left "original_dynasty") -> Just DynOriginal
+                Just (Left "historic_dynasty") -> Just DynHistoric
+                Just (Left other) -> Just (DynText other)
                 _ -> Nothing }
             "age" -> dr { dr_age = floatRhs rhs }
             "female" -> case textRhs rhs of
@@ -1701,9 +1708,12 @@ defineRuler [pdx| %_ = @scr |] = do
             "fixed" -> case textRhs rhs of
                 Just "yes" -> dr { dr_fixed = True }
                 _ -> dr
+            "culture" -> dr { dr_culture = testPronoun $ textRhs rhs }
+            "religion" -> dr { dr_religion = testPronoun $ textRhs rhs }
             "attach_leader" -> dr { dr_attach_leader = textRhs rhs }
-            _ -> dr
+            param -> trace ("warning: unknown define_ruler parameter: " ++ show param) $ dr
         addLine dr _ = dr
+
         pp_define_ruler :: DefineRuler -> PPT g m IndentedMessages
         pp_define_ruler    DefineRuler { dr_rebel = True } = msgToPP MsgRebelLeaderRuler
         pp_define_ruler dr@DefineRuler { dr_regency = regency, dr_attach_leader = mleader } = do
@@ -1750,6 +1760,28 @@ defineRuler [pdx| %_ = @scr |] = do
         pp_define_ruler_attrib dr@DefineRuler { dr_mil = Just mil, dr_fixed = fixed } = do
             [msg] <- msgToPP (MsgNewRulerMil fixed (fromIntegral mil))
             return (Just (msg, dr { dr_mil = Nothing }))
+        -- "Claim strength <foo>"
+        pp_define_ruler_attrib dr@DefineRuler { dr_claim = Just claim } = do
+            [msg] <- msgToPP $ MsgNewRulerClaim claim
+            return (Just (msg, dr { dr_claim = Nothing }))
+        -- "Of the <foo> culture"
+        pp_define_ruler_attrib dr@DefineRuler { dr_culture = Just culture } = case culture of
+            Left cultureText -> do
+              locCulture <- getGameL10n cultureText
+              [msg] <- msgToPP $ MsgNewRulerCulture locCulture
+              return (Just (msg, dr { dr_culture = Nothing }))
+            Right cultureText -> do
+              [msg] <- msgToPP $ MsgNewRulerCultureAs cultureText
+              return (Just (msg, dr { dr_culture = Nothing }))
+        -- "Following the <foo> religion"
+        pp_define_ruler_attrib dr@DefineRuler { dr_religion = Just religion } = case religion of
+            Left religionText -> do
+              locReligion <- getGameL10n religionText
+              [msg] <- msgToPP $ MsgNewRulerReligion (iconText religionText) locReligion
+              return (Just (msg, dr { dr_religion = Nothing }))
+            Right religionText -> do
+              [msg] <- msgToPP $ MsgNewRulerReligionAs religionText
+              return (Just (msg, dr { dr_religion = Nothing }))
         -- Nothing left
         pp_define_ruler_attrib _ = return Nothing
     pp_define_ruler $ foldl' addLine newDefineRuler scr
