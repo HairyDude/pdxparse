@@ -677,8 +677,7 @@ iconOrFlag iconmsg flagmsg expectScope [pdx| $head = $name |] = msgToPP =<< do
 iconOrFlag _ _ _ stmt = plainMsg $ pre_statement' stmt
 
 -- | Message with icon and tag.
-withFlagAndIcon :: (EU4Info g,
-                    Monad m) =>
+withFlagAndIcon :: (EU4Info g, Monad m) =>
     Text
         -> (Text -> Text -> ScriptMessage)
         -> Maybe EU4Scope
@@ -1180,7 +1179,6 @@ addModifier _ stmt = preStatement stmt
 
 -- "add_core = <n>" in country scope means "Gain core on <localize PROVn>"
 -- "add_core = <tag>" in province scope means "<localize tag> gains core"
--- TODO: cope with the case "add_core = <pronoun>"
 addCore :: (EU4Info g, Monad m) =>
     StatementHandler g m
 addCore [pdx| %_ = $tag |]
@@ -1626,7 +1624,7 @@ data Dynasty
 data DefineRuler = DefineRuler
     {   dr_rebel :: Bool
     ,   dr_name :: Maybe Text
-    ,   dr_dynasty :: Maybe Dynasty -- Left tag/pronoun, Right 
+    ,   dr_dynasty :: Maybe Dynasty
     ,   dr_age :: Maybe Double
     ,   dr_female :: Maybe Bool
     ,   dr_claim :: Maybe Double
@@ -1706,10 +1704,10 @@ defineRuler [pdx| %_ = @scr |] = do
                     [msg] <- msgToPP (MsgNewRulerDynastyAs dyntext)
                     return (Just (msg, dr { dr_dynasty = Nothing }))
                 DynOriginal -> do
-                    [msg] <- msgToPP (MsgNewRulerOriginalDynasty)
+                    [msg] <- msgToPP MsgNewRulerOriginalDynasty
                     return (Just (msg, dr { dr_dynasty = Nothing }))
                 DynHistoric -> do
-                    [msg] <- msgToPP (MsgNewRulerHistoricDynasty)
+                    [msg] <- msgToPP MsgNewRulerHistoricDynasty
                     return (Just (msg, dr { dr_dynasty = Nothing }))
         -- "Aged <foo> years"
         pp_define_ruler_attrib dr@DefineRuler { dr_age = Just age } = do
@@ -2226,7 +2224,7 @@ trust stmt@[pdx| %_ = @scr |]
         addLine tr [pdx| who = $whom |] = do
             whom' <- Doc.doc2text <$> pronoun (Just EU4Country) whom
             return tr { tr_whom = Just whom' }
-        addLine tr [pdx| value = !amt      |]
+        addLine tr [pdx| value = !amt |]
             = return tr { tr_amount = Just amt }
         addLine tr [pdx| mutual = yes |]
             = return tr { tr_mutual = True }
