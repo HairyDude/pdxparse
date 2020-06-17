@@ -225,7 +225,7 @@ getScopeForPronoun = helper . T.toLower where
 -- All handlers in this module that take an argument of type 'Maybe EU4Scope'
 -- call this function. Use whichever scope corresponds to what you expect to
 -- appear on the RHS. If it can be one of several (e.g. either a country or a
--- province), or it doesn't correspond to any scope, use Nothing.
+-- province), use EU4From. If it doesn't correspond to any scope, use Nothing.
 pronoun :: (EU4Info g, Monad m) =>
     Maybe EU4Scope -> Text -> PPT g m Doc
 pronoun expectedScope name = withCurrentFile $ \f -> case T.toLower name of
