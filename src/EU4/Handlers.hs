@@ -623,6 +623,7 @@ scriptIconTable = HM.fromList
     ,("particularist", "particularists")
     ,("piety", "being pious") -- chosen arbitrarily
     ,("religious_ideas", "religious")
+    ,("shamanism", "fetishism") -- religion reused
     ,("spy_ideas", "espionage")
     ,("tengri_pagan_reformed", "tengri")
     ,("trade_ideas", "trade")
