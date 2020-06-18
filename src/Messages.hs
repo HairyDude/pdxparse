@@ -379,6 +379,7 @@ data ScriptMessage
     | MsgHasClaimOn {scriptMessageWhat :: Text}
     | MsgIsAIControlled {scriptMessageYn :: Bool}
     | MsgHasCardinal {scriptMessageYn :: Bool}
+    | MsgHasConsort {scriptMessageYn :: Bool}
     | MsgHasHeir {scriptMessageYn :: Bool}
     | MsgHasOwnerCulture {scriptMessageYn :: Bool}
     | MsgHasOwnerReligion {scriptMessageYn :: Bool}
@@ -411,6 +412,8 @@ data ScriptMessage
     | MsgFactionGainInfluence {scriptMessageIcon :: Text, scriptMessageWhom :: Text, scriptMessageAmt :: Double}
     | MsgFactionInPower {scriptMessageIcon :: Text, scriptMessageWhom :: Text}
     | MsgHasFactions {scriptMessageYn :: Bool}
+    | MsgHasAdoptedCult {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
+    | MsgHasUnlockedCult {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgHasBuilding {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgIndefinitely
     | MsgForDays {scriptMessageDays :: Double}
@@ -513,6 +516,7 @@ data ScriptMessage
     | MsgHasDLC {scriptMessageIcon :: Text, scriptMessageDlc :: Text}
     | MsgProvince {scriptMessageWhere :: Text}
     | MsgTechGroup {scriptMessageIcon :: Text, scriptMessageName :: Text}
+    | MsgUnlockCult {scriptMessageIcon :: Text, scriptMessageName :: Text}
     | MsgNumOfReligion {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageAmt :: Double}
     | MsgReligiousSchool {scriptSchoolIcon :: Text, scriptSchoolName :: Text, scriptGroupName :: Text}
     | MsgSetReligiousSchool {scriptSchoolIcon :: Text, scriptSchoolName :: Text, scriptGroupName :: Text}
@@ -2665,6 +2669,11 @@ instance RenderMessage Script ScriptMessage where
                 [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
                 , " a cardinal"
                 ]
+        MsgHasConsort {scriptMessageYn = _yn}
+            -> mconcat
+                [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
+                , " a consort"
+                ]
         MsgHasHeir {scriptMessageYn = _yn}
             -> mconcat
                 [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
@@ -2866,6 +2875,22 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
                 , " factions"
+                ]
+        MsgHasAdoptedCult {scriptMessageIcon = _icon, scriptMessageWhat = _what}
+            -> mconcat
+                [ "Has adopted the "
+                , _icon
+                , " "
+                , _what
+                , " cult"
+                ]
+        MsgHasUnlockedCult {scriptMessageIcon = _icon, scriptMessageWhat = _what}
+            -> mconcat
+                [ "Has unlocked the "
+                , _icon
+                , " "
+                , _what
+                , " cult"
                 ]
         MsgHasBuilding {scriptMessageIcon = _icon, scriptMessageWhat = _what}
             -> mconcat
@@ -3650,6 +3675,14 @@ instance RenderMessage Script ScriptMessage where
                 , _icon
                 , " "
                 , _name
+                ]
+        MsgUnlockCult {scriptMessageIcon = _icon, scriptMessageName = _name}
+            -> mconcat
+                [ "Unlock the "
+                , _icon
+                , " "
+                , _name
+                , " cult"
                 ]
         MsgNumOfReligion {scriptMessageIcon = _icon, scriptMessageName = _name, scriptMessageAmt = _amt}
             -> mconcat
