@@ -1052,9 +1052,9 @@ handlersMisc = Tr.fromList
 -- | Handlers for ignored statements
 handlersIgnored :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersIgnored = Tr.fromList
-        [("custom_tooltip", const (plainMsg "(custom tooltip - delete this line)"))
-        ,("goto"          , const (plainMsg "(goto button - delete this line)"))
-        ,("tooltip"       , const (plainMsg "(explanatory tooltip - delete this line)"))
+        [("custom_tooltip", return $ return [])
+        ,("goto"          , return $ return [])
+        ,("tooltip"       , return $ return [])
         ]
 
 -- | Extract the appropriate message(s) from a single statement. Note that this
