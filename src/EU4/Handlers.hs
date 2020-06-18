@@ -1574,7 +1574,7 @@ defineAdvisor stmt@[pdx| %_ = @scr |]
                 in if yn == Just "yes" then da { da_female = Just True }
                    else if yn == Just "no" then da { da_female = Just False }
                    else da
-            _ -> return da
+            param -> trace ("warning: unknown define_advisor parameter: " ++ show param) $ return da
         addLine da _ = return da
         pp_define_advisor :: DefineAdvisor -> ScriptMessage
         pp_define_advisor da =
