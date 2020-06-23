@@ -177,6 +177,7 @@ data ScriptMessage
     | MsgAllNeighborCountries
     | MsgAllSubjectCountries
     | MsgElse
+    | MsgElseIf
     | MsgEveryActiveTradeNode
     | MsgEveryAlly
     | MsgEveryCoreCountry
@@ -248,6 +249,7 @@ data ScriptMessage
     | MsgPrimaryCultureIs {scriptMessageWhat :: Text}
     | MsgPrimaryCultureIsAs {scriptMessageWhat :: Text}
     | MsgRegionIs {scriptMessageWhat :: Text}
+    | MsgSuperRegionIs {scriptMessageWhat :: Text}
     | MsgLoseAdvisor {scriptMessageWho :: Text}
     | MsgRemoveFromEstate {scriptMessageIcon :: Text, scriptMessageWhom :: Text}
     | MsgDisasterOngoing {scriptMessageWhat :: Text}
@@ -346,6 +348,7 @@ data ScriptMessage
     | MsgGainPermanentClaimProvince {scriptMessageWhere :: Text}
     | MsgHasDiscovered {scriptMessageWhomOrWhere :: Text}
     | MsgDiscoveredBy {scriptMessageWhom :: Text}
+    | MsgSameContinent {scopeIsCountry :: Bool, paramIsCountry :: Bool, scriptMessageWhomOrWhere :: Text}
     | MsgInherit {scriptMessageWhom :: Text}
     | MsgNeighbors {scriptMessageWhom :: Text}
     | MsgIsRival {scriptMessageWhom :: Text}
@@ -376,6 +379,7 @@ data ScriptMessage
     | MsgHasClaimOn {scriptMessageWhat :: Text}
     | MsgIsAIControlled {scriptMessageYn :: Bool}
     | MsgHasCardinal {scriptMessageYn :: Bool}
+    | MsgHasConsort {scriptMessageYn :: Bool}
     | MsgHasHeir {scriptMessageYn :: Bool}
     | MsgHasOwnerCulture {scriptMessageYn :: Bool}
     | MsgHasOwnerReligion {scriptMessageYn :: Bool}
@@ -389,6 +393,7 @@ data ScriptMessage
     | MsgIsColony {scriptMessageYn :: Bool}
     | MsgIsEmperor {scriptMessageYn :: Bool}
     | MsgIsFemale {scriptMessageYn :: Bool}
+    | MsgIsInCapitalArea {scriptMessageYn :: Bool}
     | MsgIsLesserInUnion {scriptMessageYn :: Bool}
     | MsgIsLooted {scriptMessageYn :: Bool}
     | MsgIsOverseas {scriptMessageYn :: Bool}
@@ -397,6 +402,7 @@ data ScriptMessage
     | MsgIsSubject {scriptMessageYn :: Bool}
     | MsgPapacyIsActive {scriptMessageYn :: Bool}
     | MsgHasBeenPlayer {scriptMessageYn :: Bool}
+    | MsgIsState {scriptMessageYn :: Bool}
     | MsgIsStatistsInPower {scriptMessageYn :: Bool}
     | MsgIsOrangistsInPower {scriptMessageYn :: Bool}
     | MsgGainCB {scriptMessageCbtype :: Text, scriptMessageWhom :: Text}
@@ -406,6 +412,8 @@ data ScriptMessage
     | MsgFactionGainInfluence {scriptMessageIcon :: Text, scriptMessageWhom :: Text, scriptMessageAmt :: Double}
     | MsgFactionInPower {scriptMessageIcon :: Text, scriptMessageWhom :: Text}
     | MsgHasFactions {scriptMessageYn :: Bool}
+    | MsgHasAdoptedCult {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
+    | MsgHasUnlockedCult {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgHasBuilding {scriptMessageIcon :: Text, scriptMessageWhat :: Text}
     | MsgIndefinitely
     | MsgForDays {scriptMessageDays :: Double}
@@ -490,7 +498,10 @@ data ScriptMessage
     | MsgNewRulerDip {scriptMessageFixed :: Bool, scriptMessageAmt :: Double}
     | MsgNewRulerMil {scriptMessageFixed :: Bool, scriptMessageAmt :: Double}
     | MsgNewRulerClaim {scriptMessageAmt :: Double}
-    | MsgNewRulerFixed {scriptMessageAdm :: Double, scriptMessageDip :: Double, scriptMessageMil :: Double}
+    | MsgNewRulerCulture {scriptMessageText :: Text}
+    | MsgNewRulerCultureAs {scriptMessageText :: Text}
+    | MsgNewRulerReligion {scriptMessageIcon :: Text, scriptMessageText :: Text}
+    | MsgNewRulerReligionAs {scriptMessageText :: Text}
     | MsgEstateHasInfluenceModifier {scriptMessageIcon :: Text, scriptMessageEstate :: Text, scriptMessageModifier :: Text}
     | MsgTriggerSwitch
     | MsgTriggerSwitchClause {scriptMessageCond :: Text}
@@ -505,7 +516,10 @@ data ScriptMessage
     | MsgHasDLC {scriptMessageIcon :: Text, scriptMessageDlc :: Text}
     | MsgProvince {scriptMessageWhere :: Text}
     | MsgTechGroup {scriptMessageIcon :: Text, scriptMessageName :: Text}
+    | MsgUnlockCult {scriptMessageIcon :: Text, scriptMessageName :: Text}
     | MsgNumOfReligion {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageAmt :: Double}
+    | MsgReligiousSchool {scriptSchoolIcon :: Text, scriptSchoolName :: Text, scriptGroupName :: Text}
+    | MsgSetReligiousSchool {scriptSchoolIcon :: Text, scriptSchoolName :: Text, scriptGroupName :: Text}
     | MsgIsStrongestTradePower {scriptMessageWho :: Text}
     | MsgAreaIs {scriptMessageWhat :: Text}
     | MsgAreaIsAs {scriptMessageWhat :: Text}
@@ -528,6 +542,7 @@ data ScriptMessage
     | MsgIsLeagueEnemy {scriptMessageWhom :: Text}
     | MsgReligionYears {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageYears :: Double}
     | MsgHasIdea {scriptMessageWhat :: Text}
+    | MsgHasReform {scriptMessageWhat :: Text}
     | MsgReligionProvinces {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageAmt :: Double}
     | MsgGoodsProvinces {scriptMessageIcon :: Text, scriptMessageName :: Text, scriptMessageAmt :: Double}
     | MsgHasAristocraticIdea {scriptMessageName :: Text, scriptMessageNum :: Int}
@@ -557,6 +572,7 @@ data ScriptMessage
     | MsgBlockadeEfficiency {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgGainSeaRepair
     | MsgPrimitives {scriptMessageYn :: Bool}
+    | MsgRulerIsForeigner {scriptMessageYn :: Bool}
     | MsgGlobalTaxModifier {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgBuildCost {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgYearlyInflationReduction {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -634,6 +650,7 @@ data ScriptMessage
     | MsgHasActivePolicy {scriptMessageWhat :: Text}
     | MsgHasDucats {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgHasParliament {scriptMessageYn :: Bool}
+    | MsgHasReligiousSchool {scriptMessageYn :: Bool}
     | MsgHasTruce {scriptMessageYn :: Bool}
     | MsgNumRebelControlledProvinces {scriptMessageAmt :: Double}
     | MsgFortLevel {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -683,6 +700,7 @@ data ScriptMessage
     | MsgFemaleEmperorAllowed {scriptMessageYn :: Bool}
     | MsgImperialAuthority {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgHasFemaleHeir {scriptMessageYn :: Bool}
+    | MsgHasForeignHeir {scriptMessageYn :: Bool}
     | MsgPiety {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
     | MsgIsInTutorial {scriptMessageYn :: Bool}
     | MsgGainFervor {scriptMessageIcon :: Text, scriptMessageAmt :: Double}
@@ -1577,6 +1595,8 @@ instance RenderMessage Script ScriptMessage where
             -> "Province controller"
         MsgElse
             -> "Else:"
+        MsgElseIf
+            -> "Else, if:"
         MsgAllCountries
             -> "All countries in the world:"
         MsgAllNeighborCountries
@@ -1829,6 +1849,12 @@ instance RenderMessage Script ScriptMessage where
                 [ "Province is in "
                 , _what
                 , " region"
+                ]
+        MsgSuperRegionIs {scriptMessageWhat = _what}
+            -> mconcat
+                [ "Province is in "
+                , _what
+                , " [[super-region]]"
                 ]
         MsgLoseAdvisor {scriptMessageWho = _who}
             -> mconcat
@@ -2482,6 +2508,13 @@ instance RenderMessage Script ScriptMessage where
                 [ "Has been discovered by "
                 , _whom
                 ]
+        MsgSameContinent {scopeIsCountry = _scope, paramIsCountry = _param, scriptMessageWhomOrWhere = _whomOrWhere}
+            -> mconcat
+                [ ifThenElseT _scope "The capital is" "Is"
+                , " on the same continent as "
+                , ifThenElseT _param "the capital of " ""
+                , _whomOrWhere
+                ]
         MsgInherit {scriptMessageWhom = _whom}
             -> mconcat
                 [ "Inherit "
@@ -2636,6 +2669,11 @@ instance RenderMessage Script ScriptMessage where
                 [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
                 , " a cardinal"
                 ]
+        MsgHasConsort {scriptMessageYn = _yn}
+            -> mconcat
+                [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
+                , " a consort"
+                ]
         MsgHasHeir {scriptMessageYn = _yn}
             -> mconcat
                 [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
@@ -2710,6 +2748,12 @@ instance RenderMessage Script ScriptMessage where
                 [ "Ruler is "
                 , toMessage (ifThenElseT _yn "female" "male")
                 ]
+        MsgIsInCapitalArea {scriptMessageYn = _yn}
+            -> mconcat
+                [ "Is"
+                , toMessage (ifThenElseT _yn "" " ''not''")
+                , " in the [[Capital area]] of its owner"
+                ]
         MsgIsLesserInUnion {scriptMessageYn = _yn}
             -> mconcat
                 [ "Is"
@@ -2757,6 +2801,12 @@ instance RenderMessage Script ScriptMessage where
                 [ "Has"
                 , toMessage (ifThenElseT _yn "" " ''never''")
                 , " been player-controlled"
+                ]
+        MsgIsState {scriptMessageYn = _yn}
+            -> mconcat
+                [ "Is"
+                , toMessage (ifThenElseT _yn "" " ''not''")
+                , " in a state"
                 ]
         MsgIsStatistsInPower {scriptMessageYn = _yn}
             -> mconcat
@@ -2825,6 +2875,22 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
                 , " factions"
+                ]
+        MsgHasAdoptedCult {scriptMessageIcon = _icon, scriptMessageWhat = _what}
+            -> mconcat
+                [ "Has adopted the "
+                , _icon
+                , " "
+                , _what
+                , " cult"
+                ]
+        MsgHasUnlockedCult {scriptMessageIcon = _icon, scriptMessageWhat = _what}
+            -> mconcat
+                [ "Has unlocked the "
+                , _icon
+                , " "
+                , _what
+                , " cult"
                 ]
         MsgHasBuilding {scriptMessageIcon = _icon, scriptMessageWhat = _what}
             -> mconcat
@@ -3494,17 +3560,32 @@ instance RenderMessage Script ScriptMessage where
                 ]
         MsgNewRulerClaim {scriptMessageAmt = _amt}
             -> mconcat
-                [ "Claim strength "
+                [ "{{icon|small legitimacy|28px}} Claim strength "
                 , toMessage (roundNum _amt)
                 ]
-        MsgNewRulerFixed {scriptMessageAdm = _adm, scriptMessageDip = _dip, scriptMessageMil = _mil}
+        MsgNewRulerCulture {scriptMessageText = _text}
             -> mconcat
-                [ "A new ruler comes to power with fixed skills {{icon|adm}} "
-                , toMessage (roundNum _adm)
-                , ", {{icon|dip}} "
-                , toMessage (roundNum _dip)
-                , ", {{icon|mil}} "
-                , toMessage (roundNum _mil)
+                [ "Of {{icon|culture|28px}} "
+                , toMessage _text
+                , " culture"
+                ]
+        MsgNewRulerCultureAs {scriptMessageText = _text}
+            -> mconcat
+                [ "Of the same {{icon|culture|28px}} culture as "
+                , toMessage _text
+                ]
+        MsgNewRulerReligion {scriptMessageIcon = _icon, scriptMessageText = _text}
+            -> mconcat
+                [ "Following the "
+                , toMessage _icon
+                , " "
+                , toMessage _text
+                , " religion"
+                ]
+        MsgNewRulerReligionAs {scriptMessageText = _text}
+            -> mconcat
+                [ "Following the same religion as "
+                , toMessage _text
                 ]
         MsgEstateHasInfluenceModifier {scriptMessageIcon = _icon, scriptMessageEstate = _estate, scriptMessageModifier = _modifier}
             -> mconcat
@@ -3595,6 +3676,14 @@ instance RenderMessage Script ScriptMessage where
                 , " "
                 , _name
                 ]
+        MsgUnlockCult {scriptMessageIcon = _icon, scriptMessageName = _name}
+            -> mconcat
+                [ "Unlock the "
+                , _icon
+                , " "
+                , _name
+                , " cult"
+                ]
         MsgNumOfReligion {scriptMessageIcon = _icon, scriptMessageName = _name, scriptMessageAmt = _amt}
             -> mconcat
                 [ "Has at least "
@@ -3606,6 +3695,26 @@ instance RenderMessage Script ScriptMessage where
                 , " "
                 , _name
                 , " religion"
+                ]
+        MsgSetReligiousSchool {scriptSchoolIcon = _icon, scriptSchoolName = _name, scriptGroupName = _group}
+            -> mconcat
+                [ "The country begins following the "
+                , toMessage _group
+                , " "
+                , toMessage _icon
+                , " "
+                , toMessage _name
+                , " religious school"
+                ]
+        MsgReligiousSchool {scriptSchoolIcon = _icon, scriptSchoolName = _name, scriptGroupName = _group}
+            -> mconcat
+                [ "Has the "
+                , toMessage _group
+                , " "
+                , toMessage _icon
+                , " "
+                , toMessage _name
+                , " religious school"
                 ]
         MsgIsStrongestTradePower {scriptMessageWho = _who}
             -> mconcat
@@ -3731,6 +3840,12 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ "Has idea "
                 , toMessage (iquotes _what)
+                ]
+        MsgHasReform {scriptMessageWhat = _what}
+            -> mconcat
+                [ "Has enacted the "
+                , toMessage (iquotes _what)
+                , " government reform"
                 ]
         MsgReligionProvinces {scriptMessageIcon = _icon, scriptMessageName = _name, scriptMessageAmt = _amt}
             -> mconcat
@@ -3922,6 +4037,12 @@ instance RenderMessage Script ScriptMessage where
                 , toMessage (ifThenElseT _yn "" " ''not''")
                 , " primitive"
                 ]
+        MsgRulerIsForeigner {scriptMessageYn = _yn}
+            -> mconcat
+                [ "Ruler is"
+                , toMessage (ifThenElseT _yn "" " ''not''")
+                , " foreign"
+                ]
         MsgGlobalTaxModifier {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat
                 [ _icon
@@ -4012,7 +4133,7 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ _icon
                 , " "
-                , toMessage (colourNumSign True _amt)
+                , toMessage (colourNumSign False _amt)
                 , " Missionary Maintenance Cost"
                 ]
         MsgStabilityCost {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
@@ -4410,6 +4531,12 @@ instance RenderMessage Script ScriptMessage where
                 , toMessage (ifThenElseT _yn "has" "does ''not'' have")
                 , " a parliament"
                 ]
+        MsgHasReligiousSchool {scriptMessageYn = _yn}
+            -> mconcat
+                [ "The country "
+                , toMessage (ifThenElseT _yn "has" "does ''not'' have")
+                , " a Religious School"
+                ]
         MsgHasTruce {scriptMessageYn = _yn}
             -> mconcat
                 [ "The country "
@@ -4688,6 +4815,11 @@ instance RenderMessage Script ScriptMessage where
             -> mconcat
                 [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
                 , " a female heir"
+                ]
+        MsgHasForeignHeir {scriptMessageYn = _yn}
+            -> mconcat
+                [ toMessage (ifThenElseT _yn "Has" "Does ''not'' have")
+                , " a foreign heir"
                 ]
         MsgPiety {scriptMessageIcon = _icon, scriptMessageAmt = _amt}
             -> mconcat

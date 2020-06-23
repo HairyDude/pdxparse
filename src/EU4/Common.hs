@@ -100,6 +100,7 @@ ppHandlers = foldl' Tr.unionL Tr.empty
     , handlersSignedNumeric
     , handlersNumProvinces
     , handlersTextValue
+    , handlersTextAtom
     , handlersSpecialComplex
     , handlersRebels
     , handlersIdeaGroups
@@ -330,7 +331,7 @@ handlersNumericIcons = Tr.fromList
         ,("local_missionary_strength", numericIcon "local missionary strength" MsgLocalMissionaryStrength)
         ,("local_monthly_devastation", numericIcon "local monthly devastation" MsgLocalMonthlyDevastation)
         ,("local_production_efficiency", numericIcon "local production efficiency" MsgLocalProdEff)
-        ,("local_state_maintanance_modifier", numericIcon "local state maintanance modifier" MsgLocalStateMaintMod)
+        ,("local_state_maintenance_modifier", numericIcon "local state maintenance modifier" MsgLocalStateMaintMod)
         ,("local_tax_modifier"       , numericIcon "local tax modifier" MsgLocalTaxMod)
         ,("local_unrest"             , numericIcon "local unrest" MsgLocalUnrest)
         ,("manpower"                 , numericIcon "manpower" MsgManpower)
@@ -403,7 +404,7 @@ handlersNumericIcons = Tr.fromList
         ,("years_of_income"          , numericIcon "ducats" MsgYearsOfIncome)
         -- Used in ideas and other bonuses, omit "gain/lose" in l10n
         ,("accepted_culture_threshold"        , numericIcon "accepted culture threshold" MsgAccCultureThreshold)
-        ,("adm_tech_cost_modifier"            , numericIcon "adm tech cost modifier" MsgADMTechCost)
+        ,("adm_tech_cost_modifier"            , numericIcon "adm tech cost" MsgADMTechCost)
         ,("advisor_cost"                      , numericIcon "advisor cost" MsgAdvisorCost)
         ,("advisor_pool"                      , numericIcon "advisor pool" MsgPossibleAdvisors)
         ,("ae_impact"                         , numericIcon "ae impact" MsgAEImpact)
@@ -425,7 +426,7 @@ handlersNumericIcons = Tr.fromList
         ,("diplomatic_reputation"             , numericIcon "diplomatic reputation" MsgDiploRep)
         ,("diplomatic_upkeep"                 , numericIcon "diplomatic upkeep" MsgDiploRelations)
         ,("diplomats"                         , numericIcon "diplomats" MsgDiplomats)
-        ,("dip_tech_cost_modifier"            , numericIcon "dip tech cost modifier" MsgDIPTechCost)
+        ,("dip_tech_cost_modifier"            , numericIcon "dip tech cost" MsgDIPTechCost)
         ,("discipline"                        , numericIcon "discipline" MsgDiscipline)
         ,("discovered_relations_impact"       , numericIcon "discovered relations impact" MsgCovertActionRelationImpact)
         ,("embargo_efficiency"                , numericIcon "embargo efficiency" MsgEmbargoEff)
@@ -478,7 +479,7 @@ handlersNumericIcons = Tr.fromList
         ,("mercenary_cost"                    , numericIcon "mercenary cost" MsgMercCost)
         ,("merc_maintenance_modifier"         , numericIcon "merc maintenance modifier" MsgMercMaintenance)
         ,("merchants"                         , numericIcon "merchants" MsgMerchants)
-        ,("mil_tech_cost_modifier"            , numericIcon "adm tech cost modifier" MsgMILTechCost)
+        ,("mil_tech_cost_modifier"            , numericIcon "mil tech cost" MsgMILTechCost)
         ,("missionaries"                      , numericIcon "missionaries" MsgMissionaries)
         ,("missionary_maintenance_cost"       , numericIcon "missionary maintenance cost" MsgMissionaryMaintenanceCost)
         ,("monthly_fervor_increase"           , numericIcon "monthly fervor" MsgMonthlyFervor)
@@ -578,6 +579,7 @@ handlersCompound = Tr.fromList
         ,("colonial_parent"         , scope EU4Country   . compoundMessage MsgColonialParent)
         ,("controller"              , scope EU4Country   . compoundMessage MsgController)
         ,("else"                    ,                      compoundMessage MsgElse)
+        ,("else_if"                 ,                      compoundMessage MsgElseIf)
         ,("emperor"                 , scope EU4Country   . compoundMessage MsgEmperor)
         ,("every_active_trade_node" , scope EU4TradeNode . compoundMessage MsgEveryActiveTradeNode)
         ,("every_ally"              , scope EU4TradeNode . compoundMessage MsgEveryAlly)
@@ -608,7 +610,6 @@ handlersCompound = Tr.fromList
         ,("random_empty_neighbor_province", scope EU4Province . compoundMessage MsgRandomEmptyNeighborProvince)
         ,("random_heretic_province"    , scope EU4Province  . compoundMessage MsgRandomHereticProvince)
         ,("random_known_country"    , scope EU4Country   . compoundMessage MsgRandomKnownCountry)
-        ,("random_list"             ,                      compoundMessage MsgRandom)
         ,("random_neighbor_country" , scope EU4Country   . compoundMessage MsgRandomNeighborCountry)
         ,("random_neighbor_province", scope EU4Province  . compoundMessage MsgRandomNeighborProvince)
         ,("random_owned_province"   , scope EU4Province  . compoundMessage MsgRandomOwnedProvince)
@@ -637,11 +638,13 @@ handlersLocRhs = Tr.fromList
         ,("has_disaster"          , withLocAtom MsgDisasterOngoing)
         ,("has_great_project"     , withLocAtom MsgConstructingGreatProject)
         ,("has_idea"              , withLocAtom MsgHasIdea)
+        ,("has_reform"            , withLocAtom MsgHasReform)
         ,("has_terrain"           , withLocAtom MsgHasTerrain)
         ,("kill_advisor"          , withLocAtom MsgAdvisorDies)
         ,("region"                , withLocAtom MsgRegionIs)
         ,("remove_advisor"        , withLocAtom MsgLoseAdvisor)
         ,("rename_capital"        , withLocAtom MsgRenameCapital) -- will usually fail localization
+        ,("superregion"           , withLocAtom MsgSuperRegionIs)
         ]
 
 -- | Handlers for statements whose RHS is a province ID
@@ -666,7 +669,8 @@ handlersFlagOrProvince = Tr.fromList
         ,("infantry"           , withFlagOrProvince MsgInfantrySpawnsCountry MsgInfantrySpawnsProvince)
         ,("remove_core"        , withFlagOrProvince MsgLoseCoreCountry MsgLoseCoreProvince)
         -- RHS is a flag or province id, but the statement's meaning depends on the scope
-        ,("has_discovered"     , withFlagOrProvinceEU4Scope MsgHasDiscovered MsgDiscoveredBy) -- scope sensitive
+        ,("has_discovered"     , withFlagOrProvinceEU4Scope MsgHasDiscovered MsgHasDiscovered MsgDiscoveredBy MsgDiscoveredBy) -- scope sensitive
+        ,("same_continent"     , withFlagOrProvinceEU4Scope (MsgSameContinent True True) (MsgSameContinent True False) (MsgSameContinent False True) (MsgSameContinent False False)) -- scope sensitive
         ]
 
 -- | Handlers for statements whose RHS is a number OR a tag/pronoun, with icon
@@ -719,8 +723,10 @@ handlersSimpleIcon = Tr.fromList
         ,("create_advisor"          , withLocAtomIcon MsgCreateAdvisor)
         ,("current_age"             , withLocAtomIcon MsgCurrentAge)
         ,("enable_religion"         , withLocAtomIcon MsgEnableReligion)
+        ,("has_adopted_cult"        , withLocAtomIcon MsgHasAdoptedCult)
         ,("has_building"            , withLocAtomIcon MsgHasBuilding)
         ,("has_idea_group"          , withLocAtomIcon MsgHasIdeaGroup) -- FIXME: icon fails
+        ,("has_unlocked_cult"       , withLocAtomIcon MsgHasUnlockedCult)
         ,("full_idea_group"         , withLocAtomIcon MsgFullIdeaGroup)
         ,("hre_religion"            , withLocAtomIcon MsgHREReligion)
         ,("is_religion_enabled"     , withLocAtomIcon MsgReligionEnabled)
@@ -729,6 +735,7 @@ handlersSimpleIcon = Tr.fromList
         ,("set_hre_heretic_religion", withLocAtomIcon MsgSetHREHereticReligion)
         ,("set_hre_religion"        , withLocAtomIcon MsgSetHREReligion)
         ,("technology_group"        , withLocAtomIcon MsgTechGroup)
+        ,("unlock_cult"             , withLocAtomIcon MsgUnlockCult)
         ,("has_estate"              , withLocAtomIconEU4Scope MsgEstateExists MsgHasEstate)
         ,("set_estate"              , withLocAtomIcon MsgAssignToEstate)
         ,("is_monarch_leader"       , withLocAtomAndIcon "ruler general" MsgRulerIsGeneral)
@@ -819,8 +826,10 @@ handlersYesNo = Tr.fromList
         ,("always"                      , withBool MsgAlways)
         ,("has_any_disaster"            , withBool MsgHasAnyDisaster)
         ,("has_cardinal"                , withBool MsgHasCardinal)
+        ,("has_consort"                 , withBool MsgHasConsort)
         ,("has_factions"                , withBool MsgHasFactions)
         ,("has_female_heir"             , withBool MsgHasFemaleHeir)
+        ,("has_foreign_heir"            , withBool MsgHasForeignHeir)
         ,("has_heir"                    , withBool MsgHasHeir)
         ,("has_missionary"              , withBool MsgHasMissionary)
         ,("has_owner_culture"           , withBool MsgHasOwnerCulture)
@@ -829,6 +838,7 @@ handlersYesNo = Tr.fromList
         ,("has_port"                    , withBool MsgHasPort)
         ,("has_seat_in_parliament"      , withBool MsgHasSeatInParliament)
         ,("has_regency"                 , withBool MsgIsInRegency)
+        ,("has_religious_school"        , withBool MsgHasReligiousSchool)
         ,("has_siege"                   , withBool MsgUnderSiege)
         ,("has_secondary_religion"      , withBool MsgHasSecondaryReligion)
         ,("has_truce"                   , withBool MsgHasTruce)
@@ -849,6 +859,7 @@ handlersYesNo = Tr.fromList
         ,("is_elector"                  , withBool MsgIsElector)
         ,("is_emperor"                  , withBool MsgIsEmperor)
         ,("is_female"                   , withBool MsgIsFemale)
+        ,("is_in_capital_area"          , withBool MsgIsInCapitalArea)
         ,("is_in_league_war"            , withBool MsgIsInLeagueWar)
         ,("is_lesser_in_union"          , withBool MsgIsLesserInUnion)
         ,("is_looted"                   , withBool MsgIsLooted)
@@ -861,6 +872,7 @@ handlersYesNo = Tr.fromList
         ,("is_reformation_center"       , withBool MsgIsCenterOfReformation)
         ,("is_religion_reformed"        , withBool MsgReligionReformed)
         ,("is_sea"                      , withBool MsgIsSea) -- province or trade node
+        ,("is_state"                    , withBool MsgIsState)
         ,("is_statists_in_power"        , withBool MsgIsStatistsInPower)
         ,("is_subject"                  , withBool MsgIsSubject)
         ,("is_tribal"                   , withBool MsgIsTribal)
@@ -869,6 +881,7 @@ handlersYesNo = Tr.fromList
         ,("normal_or_historical_nations", withBool MsgNormalOrHistoricalNations)
         ,("papacy_active"               , withBool MsgPapacyIsActive)
         ,("primitives"                  , withBool MsgPrimitives)
+        ,("ruler_is_foreigner"          , withBool MsgRulerIsForeigner)
         ,("set_hre_religion_locked"     , withBool MsgSetHREReligionLocked)
         ,("set_in_empire"               , withBool MsgSetInEmpire)
         ,("unit_in_siege"               , withBool MsgUnderSiege) -- duplicate?
@@ -957,6 +970,13 @@ handlersTextValue = Tr.fromList
         ,("num_of_religion"             , textValue "religion" "value" MsgNumOfReligion MsgNumOfReligion tryLocAndIcon)
         ]
 
+-- | Handlers for text/atom pairs
+handlersTextAtom :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
+handlersTextAtom = Tr.fromList
+        [("religious_school", textAtom "school" "group" MsgReligiousSchool tryLoc)
+        ,("set_religious_school", textAtom "school" "group" MsgSetReligiousSchool tryLoc)
+        ]
+
 -- | Handlers for special complex statements
 handlersSpecialComplex :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersSpecialComplex = Tr.fromList
@@ -1016,6 +1036,7 @@ handlersIdeaGroups = Tr.fromList
 handlersMisc :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersMisc = Tr.fromList
         [("random", random)
+        ,("random_list", randomList)
         -- Special
         ,("add_core"            , addCore)
         ,("add_manpower"        , gainMen)
@@ -1035,8 +1056,9 @@ handlersMisc = Tr.fromList
 -- | Handlers for ignored statements
 handlersIgnored :: (EU4Info g, Monad m) => Trie (StatementHandler g m)
 handlersIgnored = Tr.fromList
-        [("custom_tooltip", const (plainMsg "(custom tooltip - delete this line)"))
-        ,("tooltip"       , const (plainMsg "(explanatory tooltip - delete this line)"))
+        [("custom_tooltip", return $ return [])
+        ,("goto"          , return $ return [])
+        ,("tooltip"       , return $ return [])
         ]
 
 -- | Extract the appropriate message(s) from a single statement. Note that this

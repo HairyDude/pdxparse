@@ -36,6 +36,7 @@ module EU4.Handlers (
     ,   numericIcon
     ,   numericIconLoc
     ,   numericIconBonus
+    ,   tryLoc
     ,   tryLocAndIcon
     ,   textValue
     ,   textAtom
@@ -54,6 +55,7 @@ module EU4.Handlers (
     ,   gainMen
     ,   addCB
     ,   random
+    ,   randomList
     ,   defineAdvisor
     ,   defineRuler
     ,   buildToForcelimit
@@ -596,20 +598,26 @@ scriptIconTable = HM.fromList
     ,("army_reformer", "army reformer")
     ,("base_production", "production")
     ,("colonial_governor", "colonial governor")
+    ,("defensiveness", "fort defence")
     ,("diplomat", "diplomat_adv")
     ,("diplomatic_ideas", "diplomatic")
     ,("economic_ideas", "economic")
+    ,("estate_brahmins", "brahmins")
     ,("estate_burghers", "burghers")
     ,("estate_church", "clergy")
     ,("estate_cossacks", "cossacks")
     ,("estate_dhimmi", "dhimmi")
+    ,("estate_maratha", "marathas")
     ,("estate_nobles", "nobles")
     ,("estate_nomadic_tribes", "tribes")
+    ,("estate_rajput", "rajputs")
+    ,("estate_vaisyas", "vaishyas")
     ,("grand_captain", "grand captain")
     ,("influence_ideas", "influence")
     ,("innovativeness_ideas", "innovative")
     ,("is_monarch_leader", "ruler general")
     ,("master_of_mint", "master of mint")
+    ,("max_accepted_cultures", "max promoted cultures")
     ,("master_recruiter", "master recruiter")
     ,("mesoamerican_religion", "mayan")
     ,("military_engineer", "military engineer")
@@ -621,9 +629,37 @@ scriptIconTable = HM.fromList
     ,("particularist", "particularists")
     ,("piety", "being pious") -- chosen arbitrarily
     ,("religious_ideas", "religious")
+    ,("shamanism", "fetishism") -- religion reused
+    ,("local_state_maintenance_modifier", "state maintenance")
     ,("spy_ideas", "espionage")
     ,("tengri_pagan_reformed", "tengri")
     ,("trade_ideas", "trade")
+    -- cults
+    ,("buddhism_cult", "buddhadharma")
+    ,("central_african_ancestor_cult", "mlira")
+    ,("christianity_cult", "christianity")
+    ,("cwezi_cult", "cwezi")
+    ,("dharmic_cult", "sanatana")
+    ,("enkai_cult", "enkai")
+    ,("islam_cult", "islam")
+    ,("jewish_cult", "haymanot")
+    ,("mwari_cult", "mwari")
+    ,("norse_cult", "freyja")
+    ,("nyame_cult", "nyame")
+    ,("roog_cult", "roog")
+    ,("south_central_american_cult", "teotl")
+    ,("waaq_cult", "waaq")
+    ,("yemoja_cult", "yemoja")
+    ,("zanahary_cult", "zanahary")
+    ,("zoroastrian_cult", "mazdayasna")
+    -- religious schools
+    ,("hanafi_school", "hanafi")
+    ,("hanbali_school", "hanbali")
+    ,("maliki_school", "maliki")
+    ,("shafii_school", "shafii")
+    ,("ismaili_school", "ismaili")
+    ,("jafari_school", "jafari")
+    ,("zaidi_school", "zaidi")
     ]
 
 -- Given a script atom, return the corresponding icon key, if any.
@@ -1275,7 +1311,7 @@ rebel_loc = HM.fromList
         ,("confucianism_rebels",    ("Confucian zealots", "confucian zealots"))
         ,("shinto_rebels",          ("Shinto zealots", "shinto zealots"))
         ,("animism_rebels",         ("Animist zealots", "animist zealots"))
-        ,("shamanism_rebels",       ("Shamanist zealots", "shamanist zealots"))
+        ,("shamanism_rebels",       ("Fetishist zealots", "fetishist zealots"))
         ,("totemism_rebels",        ("Totemist zealots", "totemist zealots"))
         ,("coptic_rebels",          ("Coptic zealots", "coptic zealots"))
         ,("ibadi_rebels",           ("Ibadi zealots", "ibadi zealots"))
@@ -1490,6 +1526,21 @@ random stmt@[pdx| %_ = @scr |]
     | otherwise = compoundMessage MsgRandom stmt
 random stmt = preStatement stmt
 
+randomList :: (EU4Info g, Monad m) => StatementHandler g m
+randomList stmt@[pdx| %_ = @scr |] = fmtRandomList $ map entry scr
+    where
+        entry [pdx| !weight = @scr |] = (fromIntegral weight, scr)
+        entry _ = error "Bad clause in random_list"
+        fmtRandomList entries = withCurrentIndent $ \i ->
+            let total = sum (map fst entries)
+            in (:) <$> pure (i, MsgRandom)
+                   <*> (concat <$> indentUp (mapM (fmtRandomList' total) entries))
+        fmtRandomList' total (wt, what) = withCurrentIndent $ \i ->
+            (:) <$> pure (i, MsgRandomChance ((wt / total) * 100))
+                <*> ppMany what -- has integral indentUp
+randomList _ = withCurrentFile $ \file ->
+    error ("randomList sent strange statement in " ++ file)
+
 -- Advisors
 
 data DefineAdvisor = DefineAdvisor
@@ -1549,7 +1600,7 @@ defineAdvisor stmt@[pdx| %_ = @scr |]
                 in if yn == Just "yes" then da { da_female = Just True }
                    else if yn == Just "no" then da { da_female = Just False }
                    else da
-            _ -> return da
+            param -> trace ("warning: unknown define_advisor parameter: " ++ show param) $ return da
         addLine da _ = return da
         pp_define_advisor :: DefineAdvisor -> ScriptMessage
         pp_define_advisor da =
@@ -1633,10 +1684,12 @@ data DefineRuler = DefineRuler
     ,   dr_dip :: Maybe Int
     ,   dr_mil :: Maybe Int
     ,   dr_fixed :: Bool
+    ,   dr_culture :: Maybe (Either Text Text)
+    ,   dr_religion :: Maybe (Either Text Text)
     ,   dr_attach_leader :: Maybe Text
     }
 newDefineRuler :: DefineRuler
-newDefineRuler = DefineRuler False Nothing Nothing Nothing Nothing Nothing False Nothing Nothing Nothing False Nothing
+newDefineRuler = DefineRuler False Nothing Nothing Nothing Nothing Nothing False Nothing Nothing Nothing False Nothing Nothing Nothing
 
 defineRuler :: forall g m. (EU4Info g, Monad m) => StatementHandler g m
 defineRuler [pdx| %_ = @scr |] = do
@@ -1646,20 +1699,25 @@ defineRuler [pdx| %_ = @scr |] = do
     rootPronoun <- Doc.doc2text <$> pronoun Nothing "ROOT"
     thisPronoun <- Doc.doc2text <$> pronoun Nothing "THIS"
     hrePronoun  <- Doc.doc2text <$> pronoun Nothing "emperor" -- needs l10n
-    let addLine :: DefineRuler -> GenericStatement -> DefineRuler
+    let testPronoun :: Maybe Text -> Maybe (Either Text Text)
+        testPronoun (Just "PREV") = Just (Right prevPronoun)
+        testPronoun (Just "ROOT") = Just (Right rootPronoun)
+        testPronoun (Just "THIS") = Just (Right thisPronoun)
+        testPronoun (Just "emperor") = Just (Right hrePronoun)
+        testPronoun (Just other) = Just (Left other)
+        testPronoun _ = Nothing
+
+        addLine :: DefineRuler -> GenericStatement -> DefineRuler
         addLine dr [pdx| $lhs = %rhs |] = case T.map toLower lhs of
             "rebel" -> case textRhs rhs of
                 Just "yes" -> dr { dr_rebel = True }
                 _ -> dr
             "name" -> dr { dr_name = textRhs rhs }
-            "dynasty" -> dr { dr_dynasty = case textRhs rhs of
-                Just "PREV" -> Just (DynPron prevPronoun)
-                Just "ROOT" -> Just (DynPron rootPronoun)
-                Just "THIS" -> Just (DynPron thisPronoun)
-                Just "emperor" -> Just (DynPron hrePronoun)
-                Just "original_dynasty" -> Just DynOriginal
-                Just "historic_dynasty" -> Just DynHistoric
-                Just other -> Just (DynText other)
+            "dynasty" -> dr { dr_dynasty = case testPronoun $ textRhs rhs of
+                Just (Right pronoun) -> Just (DynPron pronoun)
+                Just (Left "original_dynasty") -> Just DynOriginal
+                Just (Left "historic_dynasty") -> Just DynHistoric
+                Just (Left other) -> Just (DynText other)
                 _ -> Nothing }
             "age" -> dr { dr_age = floatRhs rhs }
             "female" -> case textRhs rhs of
@@ -1676,9 +1734,12 @@ defineRuler [pdx| %_ = @scr |] = do
             "fixed" -> case textRhs rhs of
                 Just "yes" -> dr { dr_fixed = True }
                 _ -> dr
+            "culture" -> dr { dr_culture = testPronoun $ textRhs rhs }
+            "religion" -> dr { dr_religion = testPronoun $ textRhs rhs }
             "attach_leader" -> dr { dr_attach_leader = textRhs rhs }
-            _ -> dr
+            param -> trace ("warning: unknown define_ruler parameter: " ++ show param) $ dr
         addLine dr _ = dr
+
         pp_define_ruler :: DefineRuler -> PPT g m IndentedMessages
         pp_define_ruler    DefineRuler { dr_rebel = True } = msgToPP MsgRebelLeaderRuler
         pp_define_ruler dr@DefineRuler { dr_regency = regency, dr_attach_leader = mleader } = do
@@ -1725,6 +1786,28 @@ defineRuler [pdx| %_ = @scr |] = do
         pp_define_ruler_attrib dr@DefineRuler { dr_mil = Just mil, dr_fixed = fixed } = do
             [msg] <- msgToPP (MsgNewRulerMil fixed (fromIntegral mil))
             return (Just (msg, dr { dr_mil = Nothing }))
+        -- "Claim strength <foo>"
+        pp_define_ruler_attrib dr@DefineRuler { dr_claim = Just claim } = do
+            [msg] <- msgToPP $ MsgNewRulerClaim claim
+            return (Just (msg, dr { dr_claim = Nothing }))
+        -- "Of the <foo> culture"
+        pp_define_ruler_attrib dr@DefineRuler { dr_culture = Just culture } = case culture of
+            Left cultureText -> do
+              locCulture <- getGameL10n cultureText
+              [msg] <- msgToPP $ MsgNewRulerCulture locCulture
+              return (Just (msg, dr { dr_culture = Nothing }))
+            Right cultureText -> do
+              [msg] <- msgToPP $ MsgNewRulerCultureAs cultureText
+              return (Just (msg, dr { dr_culture = Nothing }))
+        -- "Following the <foo> religion"
+        pp_define_ruler_attrib dr@DefineRuler { dr_religion = Just religion } = case religion of
+            Left religionText -> do
+              locReligion <- getGameL10n religionText
+              [msg] <- msgToPP $ MsgNewRulerReligion (iconText religionText) locReligion
+              return (Just (msg, dr { dr_religion = Nothing }))
+            Right religionText -> do
+              [msg] <- msgToPP $ MsgNewRulerReligionAs religionText
+              return (Just (msg, dr { dr_religion = Nothing }))
         -- Nothing left
         pp_define_ruler_attrib _ = return Nothing
     pp_define_ruler $ foldl' addLine newDefineRuler scr
@@ -2111,17 +2194,16 @@ withFlagOrProvince _ _ stmt = preStatement stmt
 withFlagOrProvinceEU4Scope :: (EU4Info g, Monad m) =>
     (Text -> ScriptMessage)
         -> (Text -> ScriptMessage)
+        -> (Text -> ScriptMessage)
+        -> (Text -> ScriptMessage)
         -> StatementHandler g m
-withFlagOrProvinceEU4Scope countryMsg geogMsg stmt = do
+withFlagOrProvinceEU4Scope bothCountryMsg scopeCountryParamGeogMsg scopeGeogParamCountryMsg bothGeogMsg stmt = do
     mscope <- getCurrentScope
     -- If no scope, assume country.
     if fromMaybe False (isGeographic <$> mscope) then
-        -- RHS is tag or pronoun - "Has been discovered by <whom>"
-        withFlag geogMsg stmt
+        withFlagOrProvince scopeGeogParamCountryMsg bothGeogMsg stmt
     else
-        -- RHS is tag, pronoun or province ID
-        -- Current usages (i.e. has_discovered) treat them all the same.
-        withFlagOrProvince countryMsg countryMsg stmt
+        withFlagOrProvince bothCountryMsg scopeCountryParamGeogMsg stmt
 
 tradeMod :: (EU4Info g, Monad m) => StatementHandler g m
 tradeMod stmt@[pdx| %_ = ?_ |]
